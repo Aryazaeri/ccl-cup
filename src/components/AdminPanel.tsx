@@ -421,6 +421,7 @@ export function AdminPanel({
         <TeamModal
           initial={editingTeam}
           seasons={seasons}
+          allPlayers={players}
           players={editingTeam ? players.filter((p) => p.teamId === editingTeam.id || p.teamName === editingTeam.name) : []}
           onClose={() => {
             setModal(null)
@@ -431,6 +432,7 @@ export function AdminPanel({
             else await onAddTeam(team)
           }}
           onAddPlayer={onAddPlayer}
+          onUpdatePlayer={onUpdatePlayer}
           onDeletePlayer={onDeletePlayer}
         />
       )}
@@ -439,9 +441,11 @@ export function AdminPanel({
         <QuickSquadModal
           team={squadTeam}
           seasons={seasons}
+          allPlayers={players}
           players={players.filter((p) => p.teamId === squadTeam.id || p.teamName === squadTeam.name)}
           onClose={() => setSquadTeam(null)}
           onAddPlayer={onAddPlayer}
+          onUpdatePlayer={onUpdatePlayer}
           onDeletePlayer={onDeletePlayer}
         />
       )}
@@ -1845,18 +1849,22 @@ function MatchTable({
 function TeamModal({
   initial,
   players,
+  allPlayers = [],
   seasons,
   onClose,
   onSave,
   onAddPlayer,
+  onUpdatePlayer,
   onDeletePlayer,
 }: {
   initial: Team | null
   players: Player[]
+  allPlayers?: Player[]
   seasons: Season[]
   onClose: () => void
   onSave: (team: Team) => Promise<void>
   onAddPlayer: (player: Player) => Promise<void>
+  onUpdatePlayer?: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
 }) {
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
@@ -1882,6 +1890,11 @@ function TeamModal({
     return seasons.find((s) => s.id === selectedSeasonId) ?? seasons[0]
   }, [seasons, selectedSeasonId])
 
+  const availableSeasonNames = useMemo(() => {
+    if (seasons.length === 0) return ['2026 - Summer League']
+    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
+  }, [seasons])
+
   // Get dynamic available groups for the selected season
   const availableGroups = useMemo(() => {
     if (!currentSelectedSeason) return ['Group A', 'Group B', 'Group C', 'Group D']
@@ -1894,14 +1907,38 @@ function TeamModal({
     return ['Group A', 'Group B', 'Group C', 'Group D', 'Knockout Stage']
   }, [currentSelectedSeason])
 
+  // Squad Pool & Inline Add State
+  const [squadAddMode, setSquadAddMode] = useState<'pool' | 'new'>('pool')
+  const [selectedPoolPlayerId, setSelectedPoolPlayerId] = useState<number | ''>('')
+  const [poolPlayerSearch, setPoolPlayerSearch] = useState('')
+  const [assigningPoolPlayer, setAssigningPoolPlayer] = useState(false)
+  const [squadActionError, setSquadActionError] = useState('')
+
   // In-line Player Add State
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newPlayerNumber, setNewPlayerNumber] = useState('')
   const [newPlayerPosition, setNewPlayerPosition] = useState<PlayerPosition>('forward')
   const [newPlayerSeason, setNewPlayerSeason] = useState<string>(() => {
-    return currentSelectedSeason ? `${currentSelectedSeason.year} - ${currentSelectedSeason.name || currentSelectedSeason.city}` : '2026 - Summer League'
+    return availableSeasonNames[0] || '2026 - Summer League'
   })
   const [addingPlayer, setAddingPlayer] = useState(false)
+
+  // Filter pool players: players that are NOT already in this team
+  const availablePoolPlayers = useMemo(() => {
+    if (!initial) return []
+    return allPlayers.filter((p) => p.teamId !== initial.id && p.teamName !== initial.name)
+  }, [allPlayers, initial])
+
+  const filteredPoolPlayers = useMemo(() => {
+    if (!poolPlayerSearch.trim()) return availablePoolPlayers
+    const q = poolPlayerSearch.toLowerCase()
+    return availablePoolPlayers.filter(
+      (p) =>
+        p.fullName.toLowerCase().includes(q) ||
+        p.teamName.toLowerCase().includes(q) ||
+        p.position.toLowerCase().includes(q)
+    )
+  }, [availablePoolPlayers, poolPlayerSearch])
 
   const selectedCountry = getCountry(countryCode)
 
@@ -1947,6 +1984,35 @@ function TeamModal({
     }
   }
 
+  const handleAssignPoolPlayer = async () => {
+    if (!selectedPoolPlayerId || !initial || !onUpdatePlayer) return
+    const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolPlayerId))
+    if (!targetPlayer) return
+
+    setAssigningPoolPlayer(true)
+    setSquadActionError('')
+    try {
+      await onUpdatePlayer({
+        ...targetPlayer,
+        teamId: initial.id,
+        teamName: initial.name,
+      })
+      setSelectedPoolPlayerId('')
+      setPoolPlayerSearch('')
+    } catch (err: unknown) {
+      console.error('Assign player error:', err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unable to add player to squad.'
+      setSquadActionError(msg)
+    } finally {
+      setAssigningPoolPlayer(false)
+    }
+  }
+
   const handleInlineAddPlayer = async () => {
     if (!newPlayerName.trim()) return
     if (!initial) {
@@ -1954,6 +2020,7 @@ function TeamModal({
       return
     }
     setAddingPlayer(true)
+    setSquadActionError('')
     try {
       await onAddPlayer({
         id: Date.now(),
@@ -1967,6 +2034,15 @@ function TeamModal({
       })
       setNewPlayerName('')
       setNewPlayerNumber('')
+    } catch (err: unknown) {
+      console.error('Inline add player error:', err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unable to add player.'
+      setSquadActionError(msg)
     } finally {
       setAddingPlayer(false)
     }
@@ -2122,11 +2198,11 @@ function TeamModal({
           {tab === 'staff' && (
             <>
               <label>
-                General Manager Name
+                Manager / Director Name
                 <input
                   name="managerName"
                   defaultValue={initial?.managerName ?? ''}
-                  placeholder="e.g. Mehmet Özkan"
+                  placeholder="e.g. Ahmet Yılmaz"
                 />
               </label>
 
@@ -2135,7 +2211,7 @@ function TeamModal({
                 <input
                   name="coachName"
                   defaultValue={initial?.coachName ?? ''}
-                  placeholder="e.g. Bülent Korkut"
+                  placeholder="e.g. Roberto Mancini"
                 />
               </label>
 
@@ -2191,53 +2267,111 @@ function TeamModal({
 
           {tab === 'squad' && initial && (
             <div className="span-2 in-modal-squad-container">
-              {/* QUICK INLINE PLAYER ADD */}
-              <div className="inline-add-player-box">
-                <h4>Register Squad Member to {initial.name}</h4>
-                <div className="inline-player-fields">
-                  <input
-                    placeholder="Full Name *"
-                    value={newPlayerName}
-                    onChange={(e) => setNewPlayerName(e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    placeholder="Shirt #"
-                    value={newPlayerNumber}
-                    onChange={(e) => setNewPlayerNumber(e.target.value)}
-                    style={{ width: '85px' }}
-                  />
-                  <select
-                    value={newPlayerPosition}
-                    onChange={(e) => setNewPlayerPosition(e.target.value as PlayerPosition)}
-                  >
-                    <option value="goalkeeper">🧤 Goalkeeper</option>
-                    <option value="defender">🛡️ Defender</option>
-                    <option value="midfielder">⚙️ Midfielder</option>
-                    <option value="forward">⚡ Forward</option>
-                  </select>
-                  <select
-                    value={newPlayerSeason}
-                    onChange={(e) => setNewPlayerSeason(e.target.value)}
-                  >
-                    {AVAILABLE_SEASONS.map((s) => (
-                      <option key={s} value={s}>
-                        📅 {s}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="button button-admin"
-                    onClick={handleInlineAddPlayer}
-                    disabled={addingPlayer || !newPlayerName.trim()}
-                  >
-                    {addingPlayer ? 'Adding…' : '+ Add to Squad'}
-                  </button>
-                </div>
+              {/* SQUAD ADD MODE SWITCHER */}
+              <div className="squad-add-mode-toggle">
+                <button
+                  type="button"
+                  className={`mode-btn ${squadAddMode === 'pool' ? 'active' : ''}`}
+                  onClick={() => setSquadAddMode('pool')}
+                >
+                  👥 Havuzdan Mevcut Oyuncu Ekle ({availablePoolPlayers.length})
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${squadAddMode === 'new' ? 'active' : ''}`}
+                  onClick={() => setSquadAddMode('new')}
+                >
+                  ➕ Sıfırdan Yeni Oyuncu Oluştur
+                </button>
               </div>
+
+              {squadAddMode === 'pool' ? (
+                <div className="inline-add-player-box">
+                  <h4>Mevcut Oyuncu Havuzundan {initial.name} Kadrosuna Aktar</h4>
+                  <div className="inline-player-fields">
+                    <input
+                      type="text"
+                      placeholder="Oyuncu ara (isim, eski takım, mevki)..."
+                      value={poolPlayerSearch}
+                      onChange={(e) => setPoolPlayerSearch(e.target.value)}
+                      style={{ flex: 1, minWidth: '180px' }}
+                    />
+                    <select
+                      value={selectedPoolPlayerId}
+                      onChange={(e) => setSelectedPoolPlayerId(e.target.value ? Number(e.target.value) : '')}
+                      style={{ flex: 1.5, minWidth: '220px' }}
+                    >
+                      <option value="">
+                        {filteredPoolPlayers.length === 0
+                          ? 'Havuzda eklenebilir uygun oyuncu bulunamadı'
+                          : `-- Kadroya Eklenecek Oyuncuyu Seçin (${filteredPoolPlayers.length}) --`}
+                      </option>
+                      {filteredPoolPlayers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName} ({p.position.toUpperCase()}) · Şu anki takım: {p.teamName || 'Serbest'}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="button button-admin"
+                      onClick={handleAssignPoolPlayer}
+                      disabled={assigningPoolPlayer || !selectedPoolPlayerId}
+                    >
+                      {assigningPoolPlayer ? 'Ekleniyor…' : '+ Kadroya Dahil Et'}
+                    </button>
+                  </div>
+                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
+                </div>
+              ) : (
+                <div className="inline-add-player-box">
+                  <h4>{initial.name} İçin Yeni Oyuncu Kaydet</h4>
+                  <div className="inline-player-fields">
+                    <input
+                      placeholder="Oyuncu Ad Soyad *"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      placeholder="Forma #"
+                      value={newPlayerNumber}
+                      onChange={(e) => setNewPlayerNumber(e.target.value)}
+                      style={{ width: '85px' }}
+                    />
+                    <select
+                      value={newPlayerPosition}
+                      onChange={(e) => setNewPlayerPosition(e.target.value as PlayerPosition)}
+                    >
+                      <option value="goalkeeper">🧤 Goalkeeper</option>
+                      <option value="defender">🛡️ Defender</option>
+                      <option value="midfielder">⚙️ Midfielder</option>
+                      <option value="forward">⚡ Forward</option>
+                    </select>
+                    <select
+                      value={newPlayerSeason}
+                      onChange={(e) => setNewPlayerSeason(e.target.value)}
+                    >
+                      {availableSeasonNames.map((s) => (
+                        <option key={s} value={s}>
+                          📅 {s}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="button button-admin"
+                      onClick={handleInlineAddPlayer}
+                      disabled={addingPlayer || !newPlayerName.trim()}
+                    >
+                      {addingPlayer ? 'Ekleniyor…' : '+ Kadroya Ekle'}
+                    </button>
+                  </div>
+                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
+                </div>
+              )}
 
               {/* SQUAD BY POSITION */}
               <div className="modal-squad-grouped">
@@ -2305,22 +2439,32 @@ function TeamModal({
 function QuickSquadModal({
   team,
   players,
+  allPlayers = [],
   seasons,
   onClose,
   onAddPlayer,
+  onUpdatePlayer,
   onDeletePlayer,
 }: {
   team: Team
   players: Player[]
+  allPlayers?: Player[]
   seasons: Season[]
   onClose: () => void
   onAddPlayer: (player: Player) => Promise<void>
+  onUpdatePlayer?: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
 }) {
+  const [squadMode, setSquadMode] = useState<'pool' | 'new'>('pool')
   const [name, setName] = useState('')
   const [number, setNumber] = useState('')
   const [pos, setPos] = useState<PlayerPosition>('forward')
   const [addError, setAddError] = useState('')
+
+  // Pool state
+  const [selectedPoolId, setSelectedPoolId] = useState<number | ''>('')
+  const [poolSearch, setPoolSearch] = useState('')
+  const [assigning, setAssigning] = useState(false)
 
   const availableSeasonNames = useMemo(() => {
     if (seasons.length === 0) return ['2026 - Summer League']
@@ -2329,6 +2473,50 @@ function QuickSquadModal({
 
   const [selectedSeason, setSelectedSeason] = useState<string>(() => availableSeasonNames[0] || '2026 - Summer League')
   const [adding, setAdding] = useState(false)
+
+  const availablePoolPlayers = useMemo(() => {
+    return allPlayers.filter((p) => p.teamId !== team.id && p.teamName !== team.name)
+  }, [allPlayers, team])
+
+  const filteredPoolPlayers = useMemo(() => {
+    if (!poolSearch.trim()) return availablePoolPlayers
+    const q = poolSearch.toLowerCase()
+    return availablePoolPlayers.filter(
+      (p) =>
+        p.fullName.toLowerCase().includes(q) ||
+        p.teamName.toLowerCase().includes(q) ||
+        p.position.toLowerCase().includes(q)
+    )
+  }, [availablePoolPlayers, poolSearch])
+
+  const handleAssignPool = async () => {
+    if (!selectedPoolId || !onUpdatePlayer) return
+    const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolId))
+    if (!targetPlayer) return
+
+    setAssigning(true)
+    setAddError('')
+    try {
+      await onUpdatePlayer({
+        ...targetPlayer,
+        teamId: team.id,
+        teamName: team.name,
+      })
+      setSelectedPoolId('')
+      setPoolSearch('')
+    } catch (err: unknown) {
+      console.error('Assign player error:', err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unable to assign player.'
+      setAddError(msg)
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   const handleAdd = async () => {
     if (!name.trim()) return
@@ -2389,48 +2577,105 @@ function QuickSquadModal({
           </div>
         </div>
 
-        {/* INLINE REGISTRATION */}
-        <div className="inline-add-player-box">
-          <h4>Add New Player to Squad</h4>
-          <div className="inline-player-fields">
-            <input
-              placeholder="Player Full Name *"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <input
-              type="number"
-              min={1}
-              max={99}
-              placeholder="Shirt #"
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-              style={{ width: '85px' }}
-            />
-            <select value={pos} onChange={(e) => setPos(e.target.value as PlayerPosition)}>
-              <option value="goalkeeper">🧤 Goalkeeper</option>
-              <option value="defender">🛡️ Defender</option>
-              <option value="midfielder">⚙️ Midfielder</option>
-              <option value="forward">⚡ Forward</option>
-            </select>
-            <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)}>
-              {availableSeasonNames.map((s) => (
-                <option key={s} value={s}>
-                  📅 {s}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="button button-admin"
-              onClick={handleAdd}
-              disabled={adding || !name.trim()}
-            >
-              {adding ? 'Adding…' : '+ Register'}
-            </button>
-          </div>
-          {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
+        {/* SQUAD ADD MODE SWITCHER */}
+        <div className="squad-add-mode-toggle">
+          <button
+            type="button"
+            className={`mode-btn ${squadMode === 'pool' ? 'active' : ''}`}
+            onClick={() => setSquadMode('pool')}
+          >
+            👥 Havuzdan Mevcut Oyuncu Ekle ({availablePoolPlayers.length})
+          </button>
+          <button
+            type="button"
+            className={`mode-btn ${squadMode === 'new' ? 'active' : ''}`}
+            onClick={() => setSquadMode('new')}
+          >
+            ➕ Sıfırdan Yeni Oyuncu Oluştur
+          </button>
         </div>
+
+        {squadMode === 'pool' ? (
+          <div className="inline-add-player-box">
+            <h4>Mevcut Oyuncu Havuzundan {team.name} Kadrosuna Aktar</h4>
+            <div className="inline-player-fields">
+              <input
+                type="text"
+                placeholder="Oyuncu ara (isim, eski takım, mevki)..."
+                value={poolSearch}
+                onChange={(e) => setPoolSearch(e.target.value)}
+                style={{ flex: 1, minWidth: '180px' }}
+              />
+              <select
+                value={selectedPoolId}
+                onChange={(e) => setSelectedPoolId(e.target.value ? Number(e.target.value) : '')}
+                style={{ flex: 1.5, minWidth: '220px' }}
+              >
+                <option value="">
+                  {filteredPoolPlayers.length === 0
+                    ? 'Havuzda uygun oyuncu bulunamadı'
+                    : `-- Kadroya Eklenecek Oyuncuyu Seçin (${filteredPoolPlayers.length}) --`}
+                </option>
+                {filteredPoolPlayers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.fullName} ({p.position.toUpperCase()}) · Şu anki takım: {p.teamName || 'Serbest'}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="button button-admin"
+                onClick={handleAssignPool}
+                disabled={assigning || !selectedPoolId}
+              >
+                {assigning ? 'Ekleniyor…' : '+ Kadroya Dahil Et'}
+              </button>
+            </div>
+            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
+          </div>
+        ) : (
+          <div className="inline-add-player-box">
+            <h4>{team.name} İçin Yeni Oyuncu Kaydet</h4>
+            <div className="inline-player-fields">
+              <input
+                placeholder="Player Full Name *"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <input
+                type="number"
+                min={1}
+                max={99}
+                placeholder="Shirt #"
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                style={{ width: '85px' }}
+              />
+              <select value={pos} onChange={(e) => setPos(e.target.value as PlayerPosition)}>
+                <option value="goalkeeper">🧤 Goalkeeper</option>
+                <option value="defender">🛡️ Defender</option>
+                <option value="midfielder">⚙️ Midfielder</option>
+                <option value="forward">⚡ Forward</option>
+              </select>
+              <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)}>
+                {availableSeasonNames.map((s) => (
+                  <option key={s} value={s}>
+                    📅 {s}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="button button-admin"
+                onClick={handleAdd}
+                disabled={adding || !name.trim()}
+              >
+                {adding ? 'Adding…' : '+ Register'}
+              </button>
+            </div>
+            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
+          </div>
+        )}
 
         {/* FULL SQUAD LIST */}
         <div className="quick-squad-table-wrap">

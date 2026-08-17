@@ -629,6 +629,9 @@ table { border-collapse: collapse; width: 100%; }
 
 /* In-Modal & Quick Squad Builder */
 .in-modal-squad-container { display: flex; flex-direction: column; gap: 18px; }
+.squad-add-mode-toggle { display: flex; gap: 8px; background: #f1f5f9; padding: 4px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.squad-add-mode-toggle .mode-btn { flex: 1; padding: 8px 14px; border: 0; background: transparent; color: #64748b; font-size: 0.82rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; }
+.squad-add-mode-toggle .mode-btn.active { background: #071525; color: var(--green); box-shadow: 0 2px 5px rgba(7, 21, 37, 0.2); }
 .inline-add-player-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; }
 .inline-add-player-box h4 { margin: 0 0 10px; font-size: 0.92rem; color: #071525; font-weight: 700; }
 .inline-player-fields { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

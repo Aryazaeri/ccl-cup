@@ -33,6 +33,7 @@ import {
   Trash2,
   Trophy,
   UserCheck,
+  UserMinus,
   UserPlus,
   Users,
   X,
@@ -2403,10 +2404,18 @@ function TeamModal({
                               <button
                                 type="button"
                                 className="delete-player-inline-btn"
-                                onClick={() => void onDeletePlayer(p.id)}
-                                title="Remove Player"
+                                onClick={() => {
+                                  if (onUpdatePlayer) {
+                                    void onUpdatePlayer({
+                                      ...p,
+                                      teamId: 0,
+                                      teamName: 'Free Agent',
+                                    })
+                                  }
+                                }}
+                                title="Kadrodan Çıkar (Havuzda Bırak)"
                               >
-                                <X size={14} />
+                                <UserMinus size={14} />
                               </button>
                             </div>
                           ))}
@@ -2713,10 +2722,18 @@ function QuickSquadModal({
                   <td>
                     <button
                       className="row-action danger"
-                      onClick={() => void onDeletePlayer(p.id)}
-                      title="Remove from squad"
+                      onClick={() => {
+                        if (onUpdatePlayer) {
+                          void onUpdatePlayer({
+                            ...p,
+                            teamId: 0,
+                            teamName: 'Free Agent',
+                          })
+                        }
+                      }}
+                      title="Kadrodan Çıkar (Havuzda Bırak)"
                     >
-                      <Trash2 size={14} /> Remove
+                      <UserMinus size={14} /> Kadrodan Çıkar
                     </button>
                   </td>
                 </tr>

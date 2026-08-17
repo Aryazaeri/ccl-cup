@@ -118,8 +118,8 @@ async function loadRemote(): Promise<TournamentData> {
 
   const players: Player[] = (playersRes.data ?? []).map((p: Record<string, unknown>) => ({
     id: Number(p.id),
-    teamId: Number(p.team_id),
-    teamName: (p.team as { name: string } | null)?.name ?? 'Unknown Team',
+    teamId: p.team_id ? Number(p.team_id) : 0,
+    teamName: (p.team as { name: string } | null)?.name ?? 'Free Agent',
     fullName: String(p.full_name),
     shirtNumber: p.shirt_number ? Number(p.shirt_number) : undefined,
     position: (p.position as Player['position']) || 'forward',
@@ -363,7 +363,7 @@ export const tournamentRepository = {
     const { error } = await supabase
       .from('players')
       .update({
-        team_id: player.teamId,
+        team_id: player.teamId && Number(player.teamId) > 0 ? Number(player.teamId) : null,
         full_name: player.fullName,
         shirt_number: player.shirtNumber ?? null,
         position: player.position,

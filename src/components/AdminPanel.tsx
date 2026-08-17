@@ -438,6 +438,7 @@ export function AdminPanel({
       {squadTeam && (
         <QuickSquadModal
           team={squadTeam}
+          seasons={seasons}
           players={players.filter((p) => p.teamId === squadTeam.id || p.teamName === squadTeam.name)}
           onClose={() => setSquadTeam(null)}
           onAddPlayer={onAddPlayer}
@@ -449,6 +450,7 @@ export function AdminPanel({
         <PlayerForm
           initial={editingPlayer}
           teams={teams}
+          seasons={seasons}
           onClose={() => {
             setModal(null)
             setEditingPlayer(null)
@@ -2303,12 +2305,14 @@ function TeamModal({
 function QuickSquadModal({
   team,
   players,
+  seasons,
   onClose,
   onAddPlayer,
   onDeletePlayer,
 }: {
   team: Team
   players: Player[]
+  seasons: Season[]
   onClose: () => void
   onAddPlayer: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
@@ -2316,12 +2320,20 @@ function QuickSquadModal({
   const [name, setName] = useState('')
   const [number, setNumber] = useState('')
   const [pos, setPos] = useState<PlayerPosition>('forward')
-  const [selectedSeason, setSelectedSeason] = useState<string>('2026 - Summer League')
+  const [addError, setAddError] = useState('')
+
+  const availableSeasonNames = useMemo(() => {
+    if (seasons.length === 0) return ['2026 - Summer League']
+    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
+  }, [seasons])
+
+  const [selectedSeason, setSelectedSeason] = useState<string>(() => availableSeasonNames[0] || '2026 - Summer League')
   const [adding, setAdding] = useState(false)
 
   const handleAdd = async () => {
     if (!name.trim()) return
     setAdding(true)
+    setAddError('')
     try {
       await onAddPlayer({
         id: Date.now(),
@@ -2335,6 +2347,15 @@ function QuickSquadModal({
       })
       setName('')
       setNumber('')
+    } catch (err: unknown) {
+      console.error('Add player error:', err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unable to add player to squad.'
+      setAddError(msg)
     } finally {
       setAdding(false)
     }
@@ -2393,7 +2414,7 @@ function QuickSquadModal({
               <option value="forward">⚡ Forward</option>
             </select>
             <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)}>
-              {AVAILABLE_SEASONS.map((s) => (
+              {availableSeasonNames.map((s) => (
                 <option key={s} value={s}>
                   📅 {s}
                 </option>
@@ -2408,6 +2429,7 @@ function QuickSquadModal({
               {adding ? 'Adding…' : '+ Register'}
             </button>
           </div>
+          {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
         </div>
 
         {/* FULL SQUAD LIST */}
@@ -2826,21 +2848,28 @@ function MatchEventsModal({
 function PlayerForm({
   initial,
   teams,
+  seasons,
   onClose,
   onSave,
 }: {
   initial: Player | null
   teams: Team[]
+  seasons: Season[]
   onClose: () => void
   onSave: (player: Player) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [selectedSeasons, setSelectedSeasons] = useState<string[]>(
-    initial?.activeSeasons && initial.activeSeasons.length > 0
-      ? initial.activeSeasons
-      : ['2026 - Summer League']
-  )
+
+  const availableSeasonNames = useMemo(() => {
+    if (seasons.length === 0) return ['2026 - Summer League']
+    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
+  }, [seasons])
+
+  const [selectedSeasons, setSelectedSeasons] = useState<string[]>(() => {
+    if (initial?.activeSeasons && initial.activeSeasons.length > 0) return initial.activeSeasons
+    return [availableSeasonNames[0] || '2026 - Summer League']
+  })
 
   const toggleSeason = (season: string) => {
     if (selectedSeasons.includes(season)) {
@@ -2873,8 +2902,15 @@ function PlayerForm({
         activeSeasons: selectedSeasons,
       })
       onClose()
-    } catch (reason) {
-      setSaveError(reason instanceof Error ? reason.message : 'Unable to save player.')
+    } catch (reason: unknown) {
+      console.error('Player save failed:', reason)
+      const msg =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === 'object' && reason !== null && 'message' in reason
+          ? String((reason as { message: unknown }).message)
+          : 'Unable to save player.'
+      setSaveError(msg)
     } finally {
       setSaving(false)
     }
@@ -2937,7 +2973,7 @@ function PlayerForm({
         <div className="span-2 season-picker-field">
           <span className="field-label">Played Seasons of Year * (Select all that apply)</span>
           <div className="season-picker-chips">
-            {AVAILABLE_SEASONS.map((season) => {
+            {availableSeasonNames.map((season) => {
               const isSelected = selectedSeasons.includes(season)
               return (
                 <button

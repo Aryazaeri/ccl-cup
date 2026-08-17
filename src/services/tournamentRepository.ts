@@ -340,7 +340,6 @@ export const tournamentRepository = {
       return saveLocal({ ...data, players: [...data.players, player] })
     }
     const { error } = await supabase.from('players').insert({
-      id: player.id,
       team_id: player.teamId,
       full_name: player.fullName,
       shirt_number: player.shirtNumber ?? null,

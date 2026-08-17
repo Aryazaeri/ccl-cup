@@ -68,6 +68,7 @@ import {
 import { BracketCanvasModal } from './BracketCanvasModal'
 import { LeagueCanvasModal } from './LeagueCanvasModal'
 import { GroupLeagueCanvasModal } from './GroupLeagueCanvasModal'
+import { SquadCanvasModal } from './SquadCanvasModal'
 import { TeamLogoPicker } from './TeamLogoPicker'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
@@ -157,6 +158,7 @@ export function AdminPanel({
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
+  const [canvasSquadTeam, setCanvasSquadTeam] = useState<Team | null>(null)
   const [editingMatch, setEditingMatch] = useState<Match | null>(null)
   const [eventMatch, setEventMatch] = useState<Match | null>(null)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
@@ -268,6 +270,7 @@ export function AdminPanel({
                 setModal('team')
               }}
               onManageSquad={(team) => setSquadTeam(team)}
+              onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
               onAdd={() => {
                 setEditingTeam(null)
                 setModal('team')
@@ -435,6 +438,7 @@ export function AdminPanel({
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
           onDeletePlayer={onDeletePlayer}
+          onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
 
@@ -448,6 +452,40 @@ export function AdminPanel({
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
           onDeletePlayer={onDeletePlayer}
+          onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
+        />
+      )}
+
+      {canvasSquadTeam && (
+        <SquadCanvasModal
+          team={canvasSquadTeam}
+          allPlayers={players}
+          teamPlayers={players.filter((p) => p.teamId === canvasSquadTeam.id || p.teamName === canvasSquadTeam.name)}
+          onClose={() => setCanvasSquadTeam(null)}
+          onSaveSquad={async (assignedIds, unassignedIds) => {
+            // Assign players to this team
+            for (const id of assignedIds) {
+              const p = players.find((item) => item.id === id)
+              if (p && (p.teamId !== canvasSquadTeam.id || p.teamName !== canvasSquadTeam.name)) {
+                await onUpdatePlayer({
+                  ...p,
+                  teamId: canvasSquadTeam.id,
+                  teamName: canvasSquadTeam.name,
+                })
+              }
+            }
+            // Release unassigned players to pool
+            for (const id of unassignedIds) {
+              const p = players.find((item) => item.id === id)
+              if (p && (p.teamId === canvasSquadTeam.id || p.teamName === canvasSquadTeam.name)) {
+                await onUpdatePlayer({
+                  ...p,
+                  teamId: 0,
+                  teamName: 'Free Agent',
+                })
+              }
+            }
+          }}
         />
       )}
 
@@ -1197,6 +1235,7 @@ function TeamsManager({
   onDelete,
   onEdit,
   onManageSquad,
+  onOpenSquadCanvas,
   onAdd,
 }: {
   teams: Team[]
@@ -1204,6 +1243,7 @@ function TeamsManager({
   onDelete: (id: number) => Promise<void>
   onEdit: (team: Team) => void
   onManageSquad: (team: Team) => void
+  onOpenSquadCanvas?: (team: Team) => void
   onAdd: () => void
 }) {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
@@ -1364,6 +1404,16 @@ function TeamsManager({
                     </td>
                     <td>
                       <div className="row-actions-group">
+                        {onOpenSquadCanvas && (
+                          <button
+                            className="row-action"
+                            style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
+                            onClick={() => onOpenSquadCanvas(team)}
+                            title="Görsel Saha ve Kadro Tuvali (Tactical Formation & Pitch Canvas)"
+                          >
+                            <Sparkles size={14} /> Saha Tuvali
+                          </button>
+                        )}
                         <button
                           className="row-action secondary"
                           onClick={() => onManageSquad(team)}
@@ -1455,6 +1505,16 @@ function TeamsManager({
                   </div>
 
                   <div className="team-card-actions">
+                    {onOpenSquadCanvas && (
+                      <button
+                        className="button button-secondary"
+                        style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
+                        onClick={() => onOpenSquadCanvas(team)}
+                        title="Görsel Saha ve Kadro Tuvali"
+                      >
+                        <Sparkles size={14} /> Saha Tuvali
+                      </button>
+                    )}
                     <button className="button button-secondary" onClick={() => onManageSquad(team)}>
                       <Users size={14} /> Roster ({squad.length})
                     </button>
@@ -1866,6 +1926,7 @@ function TeamModal({
   onAddPlayer,
   onUpdatePlayer,
   onDeletePlayer,
+  onOpenSquadCanvas,
 }: {
   initial: Team | null
   players: Player[]
@@ -1876,6 +1937,7 @@ function TeamModal({
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer?: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
+  onOpenSquadCanvas?: (team: Team) => void
 }) {
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
   const [saving, setSaving] = useState(false)
@@ -2279,6 +2341,19 @@ function TeamModal({
             <div className="span-2 in-modal-squad-container">
               {/* SQUAD ADD MODE SWITCHER */}
               <div className="squad-add-mode-toggle">
+                {onOpenSquadCanvas && (
+                  <button
+                    type="button"
+                    className="mode-btn"
+                    style={{ background: '#0284c7', color: '#fff', border: '1px solid #0284c7' }}
+                    onClick={() => {
+                      onClose()
+                      onOpenSquadCanvas(initial)
+                    }}
+                  >
+                    <Sparkles size={14} /> 🎨 Görsel Saha Tuvali (Interactive Pitch)
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`mode-btn ${squadAddMode === 'pool' ? 'active' : ''}`}
@@ -2463,6 +2538,7 @@ function QuickSquadModal({
   onAddPlayer,
   onUpdatePlayer,
   onDeletePlayer,
+  onOpenSquadCanvas,
 }: {
   team: Team
   players: Player[]
@@ -2472,6 +2548,7 @@ function QuickSquadModal({
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer?: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
+  onOpenSquadCanvas?: (team: Team) => void
 }) {
   const [squadMode, setSquadMode] = useState<'pool' | 'new'>('pool')
   const [name, setName] = useState('')
@@ -2597,6 +2674,19 @@ function QuickSquadModal({
 
         {/* SQUAD ADD MODE SWITCHER */}
         <div className="squad-add-mode-toggle">
+          {onOpenSquadCanvas && (
+            <button
+              type="button"
+              className="mode-btn"
+              style={{ background: '#0284c7', color: '#fff', border: '1px solid #0284c7' }}
+              onClick={() => {
+                onClose()
+                onOpenSquadCanvas(team)
+              }}
+            >
+              <Sparkles size={14} /> 🎨 Görsel Saha Tuvali (Interactive Pitch)
+            </button>
+          )}
           <button
             type="button"
             className={`mode-btn ${squadMode === 'pool' ? 'active' : ''}`}

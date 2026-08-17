@@ -370,8 +370,12 @@ export function SquadCanvasModal({
   const totalCount = currentSquadPlayers.length
 
   return (
-    <Modal title={`Interactive Squad & Formation Canvas: ${team.name}`} onClose={onClose}>
-      <div className={`squad-canvas-modal-container ${isFullScreen ? 'fullscreen' : ''}`}>
+    <Modal
+      title={`🏟️ ${team.name} — Görsel Kadro & Saha Diziliş Tuvali`}
+      onClose={onClose}
+      className={`squad-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
+    >
+      <div className="squad-canvas-modal-container">
         {/* TOP CONTROLS BAR */}
         <div className="squad-canvas-top-bar">
           <div className="team-meta-badge">

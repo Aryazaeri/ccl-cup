@@ -658,6 +658,7 @@ table { border-collapse: collapse; width: 100%; }
 
 /* Player cell & tags */
 .player-cell { display: flex; align-items: center; gap: 8px; }
+.free-agent-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #f8fafc; color: #64748b; border-radius: 4px; font-size: 0.75rem; font-weight: 700; border: 1px dashed #cbd5e1; }
 .captain-badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #f59e0b; color: #fff; border-radius: 50%; font-size: 0.65rem; font-weight: 800; }
 .season-tags-list { display: flex; gap: 4px; flex-wrap: wrap; }
 .season-pill { display: inline-block; padding: 2px 7px; background: #071525; color: var(--green); border-radius: 4px; font-size: 0.7rem; font-weight: 800; font-family: var(--display); letter-spacing: 0.02em; }

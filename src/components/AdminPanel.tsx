@@ -1492,7 +1492,11 @@ function PlayersManager({
   const filtered = useMemo(() => {
     return players.filter((p) => {
       if (searchPlayer && !p.fullName.toLowerCase().includes(searchPlayer.toLowerCase())) return false
-      if (selectedTeam !== 'All' && p.teamName !== selectedTeam) return false
+      if (selectedTeam === 'Free Agent') {
+        if (p.teamId && p.teamId > 0 && p.teamName !== 'Free Agent') return false
+      } else if (selectedTeam !== 'All' && p.teamName !== selectedTeam) {
+        return false
+      }
       if (selectedPos !== 'All' && p.position !== selectedPos.toLowerCase()) return false
       return true
     })
@@ -1527,6 +1531,7 @@ function PlayersManager({
           <span>Team:</span>
           <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="All">All Teams</option>
+            <option value="Free Agent">🚫 Serbest / Kulüpsüz Oyuncular</option>
             {teams.map((t) => (
               <option key={t.id} value={t.name}>
                 {t.name}
@@ -1572,10 +1577,14 @@ function PlayersManager({
                   </div>
                 </td>
                 <td>
-                  <span className="team-cell-small">
-                    <TeamMark name={player.teamName} />
-                    <span>{player.teamName}</span>
-                  </span>
+                  {player.teamId && player.teamId > 0 && player.teamName !== 'Free Agent' ? (
+                    <span className="team-cell-small">
+                      <TeamMark name={player.teamName} />
+                      <span>{player.teamName}</span>
+                    </span>
+                  ) : (
+                    <span className="free-agent-badge">🚫 Serbest / Kulüpsüz</span>
+                  )}
                 </td>
                 <td>
                   <span className={`position-tag ${player.position}`}>
@@ -3147,14 +3156,15 @@ function PlayerForm({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
-    const teamId = Number(data.get('teamId'))
-    const foundTeam = teams.find((t) => t.id === teamId)
+    const teamIdVal = data.get('teamId')
+    const teamId = teamIdVal && Number(teamIdVal) > 0 ? Number(teamIdVal) : 0
+    const foundTeam = teamId > 0 ? teams.find((t) => t.id === teamId) : undefined
 
     try {
       await onSave({
         id: initial?.id ?? Date.now(),
-        teamId,
-        teamName: foundTeam?.name ?? 'Unknown Team',
+        teamId: teamId > 0 ? teamId : 0,
+        teamName: foundTeam ? foundTeam.name : 'Free Agent',
         fullName: String(data.get('fullName')),
         shirtNumber: data.get('shirtNumber') ? Number(data.get('shirtNumber')) : undefined,
         position: String(data.get('position')) as PlayerPosition,
@@ -3187,8 +3197,9 @@ function PlayerForm({
         </label>
 
         <label>
-          Assigned Club *
-          <select name="teamId" defaultValue={initial?.teamId ?? teams[0]?.id}>
+          Assigned Club / Team
+          <select name="teamId" defaultValue={initial?.teamId ? String(initial.teamId) : ''}>
+            <option value="">🚫 Kulüpsüz / Serbest Oyuncu (No Club / Free Agent)</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({getCountry(t.countryCode).flag})

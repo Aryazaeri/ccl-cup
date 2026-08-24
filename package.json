@@ -7,7 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "tsx tests/standings.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
@@ -26,6 +27,7 @@
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
-    "typescript-eslint": "latest"
+    "typescript-eslint": "latest",
+    "tsx": "^4.19.2"
   }
 }

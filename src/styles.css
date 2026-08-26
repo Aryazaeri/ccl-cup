@@ -3737,3 +3737,23 @@ table { border-collapse: collapse; width: 100%; }
   .cutout-flag-glyph { font-size: 6rem; }
   .moderation-card header { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
+
+/* ==================================================================
+   Destructive-action confirmation
+   ================================================================== */
+.confirm-dialog { display: flex; flex-direction: column; gap: 16px; max-width: 520px; }
+.confirm-lead { display: flex; align-items: flex-start; gap: 13px; font-size: .96rem; line-height: 1.55; color: var(--navy); }
+.confirm-lead > svg { flex: 0 0 auto; margin-top: 2px; color: #c9721a; }
+.confirm-consequences { margin: 0; padding: 14px 18px 14px 34px; border-radius: 8px; background: #fdf4e6; border: 1px solid #f0dcbc; display: flex; flex-direction: column; gap: 7px; }
+.confirm-consequences li { font-size: .87rem; line-height: 1.5; color: #6d4a12; }
+.confirm-note { margin: 0; font-size: .82rem; font-weight: 700; color: #a32020; }
+.confirm-typing { display: flex; flex-direction: column; gap: 7px; font-size: .82rem; color: #47576a; }
+.confirm-typing strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--navy); }
+.confirm-typing input { padding: 10px 13px; border: 1px solid var(--line); border-radius: 7px; font-size: .92rem; }
+.confirm-typing input:focus { border-color: #a32020; outline: none; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.confirm-cancel { padding: 10px 20px; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-weight: 650; color: #33455a; }
+.confirm-cancel:hover { border-color: var(--navy); }
+.confirm-delete { padding: 10px 20px; border: 0; border-radius: 7px; background: #c02929; color: #fff; font-weight: 700; }
+.confirm-delete:hover:not(:disabled) { background: #a32020; }
+.confirm-delete:disabled { background: #d8a5a5; cursor: not-allowed; opacity: 1; }

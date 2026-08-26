@@ -83,6 +83,7 @@ import {
   type TournamentFormat,
 } from '../types'
 import { BracketCanvasModal } from './BracketCanvasModal'
+import { useConfirm } from './ConfirmDialog'
 import { LeagueCanvasModal } from './LeagueCanvasModal'
 import { GroupLeagueCanvasModal } from './GroupLeagueCanvasModal'
 import { SquadCanvasModal } from './SquadCanvasModal'
@@ -197,6 +198,168 @@ export function AdminPanel({
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
+
+  const { confirm, confirmDialog } = useConfirm()
+
+  /* ---------------------------------------------------------------- *
+   * Guarded deletes
+   *
+   * The raw onDelete* handlers are never passed to a screen. Each is wrapped
+   * here so confirmation happens at one choke point, and the wording states
+   * what the database will actually cascade — verified against the foreign
+   * keys rather than assumed.
+   * ---------------------------------------------------------------- */
+
+  const confirmDeleteSeason = async (id: number) => {
+    const season = seasons.find((item) => item.id === id)
+    const label = season ? `${season.year} ${season.name}` : 'this season'
+    const seasonTeams = teams.filter((team) => team.seasonId === id)
+    const teamNames = new Set(seasonTeams.map((team) => team.name))
+    const seasonPlayers = players.filter((player) => teamNames.has(player.teamName))
+
+    // Only state counts when clubs actually carry a season. Browser-local data
+    // has no seasonId, and reporting "0 clubs will be deleted" while clubs
+    // exist would understate the damage — worse than giving no number at all.
+    const countsAreKnown = teams.some((team) => team.seasonId != null)
+    const cascadeLines = countsAreKnown
+      ? [
+          `${seasonTeams.length} club${seasonTeams.length === 1 ? '' : 's'} will be deleted`,
+          `${seasonPlayers.length} player${seasonPlayers.length === 1 ? '' : 's'} will be deleted with those clubs`,
+        ]
+      : ['Every club in this season is deleted, and its players with it']
+
+    const ok = await confirm({
+      title: 'Delete season',
+      body: (
+        <>
+          Delete <strong>{label}</strong> and everything recorded under it?
+        </>
+      ),
+      consequences: [
+        ...cascadeLines,
+        'Every fixture in this season is deleted, along with its match events',
+        'Groups and sponsors attached to this season are deleted',
+      ],
+      confirmLabel: 'Delete season',
+      requireTyping: season?.name,
+    })
+    if (ok) await onDeleteSeason(id)
+  }
+
+  const confirmDeleteTeam = async (id: number) => {
+    const team = teams.find((item) => item.id === id)
+    const label = team?.name ?? 'this club'
+    const squad = players.filter((player) => player.teamId === id || player.teamName === team?.name)
+    const fixtures = matches.filter((match) => match.home === team?.name || match.away === team?.name)
+
+    // matches.home_team_id / away_team_id are ON DELETE RESTRICT, so the
+    // database refuses outright while fixtures exist. Say so up front rather
+    // than letting the user hit a raw Postgres error.
+    if (fixtures.length > 0) {
+      await confirm({
+        title: 'Club cannot be deleted',
+        body: (
+          <>
+            <strong>{label}</strong> appears in {fixtures.length} fixture
+            {fixtures.length === 1 ? '' : 's'}, and the database refuses to delete a club with a match
+            history. Delete or reassign those fixtures first.
+          </>
+        ),
+        confirmLabel: 'Close',
+      })
+      return
+    }
+
+    const ok = await confirm({
+      title: 'Delete club',
+      body: (
+        <>
+          Delete <strong>{label}</strong>?
+        </>
+      ),
+      consequences: [
+        `${squad.length} registered player${squad.length === 1 ? '' : 's'} will be deleted with the club`,
+        'Squad and group assignments are removed',
+      ],
+      confirmLabel: 'Delete club',
+    })
+    if (ok) await onDeleteTeam(id)
+  }
+
+  const confirmDeletePlayer = async (id: number) => {
+    const player = players.find((item) => item.id === id)
+    const ok = await confirm({
+      title: 'Delete player',
+      body: (
+        <>
+          Delete <strong>{player?.fullName ?? 'this player'}</strong> from {player?.teamName ?? 'the roster'}?
+        </>
+      ),
+      consequences: [
+        'Goals and cards already logged stay on the match timeline, recorded under the player name',
+        'The link between those events and this record is lost',
+      ],
+      confirmLabel: 'Delete player',
+    })
+    if (ok) await onDeletePlayer(id)
+  }
+
+  const confirmDeleteMatch = async (id: number) => {
+    const match = matches.find((item) => item.id === id)
+    const eventCount = match?.events?.length ?? 0
+    const played = match?.matchStatus === 'completed'
+    const ok = await confirm({
+      title: 'Delete fixture',
+      body: (
+        <>
+          Delete <strong>{match ? `${match.home} v ${match.away}` : 'this fixture'}</strong>
+          {match?.date ? ` on ${match.date}` : ''}?
+        </>
+      ),
+      consequences: [
+        ...(eventCount > 0 ? [`${eventCount} match event${eventCount === 1 ? '' : 's'} will be deleted`] : []),
+        ...(played
+          ? ['This result counts towards the table — deleting it changes the standings and top scorers']
+          : []),
+        'Any comments attached to this fixture are deleted',
+      ],
+      confirmLabel: 'Delete fixture',
+    })
+    if (ok) await onDeleteMatch(id)
+  }
+
+  const confirmDeleteStory = async (id: number) => {
+    const story = stories.find((item) => item.id === id)
+    const ok = await confirm({
+      title: 'Delete story',
+      body: (
+        <>
+          Delete <strong>{story?.title ?? 'this story'}</strong>?
+        </>
+      ),
+      confirmLabel: 'Delete story',
+    })
+    if (ok) await onDeleteStory(id)
+  }
+
+  const confirmDeleteMatchEvent = async (matchId: number, eventId: number) => {
+    const match = matches.find((item) => item.id === matchId)
+    const event = match?.events?.find((item) => item.id === eventId)
+    const ok = await confirm({
+      title: 'Delete match event',
+      body: (
+        <>
+          Remove the {event?.eventType.replace('_', ' ') ?? 'event'} for{' '}
+          <strong>{event?.playerName ?? 'this player'}</strong>
+          {event?.minute ? ` at ${event.minute}'` : ''}?
+        </>
+      ),
+      consequences: ['Top scorers and disciplinary totals are recalculated from the event log'],
+      confirmLabel: 'Delete event',
+    })
+    if (ok) await onDeleteMatchEvent(matchId, eventId)
+  }
+
   const [canvasSquadTeam, setCanvasSquadTeam] = useState<Team | null>(null)
   const [editingMatch, setEditingMatch] = useState<Match | null>(null)
   const [eventMatch, setEventMatch] = useState<Match | null>(null)
@@ -288,7 +451,7 @@ export function AdminPanel({
             <SeasonsManager
               seasons={seasons}
               backend={backend}
-              onDelete={onDeleteSeason}
+              onDelete={confirmDeleteSeason}
               onEdit={(season) => {
                 setEditingSeason(season)
                 setModal('season')
@@ -307,7 +470,7 @@ export function AdminPanel({
             <TeamsManager
               teams={teams}
               players={players}
-              onDelete={onDeleteTeam}
+              onDelete={confirmDeleteTeam}
               onEdit={(team) => {
                 setEditingTeam(team)
                 setModal('team')
@@ -325,7 +488,7 @@ export function AdminPanel({
             <PlayersManager
               players={players}
               teams={teams}
-              onDelete={onDeletePlayer}
+              onDelete={confirmDeletePlayer}
               onEdit={(player) => {
                 setEditingPlayer(player)
                 setModal('player')
@@ -340,7 +503,7 @@ export function AdminPanel({
           {activeSection === 'Matches' && (
             <MatchesManager
               matches={matches}
-              onDelete={onDeleteMatch}
+              onDelete={confirmDeleteMatch}
               onEditMatch={(match) => setEditingMatch(match)}
               onManageEvents={(match) => setEventMatch(match)}
               onAdd={() => setModal('match')}
@@ -351,7 +514,7 @@ export function AdminPanel({
             <ContentManager
               stories={stories}
               onToggle={onToggleStory}
-              onDelete={onDeleteStory}
+              onDelete={confirmDeleteStory}
               onEdit={(story) => {
                 setEditingStory(story)
                 setModal('story')
@@ -468,7 +631,7 @@ export function AdminPanel({
           players={players}
           onClose={() => setEventMatch(null)}
           onAddEvent={(event) => onAddMatchEvent(currentEventMatch.id, event)}
-          onDeleteEvent={(eventId) => onDeleteMatchEvent(currentEventMatch.id, eventId)}
+          onDeleteEvent={(eventId) => confirmDeleteMatchEvent(currentEventMatch.id, eventId)}
         />
       )}
 
@@ -488,7 +651,7 @@ export function AdminPanel({
           }}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
-          onDeletePlayer={onDeletePlayer}
+          onDeletePlayer={confirmDeletePlayer}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -502,7 +665,7 @@ export function AdminPanel({
           onClose={() => setSquadTeam(null)}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
-          onDeletePlayer={onDeletePlayer}
+          onDeletePlayer={confirmDeletePlayer}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -568,6 +731,8 @@ export function AdminPanel({
           }}
         />
       )}
+
+      {confirmDialog}
     </div>
   )
 }
@@ -2117,6 +2282,7 @@ const COMMENT_FILTERS: { key: Comment['status'] | 'all'; label: string }[] = [
 ]
 
 function CommentsManager() {
+  const { confirm, confirmDialog } = useConfirm()
   const [comments, setComments] = useState<Comment[]>([])
   const [filter, setFilter] = useState<Comment['status'] | 'all'>('pending')
   const [loading, setLoading] = useState(true)
@@ -2226,9 +2392,18 @@ function CommentsManager() {
                 <button
                   className="mini-button danger"
                   disabled={busyId === comment.id}
-                  onClick={() => {
-                    if (!window.confirm(`Delete this comment from ${comment.authorName}? This cannot be undone.`)) return
-                    void act(comment.id, () => moderationRepository.remove(comment.id))
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete comment',
+                      body: (
+                        <>
+                          Delete this comment from <strong>{comment.authorName}</strong>?
+                        </>
+                      ),
+                      consequences: ['Rejecting instead keeps the comment on record without publishing it'],
+                      confirmLabel: 'Delete comment',
+                    })
+                    if (ok) await act(comment.id, () => moderationRepository.remove(comment.id))
                   }}
                 >
                   <Trash2 size={14} /> Delete
@@ -2238,6 +2413,7 @@ function CommentsManager() {
           ))}
         </div>
       )}
+      {confirmDialog}
     </section>
   )
 }
@@ -2272,6 +2448,7 @@ const emptyMedia = (): MediaAsset => ({
 })
 
 function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: () => Promise<void> }) {
+  const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<MediaAsset | null>(null)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -2345,9 +2522,18 @@ function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: ()
                 <button
                   className="mini-button danger"
                   disabled={busyId === asset.id}
-                  onClick={() => {
-                    if (!window.confirm(`Delete "${asset.title}"? This cannot be undone.`)) return
-                    void act(asset.id, () => mediaRepository.remove(asset.id))
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete media asset',
+                      body: (
+                        <>
+                          Delete <strong>{asset.title}</strong>?
+                        </>
+                      ),
+                      consequences: asset.isPublished ? ['It is published, so it will disappear from the public site'] : [],
+                      confirmLabel: 'Delete asset',
+                    })
+                    if (ok) await act(asset.id, () => mediaRepository.remove(asset.id))
                   }}
                 >
                   <Trash2 size={13} />
@@ -2368,6 +2554,7 @@ function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: ()
           }}
         />
       ) : null}
+      {confirmDialog}
     </section>
   )
 }
@@ -2472,6 +2659,7 @@ const emptySponsor = (order: number): Sponsor => ({
 })
 
 function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefresh: () => Promise<void> }) {
+  const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<Sponsor | null>(null)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -2565,9 +2753,18 @@ function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefre
                     <button
                       className="mini-button danger"
                       disabled={busyId === sponsor.id}
-                      onClick={() => {
-                        if (!window.confirm(`Delete sponsor "${sponsor.name}"? This cannot be undone.`)) return
-                        void act(sponsor.id, () => sponsorsRepository.remove(sponsor.id))
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Delete sponsor',
+                          body: (
+                            <>
+                              Delete <strong>{sponsor.name}</strong>?
+                            </>
+                          ),
+                          consequences: sponsor.isActive ? ['It is active, so it will disappear from the public partner rail'] : [],
+                          confirmLabel: 'Delete sponsor',
+                        })
+                        if (ok) await act(sponsor.id, () => sponsorsRepository.remove(sponsor.id))
                       }}
                     >
                       <Trash2 size={13} />
@@ -2590,6 +2787,7 @@ function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefre
           }}
         />
       ) : null}
+      {confirmDialog}
     </section>
   )
 }

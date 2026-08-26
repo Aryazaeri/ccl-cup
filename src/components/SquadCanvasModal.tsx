@@ -123,7 +123,6 @@ const FORMATIONS: Record<FormationType, { name: string; slots: FormationSlotConf
 
 type Props = {
   team: Team
-  allPlayers: Player[]
   teamPlayers: Player[]
   onClose: () => void
   onSaveSquad: (assignedPlayerIds: number[], unassignedPlayerIds: number[]) => Promise<void>
@@ -131,7 +130,6 @@ type Props = {
 
 export function SquadCanvasModal({
   team,
-  allPlayers,
   teamPlayers,
   onClose,
   onSaveSquad,
@@ -195,20 +193,22 @@ export function SquadCanvasModal({
     return new Set(currentSquadPlayers.map((p) => p.id))
   }, [currentSquadPlayers])
 
-  // Filtered pool players (players in platform not currently on this squad)
+  // Available players: this club's own registered squad members who are not
+  // already placed on the pitch or the bench.
+  //
+  // Scoped to `teamPlayers`, not the global roster — the canvas arranges a
+  // club's existing squad, it is not a transfer market. Signing a player from
+  // another club (or a free agent) happens in the Players module, and they
+  // appear here once they belong to this team.
   const filteredPool = useMemo(() => {
-    return allPlayers.filter((p) => {
+    return teamPlayers.filter((p) => {
       if (currentSquadIds.has(p.id)) return false
       if (posFilter !== 'All' && p.position.toLowerCase() !== posFilter.toLowerCase()) return false
       if (!searchTerm.trim()) return true
       const q = searchTerm.toLowerCase()
-      return (
-        p.fullName.toLowerCase().includes(q) ||
-        p.teamName.toLowerCase().includes(q) ||
-        p.position.toLowerCase().includes(q)
-      )
+      return p.fullName.toLowerCase().includes(q) || p.position.toLowerCase().includes(q)
     })
-  }, [allPlayers, currentSquadIds, posFilter, searchTerm])
+  }, [teamPlayers, currentSquadIds, posFilter, searchTerm])
 
   const country = getCountry(team.countryCode)
 
@@ -262,7 +262,7 @@ export function SquadCanvasModal({
 
   const handleAssignSelectedToSlot = (slotId: string) => {
     if (!selectedPoolPlayerId) return
-    const target = allPlayers.find((p) => p.id === selectedPoolPlayerId)
+    const target = teamPlayers.find((p) => p.id === selectedPoolPlayerId)
     if (target) {
       assignPlayerToSlot(target, slotId)
     }
@@ -471,7 +471,7 @@ export function SquadCanvasModal({
               <Search size={14} />
               <input
                 type="text"
-                placeholder="Search player, club, pos..."
+                placeholder="Search squad by name or position..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -525,7 +525,7 @@ export function SquadCanvasModal({
                             {p.position.slice(0, 3).toUpperCase()}
                           </span>
                           <span className="pool-team-tag">
-                            {p.teamName && p.teamName !== 'Free Agent' ? `from ${p.teamName}` : 'Free Agent'}
+                            {p.isCaptain ? 'Captain' : `#${p.shirtNumber ?? '—'} · ${p.position}`}
                           </span>
                         </div>
                       </div>

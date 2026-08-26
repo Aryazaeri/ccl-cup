@@ -135,6 +135,42 @@ export type Player = {
   activeSeasons?: string[]
   goals?: number
   assists?: number
+  /**
+   * Cutout portrait, ideally a transparent PNG. Rendered over the player's
+   * country flag on roster cards, so a background-free image looks best.
+   */
+  photoUrl?: string
+}
+
+/** Mirrors the media_assets_kind_check constraint exactly. */
+export type MediaKind = 'photo' | 'video' | 'highlight' | 'press_conference' | 'panorama' | 'document'
+
+export type MediaAsset = {
+  id: number
+  title: string
+  kind: MediaKind
+  externalUrl?: string
+  thumbnailUrl?: string
+  durationSeconds?: number
+  isPublished: boolean
+  createdAt?: string
+}
+
+export type Sponsor = {
+  id: number
+  name: string
+  logoUrl?: string
+  websiteUrl?: string
+  displayOrder: number
+  isActive: boolean
+}
+
+/** A staff account as the Users module sees it. */
+export type AdminUser = {
+  id: string
+  fullName: string
+  role: 'super_admin' | 'admin' | 'editor' | 'match_operator' | 'viewer'
+  createdAt?: string
 }
 
 
@@ -168,7 +204,29 @@ export type Match = {
   awayScore?: number
   matchStatus: MatchStatus
   status: 'Scheduled' | 'Draft'
+  /**
+   * External broadcast link (YouTube or similar). When a match is live and
+   * this is set, the public site turns the LIVE badge into a link out.
+   */
+  streamUrl?: string
   events?: MatchEvent[]
+}
+
+export type CommentStatus = 'pending' | 'approved' | 'rejected'
+
+/**
+ * A visitor-submitted comment. Submissions always land as `pending`; only
+ * rows a moderator has approved are ever readable by the public, which is
+ * enforced by row-level security rather than by this type.
+ */
+export type Comment = {
+  id: number
+  authorName: string
+  body: string
+  matchId?: number | null
+  storyId?: number | null
+  status: CommentStatus
+  createdAt?: string
 }
 
 export type StoryCategory = 'news' | 'match_report' | 'announcement' | 'press' | 'panorama'
@@ -185,5 +243,5 @@ export type Story = {
 }
 
 export type View = 'site' | 'admin'
-export type AdminSection = 'Overview' | 'Seasons' | 'Teams' | 'Players' | 'Matches' | 'Standings' | 'Content' | 'Media' | 'Sponsors' | 'Users'
+export type AdminSection = 'Overview' | 'Seasons' | 'Teams' | 'Players' | 'Matches' | 'Standings' | 'Content' | 'Comments' | 'Media' | 'Sponsors' | 'Users'
 

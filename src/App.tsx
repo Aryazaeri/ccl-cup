@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { AdminPanel } from './components/AdminPanel'
 import { LoginPage } from './components/LoginPage'
 import { PublicSite } from './components/PublicSite'
+import { withDerivedTeamTotals } from './lib/standingsUtils'
 import { tournamentRepository, type TournamentData } from './services/tournamentRepository'
-import type { Match, MatchEvent, Player, Season, Story, Team, View } from './types'
+import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
 
 const currentView = (): View => (window.location.hash.startsWith('#admin') ? 'admin' : 'site')
 
@@ -16,6 +17,8 @@ export default function App() {
   const [players, setPlayers] = useState<Player[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [stories, setStories] = useState<Story[]>([])
+  const [media, setMedia] = useState<MediaAsset[]>([])
+  const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [dataLoading, setDataLoading] = useState(true)
   const [dataError, setDataError] = useState('')
 
@@ -25,6 +28,8 @@ export default function App() {
     setPlayers(data.players)
     setMatches(data.matches)
     setStories(data.stories)
+    setMedia(data.media ?? [])
+    setSponsors(data.sponsors ?? [])
   }, [])
 
   const refresh = useCallback(async () => {
@@ -42,6 +47,10 @@ export default function App() {
   useEffect(() => {
     void refresh()
   }, [refresh, auth.profile?.id])
+
+  // `played`, `goalDifference` and `points` are derived from results rather
+  // than read from storage, so every surface sees the same live numbers.
+  const derivedTeams = useMemo(() => withDerivedTeamTotals(teams, matches), [teams, matches])
 
   useEffect(() => {
     const onHash = () => setView(currentView())
@@ -90,10 +99,12 @@ export default function App() {
     return (
       <AdminPanel
         seasons={seasons}
-        teams={teams}
+        teams={derivedTeams}
         players={players}
         matches={matches}
         stories={stories}
+        media={media}
+        sponsors={sponsors}
         profile={auth.profile}
         backend={auth.backend}
         error={dataError}
@@ -115,6 +126,7 @@ export default function App() {
         onUpdateStory={(story: Story) => mutate(() => tournamentRepository.updateStory(story))}
         onDeleteStory={(id: number) => mutate(() => tournamentRepository.deleteStory(id))}
         onToggleStory={(id: number) => mutate(() => tournamentRepository.toggleStory(id))}
+        onRefresh={refresh}
         onSignOut={auth.signOut}
         onViewSite={() => navigate('site')}
       />
@@ -125,10 +137,13 @@ export default function App() {
     <>
       {dataError ? <div className="public-data-error">Data connection: {dataError}</div> : null}
       <PublicSite
-        teams={teams}
+        seasons={seasons}
+        teams={derivedTeams}
         players={players}
         matches={matches.filter((match) => match.status === 'Scheduled')}
         stories={stories.filter((story) => story.status === 'Published')}
+        media={media.filter((asset) => asset.isPublished)}
+        sponsors={sponsors.filter((sponsor) => sponsor.isActive)}
         onAdmin={() => navigate('admin')}
       />
     </>

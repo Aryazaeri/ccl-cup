@@ -28,7 +28,12 @@ import {
   Plus,
   Search,
   Settings,
+  Ban,
+  Check,
+  ExternalLink,
+  MessageSquare,
   Shield,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Trophy,
@@ -38,12 +43,19 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { type FormEvent, useMemo, useState } from 'react'
-import type { AuthProfile } from '../auth/AuthContext'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyLeague } from '../lib/leagueUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
+import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
+import {
+  mediaRepository,
+  moderationRepository,
+  sponsorsRepository,
+  usersRepository,
+} from '../services/tournamentRepository'
 import {
   AVAILABLE_SEASONS,
   HOST_CITIES,
@@ -52,12 +64,17 @@ import {
   type MatchEvent,
   type MatchEventType,
   type MatchStatus,
+  type MediaAsset,
+  type MediaKind,
   type Player,
   type PlayerPosition,
+  type AdminUser,
+  type Comment,
   type Season,
   type SeasonGroupLeague,
   type SeasonLeague,
   type SeasonType,
+  type Sponsor,
   type Story,
   type StoryCategory,
   type StrongFoot,
@@ -80,6 +97,8 @@ type Props = {
   players: Player[]
   matches: Match[]
   stories: Story[]
+  media: MediaAsset[]
+  sponsors: Sponsor[]
   profile: AuthProfile
   backend: 'supabase' | 'local-demo'
   error: string
@@ -101,21 +120,25 @@ type Props = {
   onUpdateStory: (story: Story) => Promise<void>
   onDeleteStory: (id: number) => Promise<void>
   onToggleStory: (id: number) => Promise<void>
+  onRefresh: () => Promise<void>
   onSignOut: () => Promise<void>
   onViewSite: () => void
 }
 
-const sections: { label: AdminSection; icon: typeof Home }[] = [
+// `area` names the permission that governs each screen. Overview has none —
+// it is read-only and safe for every staff role.
+const sections: { label: AdminSection; icon: typeof Home; area?: PermissionArea }[] = [
   { label: 'Overview', icon: LayoutDashboard },
-  { label: 'Seasons', icon: Trophy },
-  { label: 'Teams', icon: Shield },
-  { label: 'Players', icon: CircleUserRound },
-  { label: 'Matches', icon: CalendarDays },
-  { label: 'Standings', icon: BarChart3 },
-  { label: 'Content', icon: Newspaper },
-  { label: 'Media', icon: Image },
-  { label: 'Sponsors', icon: Sparkles },
-  { label: 'Users', icon: Users },
+  { label: 'Seasons', icon: Trophy, area: 'seasons' },
+  { label: 'Teams', icon: Shield, area: 'teams' },
+  { label: 'Players', icon: CircleUserRound, area: 'players' },
+  { label: 'Matches', icon: CalendarDays, area: 'matches' },
+  { label: 'Standings', icon: BarChart3, area: 'standings' },
+  { label: 'Content', icon: Newspaper, area: 'content' },
+  { label: 'Comments', icon: MessageSquare, area: 'content' },
+  { label: 'Media', icon: Image, area: 'media' },
+  { label: 'Sponsors', icon: Sparkles, area: 'sponsors' },
+  { label: 'Users', icon: Users, area: 'users' },
 ]
 
 export function AdminPanel({
@@ -124,6 +147,8 @@ export function AdminPanel({
   players,
   matches,
   stories,
+  media,
+  sponsors,
   profile,
   backend,
   error,
@@ -145,10 +170,24 @@ export function AdminPanel({
   onUpdateStory,
   onDeleteStory,
   onToggleStory,
+  onRefresh,
   onSignOut,
   onViewSite,
 }: Props) {
   const [section, setSection] = useState<AdminSection>('Overview')
+
+  // The database enforces this for real via RLS; hiding the screens keeps the
+  // panel from offering actions that would only come back as an error.
+  const visibleSections = useMemo(
+    () => sections.filter(({ area }) => !area || can(profile.role, area)),
+    [profile.role],
+  )
+
+  // A role change (or a deep link) must never strand someone on a screen they
+  // are no longer allowed to see.
+  const activeSection = visibleSections.some((entry) => entry.label === section) ? section : 'Overview'
+
+  const allowed = (area: PermissionArea) => can(profile.role, area)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [modal, setModal] = useState<'season' | 'match' | 'team' | 'player' | 'story' | null>(null)
   const [editingSeason, setEditingSeason] = useState<Season | null>(null)
@@ -161,6 +200,9 @@ export function AdminPanel({
   const [canvasSquadTeam, setCanvasSquadTeam] = useState<Team | null>(null)
   const [editingMatch, setEditingMatch] = useState<Match | null>(null)
   const [eventMatch, setEventMatch] = useState<Match | null>(null)
+  const currentEventMatch = eventMatch
+    ? matches.find((match) => match.id === eventMatch.id) ?? eventMatch
+    : null
   const [editingStory, setEditingStory] = useState<Story | null>(null)
 
   const published = stories.filter((story) => story.status === 'Published').length
@@ -182,8 +224,8 @@ export function AdminPanel({
           </button>
         </div>
         <nav aria-label="Admin sections">
-          {sections.map(({ label, icon: Icon }) => (
-            <button className={section === label ? 'active' : ''} key={label} onClick={() => chooseSection(label)}>
+          {visibleSections.map(({ label, icon: Icon }) => (
+            <button className={activeSection === label ? 'active' : ''} key={label} onClick={() => chooseSection(label)}>
               <Icon />
               {label}
             </button>
@@ -206,12 +248,13 @@ export function AdminPanel({
           <button className="admin-menu" onClick={() => setSidebarOpen(true)} aria-label="Open admin menu">
             <Menu />
           </button>
-          <h1>{section}</h1>
+          <h1>{activeSection}</h1>
           <div className="admin-top-actions">
             <button className="site-switch" onClick={onViewSite}>
               View site
             </button>
-            {section !== 'Seasons' && (
+            {/* "Add Club" only belongs on screens where a club is the subject. */}
+            {['Overview', 'Teams', 'Players'].includes(activeSection) && allowed('teams') && (
               <button className="button button-admin" onClick={() => setModal('team')}>
                 <Plus />
                 Add Club
@@ -227,7 +270,7 @@ export function AdminPanel({
             </div>
           ) : null}
 
-          {section === 'Overview' && (
+          {activeSection === 'Overview' && (
             <Overview
               seasonsCount={seasons.length}
               teams={teams}
@@ -241,7 +284,7 @@ export function AdminPanel({
             />
           )}
 
-          {section === 'Seasons' && (
+          {activeSection === 'Seasons' && (
             <SeasonsManager
               seasons={seasons}
               backend={backend}
@@ -260,7 +303,7 @@ export function AdminPanel({
             />
           )}
 
-          {section === 'Teams' && (
+          {activeSection === 'Teams' && (
             <TeamsManager
               teams={teams}
               players={players}
@@ -278,7 +321,7 @@ export function AdminPanel({
             />
           )}
 
-          {section === 'Players' && (
+          {activeSection === 'Players' && (
             <PlayersManager
               players={players}
               teams={teams}
@@ -294,7 +337,7 @@ export function AdminPanel({
             />
           )}
 
-          {section === 'Matches' && (
+          {activeSection === 'Matches' && (
             <MatchesManager
               matches={matches}
               onDelete={onDeleteMatch}
@@ -304,7 +347,7 @@ export function AdminPanel({
             />
           )}
 
-          {section === 'Content' && (
+          {activeSection === 'Content' && (
             <ContentManager
               stories={stories}
               onToggle={onToggleStory}
@@ -320,9 +363,17 @@ export function AdminPanel({
             />
           )}
 
-          {!['Overview', 'Seasons', 'Teams', 'Players', 'Matches', 'Content'].includes(section) && (
-            <ModulePlaceholder section={section} />
+          {activeSection === 'Standings' && (
+            <StandingsManager seasons={seasons} teams={teams} players={players} matches={matches} />
           )}
+
+          {activeSection === 'Comments' && <CommentsManager />}
+
+          {activeSection === 'Media' && <MediaManager media={media} onRefresh={onRefresh} />}
+
+          {activeSection === 'Sponsors' && <SponsorsManager sponsors={sponsors} onRefresh={onRefresh} />}
+
+          {activeSection === 'Users' && <UsersManager currentRole={profile.role} />}
         </div>
       </div>
 
@@ -411,13 +462,13 @@ export function AdminPanel({
         />
       )}
 
-      {eventMatch && (
+      {currentEventMatch && (
         <MatchEventsModal
-          match={eventMatch}
+          match={currentEventMatch}
           players={players}
           onClose={() => setEventMatch(null)}
-          onAddEvent={(event) => onAddMatchEvent(eventMatch.id, event)}
-          onDeleteEvent={(eventId) => onDeleteMatchEvent(eventMatch.id, eventId)}
+          onAddEvent={(event) => onAddMatchEvent(currentEventMatch.id, event)}
+          onDeleteEvent={(eventId) => onDeleteMatchEvent(currentEventMatch.id, eventId)}
         />
       )}
 
@@ -459,7 +510,6 @@ export function AdminPanel({
       {canvasSquadTeam && (
         <SquadCanvasModal
           team={canvasSquadTeam}
-          allPlayers={players}
           teamPlayers={players.filter((p) => p.teamId === canvasSquadTeam.id || p.teamName === canvasSquadTeam.name)}
           onClose={() => setCanvasSquadTeam(null)}
           onSaveSquad={async (assignedIds, unassignedIds) => {
@@ -1823,6 +1873,917 @@ function ContentManager({
   )
 }
 
+function StandingsManager({
+  seasons,
+  teams,
+  players,
+  matches,
+}: {
+  seasons: Season[]
+  teams: Team[]
+  players: Player[]
+  matches: Match[]
+}) {
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => {
+    const active = seasons.find((season) => season.isActive)
+    return active ? active.id : 'all'
+  })
+
+  const selectedSeason = useMemo(
+    () => (seasonFilter === 'all' ? null : seasons.find((season) => season.id === seasonFilter) ?? null),
+    [seasonFilter, seasons],
+  )
+
+  // Scope to the chosen season where clubs carry one. Clubs with no season are
+  // kept visible so nothing silently disappears from the table.
+  const scopedTeams = useMemo(() => {
+    if (!selectedSeason) return teams
+    return teams.filter((team) => team.seasonId === undefined || team.seasonId === selectedSeason.id)
+  }, [teams, selectedSeason])
+
+  const groups = useMemo(
+    () => computeGroupStandings(scopedTeams, matches, selectedSeason),
+    [scopedTeams, matches, selectedSeason],
+  )
+
+  const topScorers = useMemo(() => computeTopScorers(players, matches, 10), [players, matches])
+  const resultsEntered = useMemo(() => matches.filter(isCountableMatch).length, [matches])
+  const awaitingResult = Math.max(0, matches.length - resultsEntered)
+  const goalsLogged = topScorers.reduce((total, scorer) => total + scorer.goals, 0)
+
+  const metrics = [
+    { icon: CheckCircle2, value: resultsEntered, label: 'Results entered' },
+    { icon: Clock, value: awaitingResult, label: 'Awaiting result' },
+    { icon: BarChart3, value: groups.length, label: groups.length === 1 ? 'Table' : 'Tables' },
+    { icon: Flame, value: goalsLogged, label: 'Goals logged' },
+  ]
+
+  return (
+    <section className="manager-view">
+      <div className="manager-head">
+        <div>
+          <h2>Standings & Statistics</h2>
+          <p>
+            Calculated automatically from completed results. Tie-breaks: Points → Goal Difference → Goals Scored
+            → Head-to-Head.
+          </p>
+        </div>
+      </div>
+
+      <div className="filter-bar">
+        <div className="filter-group">
+          <Filter size={16} />
+          <span>Season:</span>
+          <select
+            value={seasonFilter}
+            onChange={(e) => setSeasonFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {season.fullName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <section className="metric-strip">
+        {metrics.map(({ icon: Icon, value, label }) => (
+          <div key={label}>
+            <Icon />
+            <strong>{value}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
+
+      {resultsEntered === 0 ? (
+        <section className="admin-panel standings-hint">
+          <Info size={16} />
+          <span>
+            No completed matches yet. Enter a score on the Matches screen and every table below updates
+            immediately.
+          </span>
+        </section>
+      ) : null}
+
+      {groups.map((group) => (
+        <section className="admin-panel" key={group.groupId}>
+          <div className="admin-panel-head">
+            <h3>{group.groupName}</h3>
+          </div>
+          <div className="table-scroll">
+            <table className="admin-table standings-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>CLUB</th>
+                  <th>P</th>
+                  <th>W</th>
+                  <th>D</th>
+                  <th>L</th>
+                  <th>GF</th>
+                  <th>GA</th>
+                  <th>GD</th>
+                  <th>PTS</th>
+                  <th>FORM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={11}>No clubs assigned to this group yet.</td>
+                  </tr>
+                ) : (
+                  group.rows.map((row) => {
+                    const country = getCountry(row.countryCode ?? 'TR')
+                    return (
+                      <tr key={row.teamId}>
+                        <td>{row.position}</td>
+                        <td>
+                          <span className="team-cell">
+                            <TeamMark
+                              name={row.teamName}
+                              color={row.color}
+                              logoUrl={row.logoUrl}
+                              countryCode={row.countryCode}
+                            />
+                            <div className="team-name-cell">
+                              <strong>{row.teamName}</strong>
+                              <span className="team-flag-country" title={country.name}>
+                                {country.flag}
+                              </span>
+                            </div>
+                          </span>
+                        </td>
+                        <td>{row.played}</td>
+                        <td>{row.won}</td>
+                        <td>{row.drawn}</td>
+                        <td>{row.lost}</td>
+                        <td>{row.goalsFor}</td>
+                        <td>{row.goalsAgainst}</td>
+                        <td>{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
+                        <td>
+                          <strong>{row.points}</strong>
+                        </td>
+                        <td>
+                          {row.form.length === 0 ? (
+                            <span className="form-empty">—</span>
+                          ) : (
+                            <span className="form-guide">
+                              {row.form.map((result, index) => (
+                                <span key={index} className={`form-pip form-pip-${result.toLowerCase()}`}>
+                                  {result}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+
+      <section className="admin-panel">
+        <div className="admin-panel-head">
+          <h3>Top scorers</h3>
+        </div>
+        <div className="table-scroll">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>PLAYER</th>
+                <th>CLUB</th>
+                <th>GOALS</th>
+                <th>YELLOW</th>
+                <th>RED</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topScorers.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No goals logged yet. Add goal events to a completed match to build this list.</td>
+                </tr>
+              ) : (
+                topScorers.map((scorer, index) => (
+                  <tr key={`${scorer.playerName}-${scorer.teamName}`}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <strong>{scorer.playerName}</strong>
+                      {scorer.playerId === undefined ? (
+                        <span className="category-pill" title="No matching player on any roster">
+                          unlinked
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>{scorer.teamName}</td>
+                    <td>
+                      <strong>{scorer.goals}</strong>
+                    </td>
+                    <td>{scorer.yellowCards}</td>
+                    <td>{scorer.redCards}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  )
+}
+
+
+/* ------------------------------------------------------------------ *
+ * Comment moderation
+ *
+ * Nothing a visitor submits is public until it is approved here — the read
+ * policy on `comments` only returns approved rows, so this screen is the only
+ * thing standing between a submission and the site.
+ * ------------------------------------------------------------------ */
+
+const COMMENT_FILTERS: { key: Comment['status'] | 'all'; label: string }[] = [
+  { key: 'pending', label: 'Awaiting review' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'all', label: 'All' },
+]
+
+function CommentsManager() {
+  const [comments, setComments] = useState<Comment[]>([])
+  const [filter, setFilter] = useState<Comment['status'] | 'all'>('pending')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<number | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      setComments(await moderationRepository.listAll())
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to load comments.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const act = async (id: number, action: () => Promise<void>) => {
+    setBusyId(id)
+    setError('')
+    try {
+      await action()
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'That change could not be saved.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const visible = comments.filter((comment) => filter === 'all' || comment.status === filter)
+  const pendingCount = comments.filter((comment) => comment.status === 'pending').length
+
+  return (
+    <section className="module-section">
+      <div className="module-head">
+        <div>
+          <h2>Comment moderation</h2>
+          <p className="module-sub">
+            {pendingCount === 0
+              ? 'Nothing is waiting for review.'
+              : `${pendingCount} comment${pendingCount === 1 ? '' : 's'} awaiting review.`}
+          </p>
+        </div>
+      </div>
+
+      <div className="filter-chips">
+        {COMMENT_FILTERS.map((option) => {
+          const count =
+            option.key === 'all'
+              ? comments.length
+              : comments.filter((comment) => comment.status === option.key).length
+          return (
+            <button
+              key={option.key}
+              className={filter === option.key ? 'chip is-active' : 'chip'}
+              onClick={() => setFilter(option.key)}
+            >
+              {option.label} <span>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {error ? <div className="form-error">{error}</div> : null}
+
+      {loading ? (
+        <p className="empty-text">Loading comments…</p>
+      ) : visible.length === 0 ? (
+        <p className="empty-text">No comments in this view.</p>
+      ) : (
+        <div className="moderation-list">
+          {visible.map((comment) => (
+            <article className="moderation-card" key={comment.id}>
+              <header>
+                <div>
+                  <strong>{comment.authorName}</strong>
+                  {comment.createdAt ? <time>{comment.createdAt}</time> : null}
+                </div>
+                <span className={`status-chip status-${comment.status}`}>{comment.status}</span>
+              </header>
+              <p>{comment.body}</p>
+              <footer>
+                {comment.status !== 'approved' && (
+                  <button
+                    className="mini-button approve"
+                    disabled={busyId === comment.id}
+                    onClick={() => void act(comment.id, () => moderationRepository.setStatus(comment.id, 'approved'))}
+                  >
+                    <Check size={14} /> Approve
+                  </button>
+                )}
+                {comment.status !== 'rejected' && (
+                  <button
+                    className="mini-button reject"
+                    disabled={busyId === comment.id}
+                    onClick={() => void act(comment.id, () => moderationRepository.setStatus(comment.id, 'rejected'))}
+                  >
+                    <Ban size={14} /> Reject
+                  </button>
+                )}
+                <button
+                  className="mini-button danger"
+                  disabled={busyId === comment.id}
+                  onClick={() => {
+                    if (!window.confirm(`Delete this comment from ${comment.authorName}? This cannot be undone.`)) return
+                    void act(comment.id, () => moderationRepository.remove(comment.id))
+                  }}
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Media
+ *
+ * Assets are referenced by URL rather than uploaded: no storage bucket is
+ * configured on the project, and a link-based library is the honest version of
+ * that until one is.
+ * ------------------------------------------------------------------ */
+
+// These must stay in step with media_assets_kind_check; the database rejects
+// anything else outright.
+const MEDIA_KIND_LABELS: Record<MediaKind, string> = {
+  video: 'Video',
+  highlight: 'Highlight reel',
+  press_conference: 'Press conference',
+  photo: 'Photo',
+  panorama: 'Panorama',
+  document: 'Document',
+}
+const MEDIA_KINDS = Object.keys(MEDIA_KIND_LABELS) as MediaKind[]
+
+const emptyMedia = (): MediaAsset => ({
+  id: 0,
+  title: '',
+  kind: 'video',
+  externalUrl: '',
+  thumbnailUrl: '',
+  isPublished: false,
+})
+
+function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: () => Promise<void> }) {
+  const [editing, setEditing] = useState<MediaAsset | null>(null)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<number | null>(null)
+
+  const act = async (id: number, action: () => Promise<void>) => {
+    setBusyId(id)
+    setError('')
+    try {
+      await action()
+      await onRefresh()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'That change could not be saved.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="module-section">
+      <div className="module-head">
+        <div>
+          <h2>Media library</h2>
+          <p className="module-sub">
+            {media.length} asset{media.length === 1 ? '' : 's'} · published items appear on the public site
+          </p>
+        </div>
+        <button className="primary-button" onClick={() => setEditing(emptyMedia())}>
+          <Plus size={16} /> Add asset
+        </button>
+      </div>
+
+      {error ? <div className="form-error">{error}</div> : null}
+
+      {media.length === 0 ? (
+        <p className="empty-text">
+          No media yet. Add a highlight video or photo and publish it to replace the placeholder cards on the public site.
+        </p>
+      ) : (
+        <div className="media-admin-grid">
+          {media.map((asset) => (
+            <article className="media-admin-card" key={asset.id}>
+              <div className="media-admin-thumb">
+                {asset.thumbnailUrl ? (
+                  <img src={asset.thumbnailUrl} alt="" />
+                ) : (
+                  <span className="media-admin-kind">{MEDIA_KIND_LABELS[asset.kind] ?? asset.kind}</span>
+                )}
+              </div>
+              <div className="media-admin-body">
+                <strong>{asset.title}</strong>
+                <span className={`status-chip ${asset.isPublished ? 'status-approved' : 'status-pending'}`}>
+                  {asset.isPublished ? 'Published' : 'Draft'}
+                </span>
+                {asset.externalUrl ? (
+                  <a href={asset.externalUrl} target="_blank" rel="noopener noreferrer" className="media-admin-link">
+                    <ExternalLink size={13} /> Open
+                  </a>
+                ) : null}
+              </div>
+              <footer>
+                <button
+                  className="mini-button"
+                  disabled={busyId === asset.id}
+                  onClick={() => void act(asset.id, () => mediaRepository.togglePublished(asset.id, !asset.isPublished))}
+                >
+                  {asset.isPublished ? 'Unpublish' : 'Publish'}
+                </button>
+                <button className="mini-button" onClick={() => setEditing(asset)}>
+                  <Edit2 size={13} /> Edit
+                </button>
+                <button
+                  className="mini-button danger"
+                  disabled={busyId === asset.id}
+                  onClick={() => {
+                    if (!window.confirm(`Delete "${asset.title}"? This cannot be undone.`)) return
+                    void act(asset.id, () => mediaRepository.remove(asset.id))
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {editing ? (
+        <MediaModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null)
+            await onRefresh()
+          }}
+        />
+      ) : null}
+    </section>
+  )
+}
+
+function MediaModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: MediaAsset
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setSaveError('')
+    const data = new FormData(event.currentTarget)
+    try {
+      await mediaRepository.save({
+        id: initial.id,
+        title: String(data.get('title')).trim(),
+        kind: String(data.get('kind')) as MediaKind,
+        externalUrl: String(data.get('externalUrl')).trim() || undefined,
+        thumbnailUrl: String(data.get('thumbnailUrl')).trim() || undefined,
+        durationSeconds: data.get('duration') ? Number(data.get('duration')) : undefined,
+        isPublished: data.get('isPublished') === 'on',
+      })
+      await onSaved()
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'Unable to save this asset.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={initial.id ? 'Edit media asset' : 'Add media asset'} onClose={onClose}>
+      <form className="admin-form" onSubmit={submit}>
+        <label className="span-2">
+          Title *
+          <input name="title" defaultValue={initial.title} placeholder="e.g. Matchday 3 highlights" required />
+        </label>
+        <label>
+          Type
+          <select name="kind" defaultValue={initial.kind}>
+            {MEDIA_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {MEDIA_KIND_LABELS[kind]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Duration (seconds)
+          <input name="duration" type="number" min={0} defaultValue={initial.durationSeconds ?? ''} placeholder="e.g. 180" />
+        </label>
+        <label className="span-2">
+          Link URL *
+          <input
+            name="externalUrl"
+            type="url"
+            defaultValue={initial.externalUrl ?? ''}
+            placeholder="https://youtube.com/watch?v=…"
+            required
+          />
+          <small className="field-hint">
+            Required — the database rejects an asset with neither an uploaded file nor a link, and there is no
+            storage bucket configured yet.
+          </small>
+        </label>
+        <label className="span-2">
+          Thumbnail image URL
+          <input name="thumbnailUrl" type="url" defaultValue={initial.thumbnailUrl ?? ''} placeholder="https://…/thumb.jpg" />
+          <small className="field-hint">Shown as the card image on the public site.</small>
+        </label>
+        <label className="checkbox-label span-2">
+          <input type="checkbox" name="isPublished" defaultChecked={initial.isPublished} />
+          Publish to the public site
+        </label>
+        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
+        <FormActions onClose={onClose} label="Save asset" saving={saving} />
+      </form>
+    </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Sponsors
+ * ------------------------------------------------------------------ */
+
+const emptySponsor = (order: number): Sponsor => ({
+  id: 0,
+  name: '',
+  logoUrl: '',
+  websiteUrl: '',
+  displayOrder: order,
+  isActive: true,
+})
+
+function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefresh: () => Promise<void> }) {
+  const [editing, setEditing] = useState<Sponsor | null>(null)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<number | null>(null)
+
+  const act = async (id: number, action: () => Promise<void>) => {
+    setBusyId(id)
+    setError('')
+    try {
+      await action()
+      await onRefresh()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'That change could not be saved.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="module-section">
+      <div className="module-head">
+        <div>
+          <h2>Sponsors</h2>
+          <p className="module-sub">
+            {sponsors.length} partner{sponsors.length === 1 ? '' : 's'} · active ones appear in the public footer rail
+          </p>
+        </div>
+        <button
+          className="primary-button"
+          onClick={() => setEditing(emptySponsor(sponsors.length))}
+        >
+          <Plus size={16} /> Add sponsor
+        </button>
+      </div>
+
+      {error ? <div className="form-error">{error}</div> : null}
+
+      {sponsors.length === 0 ? (
+        <p className="empty-text">No sponsors yet.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>ORDER</th>
+                <th>LOGO</th>
+                <th>NAME</th>
+                <th>WEBSITE</th>
+                <th>STATUS</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {sponsors.map((sponsor) => (
+                <tr key={sponsor.id}>
+                  <td>{sponsor.displayOrder}</td>
+                  <td>
+                    {sponsor.logoUrl ? (
+                      <img className="sponsor-logo-thumb" src={sponsor.logoUrl} alt="" />
+                    ) : (
+                      <span className="empty-text">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <strong>{sponsor.name}</strong>
+                  </td>
+                  <td>
+                    {sponsor.websiteUrl ? (
+                      <a href={sponsor.websiteUrl} target="_blank" rel="noopener noreferrer" className="media-admin-link">
+                        <ExternalLink size={13} /> Visit
+                      </a>
+                    ) : (
+                      <span className="empty-text">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`status-chip ${sponsor.isActive ? 'status-approved' : 'status-pending'}`}>
+                      {sponsor.isActive ? 'Active' : 'Hidden'}
+                    </span>
+                  </td>
+                  <td className="row-actions">
+                    <button
+                      className="mini-button"
+                      disabled={busyId === sponsor.id}
+                      onClick={() => void act(sponsor.id, () => sponsorsRepository.toggleActive(sponsor.id, !sponsor.isActive))}
+                    >
+                      {sponsor.isActive ? 'Hide' : 'Show'}
+                    </button>
+                    <button className="mini-button" onClick={() => setEditing(sponsor)}>
+                      <Edit2 size={13} />
+                    </button>
+                    <button
+                      className="mini-button danger"
+                      disabled={busyId === sponsor.id}
+                      onClick={() => {
+                        if (!window.confirm(`Delete sponsor "${sponsor.name}"? This cannot be undone.`)) return
+                        void act(sponsor.id, () => sponsorsRepository.remove(sponsor.id))
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing ? (
+        <SponsorModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null)
+            await onRefresh()
+          }}
+        />
+      ) : null}
+    </section>
+  )
+}
+
+function SponsorModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: Sponsor
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setSaveError('')
+    const data = new FormData(event.currentTarget)
+    try {
+      await sponsorsRepository.save({
+        id: initial.id,
+        name: String(data.get('name')).trim(),
+        logoUrl: String(data.get('logoUrl')).trim() || undefined,
+        websiteUrl: String(data.get('websiteUrl')).trim() || undefined,
+        displayOrder: Number(data.get('displayOrder') || 0),
+        isActive: data.get('isActive') === 'on',
+      })
+      await onSaved()
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'Unable to save this sponsor.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={initial.id ? 'Edit sponsor' : 'Add sponsor'} onClose={onClose}>
+      <form className="admin-form" onSubmit={submit}>
+        <label className="span-2">
+          Sponsor name *
+          <input name="name" defaultValue={initial.name} placeholder="e.g. Anadolu Enerji" required />
+        </label>
+        <label className="span-2">
+          Logo URL
+          <input name="logoUrl" type="url" defaultValue={initial.logoUrl ?? ''} placeholder="https://…/logo.svg" />
+        </label>
+        <label>
+          Website
+          <input name="websiteUrl" type="url" defaultValue={initial.websiteUrl ?? ''} placeholder="https://example.com" />
+        </label>
+        <label>
+          Display order
+          <input name="displayOrder" type="number" min={0} defaultValue={initial.displayOrder} />
+          <small className="field-hint">Lower numbers appear first.</small>
+        </label>
+        <label className="checkbox-label span-2">
+          <input type="checkbox" name="isActive" defaultChecked={initial.isActive} />
+          Show on the public site
+        </label>
+        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
+        <FormActions onClose={onClose} label="Save sponsor" saving={saving} />
+      </form>
+    </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Users
+ *
+ * Role changes go through the `set_user_role` function, which refuses
+ * non-admin callers and lets only a super_admin grant super_admin. The select
+ * below hides that option for a plain admin so the panel does not offer an
+ * action the database will reject.
+ * ------------------------------------------------------------------ */
+
+const ASSIGNABLE_ROLES: AdminUser['role'][] = ['viewer', 'match_operator', 'editor', 'admin', 'super_admin']
+
+const ROLE_LABELS: Record<AdminUser['role'], string> = {
+  super_admin: 'Super admin',
+  admin: 'Admin',
+  editor: 'Editor',
+  match_operator: 'Match operator',
+  viewer: 'Viewer',
+}
+
+function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      setUsers(await usersRepository.list())
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to load staff accounts.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const changeRole = async (user: AdminUser, role: AdminUser['role']) => {
+    if (role === user.role) return
+    setBusyId(user.id)
+    setError('')
+    try {
+      await usersRepository.setRole(user.id, role)
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The role could not be changed.')
+      await load()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const canGrantSuper = currentRole === 'super_admin'
+
+  return (
+    <section className="module-section">
+      <div className="module-head">
+        <div>
+          <h2>Staff &amp; roles</h2>
+          <p className="module-sub">
+            {users.length} account{users.length === 1 ? '' : 's'} · roles take effect immediately
+          </p>
+        </div>
+      </div>
+
+      <p className="module-note">
+        <ShieldCheck size={15} />
+        Accounts are created by signing up through the staff login. Email addresses live in Supabase Auth and
+        are not readable from here, so accounts are listed by profile name.
+      </p>
+
+      {error ? <div className="form-error">{error}</div> : null}
+
+      {loading ? (
+        <p className="empty-text">Loading accounts…</p>
+      ) : users.length === 0 ? (
+        <p className="empty-text">No staff accounts found.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>NAME</th>
+                <th>ROLE</th>
+                <th>CREATED</th>
+                <th>CHANGE ROLE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td>
+                    <strong>{user.fullName}</strong>
+                  </td>
+                  <td>
+                    <span className={`role-chip role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+                  </td>
+                  <td>{user.createdAt ?? '—'}</td>
+                  <td>
+                    <select
+                      value={user.role}
+                      disabled={busyId === user.id}
+                      onChange={(event) => void changeRole(user, event.target.value as AdminUser['role'])}
+                    >
+                      {ASSIGNABLE_ROLES.filter((role) => role !== 'super_admin' || canGrantSuper).map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function ModulePlaceholder({ section }: { section: AdminSection }) {
   return (
     <section className="module-placeholder">
@@ -2887,6 +3848,7 @@ function MatchForm({
         time: String(data.get('time')),
         venue: String(data.get('venue')),
         referee: String(data.get('referee')) || undefined,
+        streamUrl: String(data.get('streamUrl')).trim() || undefined,
         matchStatus: 'scheduled',
         status: String(data.get('status')) as Match['status'],
         events: [],
@@ -2939,6 +3901,13 @@ function MatchForm({
           <input name="referee" placeholder="e.g. Mehmet Ali Yılmaz" />
         </label>
         <label className="span-2">
+          Live Stream URL
+          <input name="streamUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
+          <small className="field-hint">
+            Optional. While the match is Live, the public site turns the LIVE badge into a link to this address.
+          </small>
+        </label>
+        <label className="span-2">
           Publication Status
           <select name="status">
             <option>Scheduled</option>
@@ -2982,6 +3951,7 @@ function MatchScoreModal({
         date: String(data.get('date')),
         time: String(data.get('time')),
         referee: String(data.get('referee')) || undefined,
+        streamUrl: String(data.get('streamUrl')).trim() || undefined,
         matchStatus: String(data.get('matchStatus')) as MatchStatus,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
@@ -3062,6 +4032,19 @@ function MatchScoreModal({
         </label>
 
         <label className="span-2">
+          Live Stream URL
+          <input
+            name="streamUrl"
+            type="url"
+            defaultValue={match.streamUrl ?? ''}
+            placeholder="https://youtube.com/watch?v=…"
+          />
+          <small className="field-hint">
+            Set this while the match status is Live to turn the public LIVE badge into a link out.
+          </small>
+        </label>
+
+        <label className="span-2">
           Public Visibility
           <select name="status" defaultValue={match.status}>
             <option value="Scheduled">Scheduled (Visible)</option>
@@ -3098,8 +4081,9 @@ function MatchEventsModal({
 
   const submitEvent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const form = event.currentTarget
     setSaving(true)
-    const data = new FormData(event.currentTarget)
+    const data = new FormData(form)
     try {
       await onAddEvent({
         id: Date.now(),
@@ -3110,7 +4094,7 @@ function MatchEventsModal({
         minute: Number(data.get('minute')),
         notes: String(data.get('notes')) || undefined,
       })
-      event.currentTarget.reset()
+      form.reset()
     } finally {
       setSaving(false)
     }
@@ -3259,7 +4243,8 @@ function PlayerForm({
         shirtNumber: data.get('shirtNumber') ? Number(data.get('shirtNumber')) : undefined,
         position: String(data.get('position')) as PlayerPosition,
         birthYear: data.get('birthYear') ? Number(data.get('birthYear')) : undefined,
-        nationality: foundTeam?.countryCode ?? 'TR',
+        nationality: String(data.get('nationality')) || foundTeam?.countryCode || 'TR',
+        photoUrl: String(data.get('photoUrl')).trim() || undefined,
         isCaptain: data.get('isCaptain') === 'on',
         activeSeasons: selectedSeasons,
       })
@@ -3330,6 +4315,31 @@ function PlayerForm({
             defaultValue={initial?.birthYear ?? 1996}
             placeholder="1996"
           />
+        </label>
+
+        <label>
+          Nationality
+          <select name="nationality" defaultValue={initial?.nationality ?? 'TR'}>
+            {COUNTRIES.map((country) => (
+              <option key={country.code} value={country.code}>
+                {country.flag} {country.name}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">Drives the flag behind this player's roster card.</small>
+        </label>
+
+        <label className="span-2">
+          Cutout Photo URL
+          <input
+            name="photoUrl"
+            type="url"
+            defaultValue={initial?.photoUrl ?? ''}
+            placeholder="https://…/player-cutout.png"
+          />
+          <small className="field-hint">
+            A background-free PNG works best — it is layered over the player's flag on roster cards.
+          </small>
         </label>
 
         {/* PLAYED SEASONS PICKER */}
@@ -3480,5 +4490,4 @@ function FormActions({ onClose, label, saving }: { onClose: () => void; label: s
     </div>
   )
 }
-
 

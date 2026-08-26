@@ -1,12 +1,12 @@
 import { type FormEvent, useState } from 'react'
 import { ArrowLeft, LockKeyhole, Sparkles } from 'lucide-react'
 import { Brand } from './Brand'
-import { useAuth } from '../auth/AuthContext'
+import { DEMO_EMAIL, DEMO_PASSWORD, useAuth } from '../auth/AuthContext'
 
 export function LoginPage({ onBack }: { onBack: () => void }) {
   const { signIn, backend, loading } = useAuth()
-  const [email, setEmail] = useState(backend === 'local-demo' ? 'admin@ccl.test' : '')
-  const [password, setPassword] = useState(backend === 'local-demo' ? 'demo1234' : '')
+  const [email, setEmail] = useState(backend === 'local-demo' ? DEMO_EMAIL : '')
+  const [password, setPassword] = useState(backend === 'local-demo' ? DEMO_PASSWORD : '')
   const [error, setError] = useState('')
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -21,10 +21,10 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
 
   const handleQuickDemo = async () => {
     setError('')
-    setEmail('admin@ccl.test')
-    setPassword('demo1234')
+    setEmail(DEMO_EMAIL)
+    setPassword(DEMO_PASSWORD)
     try {
-      await signIn('admin@ccl.test', 'demo1234')
+      await signIn(DEMO_EMAIL, DEMO_PASSWORD)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to sign in.')
     }
@@ -53,7 +53,7 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              placeholder="admin@ccl.test"
+              placeholder="you@example.com"
               required
             />
           </label>
@@ -91,7 +91,9 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
               disabled={loading}
             >
               <Sparkles size={14} />
-              <span>Tek Tıkla Giriş Yap (Demo: admin@ccl.test / demo1234)</span>
+              <span>
+                One-click demo sign-in ({DEMO_EMAIL} / {DEMO_PASSWORD}) — offline prototype data only
+              </span>
             </button>
           </div>
         ) : (

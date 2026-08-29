@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "tsx tests/standings.test.ts"
+    "test": "tsx tests/standings.test.ts && tsx tests/bracket.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

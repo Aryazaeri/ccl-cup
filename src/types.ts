@@ -16,6 +16,17 @@ export type BracketMatch = {
   label: string
   slot1: BracketSlot
   slot2: BracketSlot
+  /** slotId of the slot that won. Drives progression into the next round. */
+  winnerSlotId?: string | null
+  /**
+   * The team the result was recorded for.
+   *
+   * Kept alongside the slot because a slot's occupant changes when an earlier
+   * result is revised. Without it, "slot 1 won" would silently transfer the
+   * win to whoever arrives in slot 1 next — crowning a team that never played
+   * the match.
+   */
+  winnerTeamId?: number | null
 }
 
 export type BracketRound = {

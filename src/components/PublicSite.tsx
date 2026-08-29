@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCountry } from '../lib/countries'
-import { computeGroupStandings, computeTopAssists, computeTopScorers } from '../lib/standingsUtils'
+import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
@@ -68,6 +68,39 @@ const SITE_CONFIG = {
   },
 }
 
+/* ------------------------------------------------------------------ *
+ * Routing
+ *
+ * Detail views used to be modal-only: nothing had a URL, so a match or a squad
+ * could not be linked or shared. The app already routes on the hash, so
+ * `#site/match/10` opens that fixture directly on load and the browser's back
+ * button closes it.
+ * ------------------------------------------------------------------ */
+
+type PublicRoute =
+  | { kind: 'home' }
+  | { kind: 'team'; id: number }
+  | { kind: 'player'; id: number }
+  | { kind: 'match'; id: number }
+  | { kind: 'story'; id: number }
+
+const DETAIL_KINDS = ['team', 'player', 'match', 'story'] as const
+
+export function parsePublicRoute(hash: string): PublicRoute {
+  const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
+  // parts[0] is the surface ("site"); the detail segment follows it.
+  const kind = parts[1]
+  const id = Number(parts[2])
+  if (kind && (DETAIL_KINDS as readonly string[]).includes(kind) && Number.isFinite(id) && id > 0) {
+    return { kind: kind as (typeof DETAIL_KINDS)[number], id }
+  }
+  return { kind: 'home' }
+}
+
+function routeToHash(route: PublicRoute): string {
+  return route.kind === 'home' ? '#site' : `#site/${route.kind}/${route.id}`
+}
+
 type Props = {
   seasons: Season[]
   teams: Team[]
@@ -83,9 +116,7 @@ const nav = ['Home', 'Fixtures', 'Standings', 'Teams', 'Scorers', 'News', 'About
 
 export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, onAdmin }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [activeMatch, setActiveMatch] = useState<Match | null>(null)
-  const [activeStory, setActiveStory] = useState<Story | null>(null)
-  const [selectedTeamRoster, setSelectedTeamRoster] = useState<Team | null>(null)
+  const [route, setRoute] = useState<PublicRoute>(() => parsePublicRoute(window.location.hash))
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
 
@@ -155,6 +186,24 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     [seasonMatches],
   )
 
+  // Detail views resolve from the route rather than from their own state.
+  const activeMatch = useMemo(
+    () => (route.kind === 'match' ? matches.find((m) => m.id === route.id) ?? null : null),
+    [route, matches],
+  )
+  const activeStory = useMemo(
+    () => (route.kind === 'story' ? stories.find((x) => x.id === route.id) ?? null : null),
+    [route, stories],
+  )
+  const selectedTeamRoster = useMemo(
+    () => (route.kind === 'team' ? teams.find((t) => t.id === route.id) ?? null : null),
+    [route, teams],
+  )
+  const activePlayer = useMemo(
+    () => (route.kind === 'player' ? players.find((p) => p.id === route.id) ?? null : null),
+    [route, players],
+  )
+
   const teamLookup = useMemo(() => {
     return new Map(teams.map((t) => [t.name, t]))
   }, [teams])
@@ -205,6 +254,23 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     }
     return counts
   }, [seasonPlayers])
+
+  // The hash is the source of truth, so a deep link, a back button and an
+  // in-page click all arrive through the same path.
+  useEffect(() => {
+    const onHash = () => setRoute(parsePublicRoute(window.location.hash))
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const openDetail = (next: PublicRoute) => {
+    window.location.hash = routeToHash(next)
+  }
+  const closeDetail = () => {
+    // Prefer going back so the detail view does not pile up in history.
+    if (window.history.length > 1) window.history.back()
+    else window.location.hash = '#site'
+  }
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -316,7 +382,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <div
               className="featured-match clickable-card"
               aria-label="Next match"
-              onClick={() => setActiveMatch(nextMatch)}
+              onClick={() => openDetail({ kind: 'match', id: nextMatch.id })}
               role="button"
               tabIndex={0}
             >
@@ -400,7 +466,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   <div
                     key={m.id}
                     className="rail-item clickable"
-                    onClick={() => setActiveMatch(m)}
+                    onClick={() => openDetail({ kind: 'match', id: m.id })}
                     title="Click to view match summary & timeline"
                   >
                     <TeamMark
@@ -439,7 +505,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <section className="stories content-width" id="news">
           <div className="section-title-row">
             <h2>Latest stories</h2>
-            <button className="text-link" onClick={() => leadStory && setActiveStory(leadStory)}>
+            <button className="text-link" onClick={() => leadStory && openDetail({ kind: 'story', id: leadStory.id })}>
               Read top story <ArrowRight size={18} />
             </button>
           </div>
@@ -447,7 +513,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           {leadStory && (
             <article
               className="lead-story clickable-card"
-              onClick={() => setActiveStory(leadStory)}
+              onClick={() => openDetail({ kind: 'story', id: leadStory.id })}
               role="button"
               tabIndex={0}
             >
@@ -477,7 +543,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               <button
                 className="story-row"
                 key={story.id}
-                onClick={() => setActiveStory(story)}
+                onClick={() => openDetail({ kind: 'story', id: story.id })}
               >
                 <span className={`story-thumb story-thumb-${(index % 3) + 1}`} />
                 <div className="story-row-info">
@@ -526,7 +592,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                         <tr
                           key={row.teamId}
                           className="clickable-row"
-                          onClick={() => team && setSelectedTeamRoster(team)}
+                          onClick={() => team && openDetail({ kind: 'team', id: team.id })}
                           title="Click to view team roster"
                         >
                           <td>{row.position}</td>
@@ -593,7 +659,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                     <div
                       className="fixture-row clickable"
                       key={match.id}
-                      onClick={() => setActiveMatch(match)}
+                      onClick={() => openDetail({ kind: 'match', id: match.id })}
                       title="Click to view match info"
                     >
                       <time>{match.date.toUpperCase()}</time>
@@ -652,7 +718,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   <button
                     className="participant-card"
                     key={team.id}
-                    onClick={() => setSelectedTeamRoster(team)}
+                    onClick={() => openDetail({ kind: 'team', id: team.id })}
                     title={`View the ${team.name} squad`}
                   >
                     <span className="participant-flag" title={country.name}>
@@ -894,12 +960,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           match={activeMatch}
           players={players}
           teams={teams}
-          onClose={() => setActiveMatch(null)}
+          onClose={closeDetail}
         />
       )}
 
       {/* Interactive Story Reader Modal */}
-      {activeStory && <StoryReaderModal story={activeStory} onClose={() => setActiveStory(null)} />}
+      {activeStory && <StoryReaderModal story={activeStory} onClose={closeDetail} />}
 
       {/* Interactive Team Roster Modal */}
       {selectedTeamRoster && (
@@ -907,7 +973,18 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           team={selectedTeamRoster}
           seasons={seasons}
           players={players.filter((p) => p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name)}
-          onClose={() => setSelectedTeamRoster(null)}
+          onOpenPlayer={(player) => openDetail({ kind: 'player', id: player.id })}
+          onClose={closeDetail}
+        />
+      )}
+
+      {activePlayer && (
+        <PlayerDetailModal
+          player={activePlayer}
+          team={teams.find((t) => t.id === activePlayer.teamId) ?? null}
+          matches={seasonMatches}
+          players={players}
+          onClose={closeDetail}
         />
       )}
 
@@ -920,15 +997,19 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           onClose={() => setSearchOpen(false)}
           onSelectTeam={(team) => {
             setSearchOpen(false)
-            setSelectedTeamRoster(team)
+            openDetail({ kind: 'team', id: team.id })
+          }}
+          onSelectPlayer={(player) => {
+            setSearchOpen(false)
+            openDetail({ kind: 'player', id: player.id })
           }}
           onSelectMatch={(match) => {
             setSearchOpen(false)
-            setActiveMatch(match)
+            openDetail({ kind: 'match', id: match.id })
           }}
           onSelectStory={(story) => {
             setSearchOpen(false)
-            setActiveStory(story)
+            openDetail({ kind: 'story', id: story.id })
           }}
         />
       )}
@@ -1037,6 +1118,7 @@ function SearchOverlay({
   stories,
   onClose,
   onSelectTeam,
+  onSelectPlayer,
   onSelectMatch,
   onSelectStory,
 }: {
@@ -1046,6 +1128,7 @@ function SearchOverlay({
   stories: Story[]
   onClose: () => void
   onSelectTeam: (team: Team) => void
+  onSelectPlayer: (player: Player) => void
   onSelectMatch: (match: Match) => void
   onSelectStory: (story: Story) => void
 }) {
@@ -1134,7 +1217,11 @@ function SearchOverlay({
                 <div className="search-group">
                   <h4>Players</h4>
                   {results.players.map((player) => (
-                    <div key={player.id} className="search-result is-static">
+                    <button
+                      key={player.id}
+                      className="search-result"
+                      onClick={() => onSelectPlayer(player)}
+                    >
                       <span className="search-shirt">{player.shirtNumber ?? '–'}</span>
                       <span>
                         <strong>{player.fullName}</strong>
@@ -1142,7 +1229,8 @@ function SearchOverlay({
                           {player.teamName} · {player.position.slice(0, 3).toUpperCase()}
                         </small>
                       </span>
-                    </div>
+                      <ArrowRight size={16} />
+                    </button>
                   ))}
                 </div>
               )}
@@ -1301,6 +1389,60 @@ function CommentsSection() {
         </div>
       </div>
     </section>
+  )
+}
+
+function PlayerDetailModal({
+  player,
+  team,
+  matches,
+  players,
+  onClose,
+}: {
+  player: Player
+  team: Team | null
+  matches: Match[]
+  players: Player[]
+  onClose: () => void
+}) {
+  const country = getCountry(player.nationality || team?.countryCode)
+  // Derived from the event log, like every other number on the site.
+  const stats = useMemo(
+    () => computePlayerStats(players, matches).find((line) => line.playerId === player.id),
+    [players, matches, player.id],
+  )
+
+  return (
+    <Modal title={player.fullName} onClose={onClose}>
+      <div className="player-detail">
+        <div className="player-detail-head">
+          {team ? <PlayerCutoutCard player={player} team={team} /> : null}
+          <div className="player-detail-meta">
+            <h3>{player.fullName}</h3>
+            <p className="player-detail-club">
+              {team ? team.name : player.teamName} · {country.flag} {country.name}
+            </p>
+            <div className="player-detail-tags">
+              <span className={`position-tag ${player.position}`}>
+                {player.position.slice(0, 3).toUpperCase()}
+              </span>
+              <span className="season-pill">#{player.shirtNumber ?? '—'}</span>
+              {player.isCaptain ? <span className="season-pill">Captain</span> : null}
+              {player.birthYear ? <span className="season-pill">Born {player.birthYear}</span> : null}
+              {player.strongFoot ? <span className="season-pill">{player.strongFoot} footed</span> : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="player-stat-grid">
+          <div><b>{stats?.goals ?? 0}</b><span>Goals</span></div>
+          <div><b>{stats?.assists ?? 0}</b><span>Assists</span></div>
+          <div><b>{stats?.yellowCards ?? 0}</b><span>Yellow cards</span></div>
+          <div><b>{stats?.redCards ?? 0}</b><span>Red cards</span></div>
+        </div>
+        <p className="standings-note">All figures are derived from the match event log.</p>
+      </div>
+    </Modal>
   )
 }
 
@@ -1543,11 +1685,13 @@ function TeamRosterModal({
   team,
   seasons,
   players,
+  onOpenPlayer,
   onClose,
 }: {
   team: Team
   seasons: Season[]
   players: Player[]
+  onOpenPlayer: (player: Player) => void
   onClose: () => void
 }) {
   const country = getCountry(team.countryCode)
@@ -1585,7 +1729,14 @@ function TeamRosterModal({
         {players.length > 0 && (
           <div className="squad-cutout-grid">
             {players.map((player) => (
-              <PlayerCutoutCard key={player.id} player={player} team={team} />
+              <button
+                key={player.id}
+                className="cutout-link"
+                onClick={() => onOpenPlayer(player)}
+                title={`View ${player.fullName}`}
+              >
+                <PlayerCutoutCard player={player} team={team} />
+              </button>
             ))}
           </div>
         )}

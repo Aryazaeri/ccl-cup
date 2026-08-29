@@ -13,7 +13,13 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
-import { autoSeedBracket, clearBracketSlots, generateEmptyBracket } from '../lib/bracketUtils'
+import {
+  autoSeedBracket,
+  clearBracketSlots,
+  generateEmptyBracket,
+  recomputeProgression,
+  setMatchWinner,
+} from '../lib/bracketUtils'
 import type { BracketSlot, Team, TournamentBracket } from '../types'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
@@ -125,7 +131,9 @@ export function BracketCanvasModal({
       teamCountryCode: team.countryCode,
     }
 
-    setBracket(updated)
+    // Re-seeding a slot invalidates any result recorded for that match, and
+    // everything that followed from it.
+    setBracket(recomputeProgression(updated))
     setSelectedTeamId(null)
   }
 
@@ -148,7 +156,7 @@ export function BracketCanvasModal({
       slotId: match[slotKey].slotId,
       teamId: null,
     }
-    setBracket(updated)
+    setBracket(recomputeProgression(updated))
   }
 
   const handleSave = () => {
@@ -287,6 +295,7 @@ export function BracketCanvasModal({
                         <div key={match.matchId} className="bracket-matchup-node">
                           <div className="matchup-header">
                             <span>{match.label}</span>
+                            {match.winnerSlotId ? <span className="matchup-decided">Decided</span> : null}
                           </div>
 
                           {/* SLOT 1 */}
@@ -314,6 +323,30 @@ export function BracketCanvasModal({
                             onClick={() => handleSlotClick(rIdx, mIdx, 'slot2')}
                             onRemove={(e) => removeTeamFromSlot(rIdx, mIdx, 'slot2', e)}
                           />
+
+                          {/* Winner picker. Only offered once both sides are
+                              filled — a tie cannot be resolved against a bye. */}
+                          {match.slot1.teamId && match.slot2.teamId ? (
+                            <div className="matchup-winner-picker">
+                              <span>Winner</span>
+                              <button
+                                type="button"
+                                className={match.winnerSlotId === match.slot1.slotId ? 'is-winner' : ''}
+                                onClick={() => setBracket(setMatchWinner(bracket, match.matchId, match.slot1.slotId))}
+                                title="Advance this club"
+                              >
+                                {match.slot1.teamName}
+                              </button>
+                              <button
+                                type="button"
+                                className={match.winnerSlotId === match.slot2.slotId ? 'is-winner' : ''}
+                                onClick={() => setBracket(setMatchWinner(bracket, match.matchId, match.slot2.slotId))}
+                                title="Advance this club"
+                              >
+                                {match.slot2.teamName}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>

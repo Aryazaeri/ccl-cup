@@ -3767,3 +3767,27 @@ table { border-collapse: collapse; width: 100%; }
 .assist-name strong { font-size: .9rem; }
 .assist-name small { font-size: .74rem; color: var(--muted); }
 .assist-list b { font-family: var(--display); font-size: 1.2rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+
+/* --- Bracket winner picker --- */
+.matchup-decided { font-size: .6rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #14743c; background: #e0f2e6; padding: 2px 7px; border-radius: 999px; }
+.matchup-winner-picker { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); flex-wrap: wrap; }
+.matchup-winner-picker > span { font-size: .62rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.matchup-winner-picker button { flex: 1 1 auto; min-width: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: .68rem; font-weight: 700; color: #33455a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matchup-winner-picker button:hover { border-color: var(--navy); }
+.matchup-winner-picker button.is-winner { background: #14743c; border-color: #14743c; color: #fff; }
+
+/* --- Player detail page --- */
+.cutout-link { padding: 0; border: 0; background: none; text-align: left; display: block; width: 100%; }
+.cutout-link:hover .cutout-stage { box-shadow: inset 0 0 0 2px var(--green); }
+.player-detail { display: flex; flex-direction: column; gap: 20px; }
+.player-detail-head { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.player-detail-head .player-cutout { width: 150px; flex: 0 0 auto; }
+.player-detail-meta { flex: 1 1 220px; min-width: 0; }
+.player-detail-meta h3 { margin: 0 0 4px; font-family: var(--display); font-size: 1.6rem; letter-spacing: .015em; }
+.player-detail-club { margin: 0 0 12px; color: var(--muted); font-size: .9rem; }
+.player-detail-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.player-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.player-stat-grid > div { background: #fff; padding: 15px 12px; display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.player-stat-grid b { font-family: var(--display); font-size: 1.7rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+.player-stat-grid span { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+@media (max-width: 560px) { .player-stat-grid { grid-template-columns: repeat(2, 1fr); } }

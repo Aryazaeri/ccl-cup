@@ -210,6 +210,45 @@ export function AdminPanel({
    * keys rather than assumed.
    * ---------------------------------------------------------------- */
 
+  /**
+   * Moving a club to another season is allowed, but its fixtures stay behind:
+   * matches reference the club by id and carry their own season, so the club
+   * would be playing in a season it no longer belongs to. The database does
+   * not stop this — only deletes are RESTRICTed — so the panel asks first.
+   */
+  const confirmUpdateTeam = async (team: Team) => {
+    const before = teams.find((item) => item.id === team.id)
+    const movedSeason =
+      before?.seasonId != null && team.seasonId != null && before.seasonId !== team.seasonId
+
+    if (movedSeason) {
+      const fixtures = matches.filter((m) => m.home === before.name || m.away === before.name)
+      if (fixtures.length > 0) {
+        const from = seasons.find((x) => x.id === before.seasonId)
+        const to = seasons.find((x) => x.id === team.seasonId)
+        const ok = await confirm({
+          title: 'Move club to another season?',
+          body: (
+            <>
+              <strong>{team.name}</strong> already appears in {fixtures.length} fixture
+              {fixtures.length === 1 ? '' : 's'}
+              {from ? ` in ${seasonLabel(from)}` : ''}.
+            </>
+          ),
+          consequences: [
+            `Those fixtures stay in ${from ? seasonLabel(from) : 'the previous season'}`,
+            `The club moves to ${to ? seasonLabel(to) : 'the new season'} and will appear in its tables`,
+            'The results already recorded still count towards the old season’s standings',
+          ],
+          confirmLabel: 'Move club',
+        })
+        if (!ok) return
+      }
+    }
+
+    await onUpdateTeam(team)
+  }
+
   const confirmDeleteSeason = async (id: number) => {
     const season = seasons.find((item) => item.id === id)
     const label = season ? `${season.year} ${season.name}` : 'this season'
@@ -650,7 +689,7 @@ export function AdminPanel({
             setEditingTeam(null)
           }}
           onSave={async (team) => {
-            if (editingTeam) await onUpdateTeam(team)
+            if (editingTeam) await confirmUpdateTeam(team)
             else await onAddTeam(team)
           }}
           onAddPlayer={onAddPlayer}

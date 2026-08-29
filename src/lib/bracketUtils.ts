@@ -111,3 +111,118 @@ export function autoSeedBracket(
 export function clearBracketSlots(currentBracket: TournamentBracket): TournamentBracket {
   return generateEmptyBracket(currentBracket.teamCount)
 }
+
+/* ------------------------------------------------------------------ *
+ * Progression
+ *
+ * A winner in round r feeds match floor(m / 2) of round r + 1, taking slot 1
+ * when m is even and slot 2 when m is odd. The final round's winner becomes
+ * the champion.
+ *
+ * Only the first round is seeded by hand; every later slot exists purely as
+ * the output of an earlier result. So rather than patching forward from the
+ * match that changed — which leaves stale teams behind when a result is
+ * revised — the whole chain is recomputed from the recorded winners.
+ * ------------------------------------------------------------------ */
+
+function emptySlot(slotId: string): BracketSlot {
+  return { slotId, teamId: null }
+}
+
+/** Carries a winning slot's team into another slot, keeping the target's id. */
+function carry(target: BracketSlot, source: BracketSlot): BracketSlot {
+  return {
+    slotId: target.slotId,
+    teamId: source.teamId ?? null,
+    teamName: source.teamName,
+    teamLogo: source.teamLogo,
+    teamColor: source.teamColor,
+    teamCountryCode: source.teamCountryCode,
+  }
+}
+
+function slotById(match: BracketMatch, slotId: string | null | undefined): BracketSlot | null {
+  if (!slotId) return null
+  if (match.slot1.slotId === slotId) return match.slot1
+  if (match.slot2.slotId === slotId) return match.slot2
+  return null
+}
+
+/**
+ * Rebuilds every round after the first from the recorded winners.
+ *
+ * A winner pointing at a slot that is no longer occupied is dropped, which is
+ * what makes revising an earlier result clear the rounds behind it instead of
+ * stranding a team that never qualified.
+ */
+export function recomputeProgression(bracket: TournamentBracket): TournamentBracket {
+  const next: TournamentBracket = JSON.parse(JSON.stringify(bracket))
+  const rounds = next.rounds ?? []
+  if (rounds.length === 0) return next
+
+  // Later rounds are outputs, never inputs — clear them before refilling.
+  for (let r = 1; r < rounds.length; r++) {
+    for (const match of rounds[r].matches) {
+      match.slot1 = emptySlot(match.slot1.slotId)
+      match.slot2 = emptySlot(match.slot2.slotId)
+    }
+  }
+  next.championSlot = emptySlot(next.championSlot?.slotId ?? 'champion_slot')
+
+  for (let r = 0; r < rounds.length; r++) {
+    const round = rounds[r]
+
+    round.matches.forEach((match, m) => {
+      const winning = slotById(match, match.winnerSlotId)
+
+      // The result is only valid while that slot still holds the same team.
+      // If an earlier round was revised, a different club now occupies the
+      // slot and the recorded result no longer describes anything that
+      // happened, so it is dropped along with everything behind it.
+      if (!winning || winning.teamId == null || winning.teamId !== match.winnerTeamId) {
+        match.winnerSlotId = null
+        match.winnerTeamId = null
+        return
+      }
+
+      const nextRound = rounds[r + 1]
+      if (!nextRound) {
+        next.championSlot = carry(next.championSlot ?? emptySlot('champion_slot'), winning)
+        return
+      }
+
+      const target = nextRound.matches[Math.floor(m / 2)]
+      if (!target) return
+      if (m % 2 === 0) target.slot1 = carry(target.slot1, winning)
+      else target.slot2 = carry(target.slot2, winning)
+    })
+  }
+
+  return next
+}
+
+/**
+ * Records (or clears) the winner of one match and rebuilds the rounds behind
+ * it. Passing the slot that is already the winner clears it, so the same
+ * control toggles.
+ */
+export function setMatchWinner(
+  bracket: TournamentBracket,
+  matchId: string,
+  slotId: string | null,
+): TournamentBracket {
+  const next: TournamentBracket = JSON.parse(JSON.stringify(bracket))
+  for (const round of next.rounds ?? []) {
+    for (const match of round.matches) {
+      if (match.matchId !== matchId) continue
+      if (match.winnerSlotId === slotId) {
+        match.winnerSlotId = null
+        match.winnerTeamId = null
+      } else {
+        match.winnerSlotId = slotId
+        match.winnerTeamId = slotById(match, slotId)?.teamId ?? null
+      }
+    }
+  }
+  return recomputeProgression(next)
+}

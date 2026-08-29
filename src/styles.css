@@ -54,12 +54,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .team-mark { --team-color: #63e35b; width: 42px; height: 48px; flex: 0 0 auto; display: inline-grid; place-items: center; color: #fff; border: 2px solid var(--team-color); border-radius: 45% 45% 52% 52% / 28% 28% 68% 68%; font-size: .72rem; font-family: var(--display); letter-spacing: .02em; box-shadow: inset 0 -9px 0 color-mix(in srgb, var(--team-color) 22%, transparent); }
 .match-meta { min-height: 50px; border-top: 1px solid #465567; display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 25px; padding: 0 22px; font-size: .88rem; }
 .match-meta span { display: flex; align-items: center; gap: 10px; }
-.result-rail { position: absolute; top: 727px; left: 0; right: 0; height: 72px; border: 1px solid #536172; border-radius: 9px; display: grid; grid-template-columns: 1fr 1fr; background: rgba(7,21,37,.92); }
-.result-rail > div { display: grid; grid-template-columns: auto 1fr auto auto auto 1fr auto; align-items: center; gap: 18px; padding: 0 30px; }
-.result-rail > div + div { border-left: 1px solid #536172; }
-.result-rail .team-mark { width: 36px; height: 40px; }
-.result-rail em { font-style: normal; font-family: var(--display); font-size: 1.8rem; color: var(--green); }
-.result-rail .muted-score { color: #fff; }
 
 .stories { padding-block: 70px 58px; }
 .section-title-row { display: flex; justify-content: space-between; align-items: center; }
@@ -78,7 +72,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .data-band, .media-band, .public-footer { color: #fff; background: var(--navy); }
 .data-band { border-bottom: 1px solid #596675; }
-.data-grid { display: grid; grid-template-columns: 1fr 1.05fr; }
+/* minmax(0, …) rather than a bare fr. A grid column's default min-width is
+   `auto`, so it refuses to shrink below its content: the 720px standings table
+   and the seven-column fixture rows each held their own column open and pushed
+   the page wider than the viewport, which is why the site only fitted at
+   1440px and above. With a zero floor the columns compress and .table-scroll
+   can do the scrolling it was always meant to do. */
+.data-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
 .standings-wrap, .fixtures-wrap { padding: 30px 28px 26px 0; }
 .fixtures-wrap { padding-left: 28px; border-left: 1px solid #64707f; }
 .data-band h2, .media-band h2 { color: var(--green); font-size: 1.65rem; font-style: italic; }
@@ -91,6 +91,9 @@ table { border-collapse: collapse; width: 100%; }
 .standings-wrap .team-mark { width: 23px; height: 26px; font-size: .5rem; }
 .standings-wrap td:last-child { color: var(--green); font-weight: 800; }
 .fixture-row { margin-top: 12px; min-height: 61px; padding: 0 16px; border: 1px solid #687483; display: grid; grid-template-columns: auto 1fr auto 1fr auto auto auto; align-items: center; gap: 14px; }
+.fixture-row > * { min-width: 0; }
+/* Long club names may break rather than hold the column open. */
+.fixture-row .fixture-team { overflow-wrap: anywhere; }
 .fixture-row .team-mark { width: 32px; height: 36px; }
 .fixture-row b { color: var(--green); }
 .fixture-row span { font-size: .8rem; }
@@ -228,7 +231,9 @@ table { border-collapse: collapse; width: 100%; }
 
 .pipeline-cards-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, …): with a bare 1fr the three cards refuse to shrink below their
+     content and the row overflowed its panel, which clips at overflow:hidden. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 18px 20px;
 }
@@ -236,6 +241,7 @@ table { border-collapse: collapse; width: 100%; }
 .pipeline-card {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 12px;
   padding: 14px 16px;
   border-radius: 8px;
@@ -2606,9 +2612,6 @@ table { border-collapse: collapse; width: 100%; }
   .hero-photo { inset-left: 15%; width: 85%; }
   .hero-copy { width: 65%; }
   .featured-match { width: 70%; }
-  .result-rail { grid-template-columns: 1fr; height: auto; }
-  .result-rail > div { min-height: 65px; }
-  .result-rail > div + div { border-left: 0; border-top: 1px solid #536172; }
   .lead-story { grid-template-columns: 1fr; }
   .lead-story img { aspect-ratio: 16/8; }
   .data-grid { grid-template-columns: 1fr; }
@@ -3372,7 +3375,6 @@ table { border-collapse: collapse; width: 100%; }
   .match-versus .team-mark { width: 33px; height: 38px; }
   .match-meta { grid-template-columns: 1fr auto; gap: 10px; }
   .match-meta span:nth-child(2) { display: none; }
-  .result-rail { display: none; }
   .stories { padding-block: 45px; }
   .stories h2 { font-size: 2rem; }
   .section-title-row .text-link { font-size: .78rem; }
@@ -3586,6 +3588,16 @@ table { border-collapse: collapse; width: 100%; }
   .comments-grid { grid-template-columns: 1fr; }
 }
 
+/* The standings table needs 720px and the fixture rows about 420px, so the two
+   columns only coexist above roughly 1400px of content. Below that they stack:
+   a full-width table showing every column, including points, beats a squeezed
+   one that hides PTS behind a horizontal scrollbar. */
+@media (max-width: 1400px) {
+  .data-grid { grid-template-columns: minmax(0, 1fr); }
+  .standings-wrap, .fixtures-wrap { padding: 26px 0; }
+  .fixtures-wrap { border-left: 0; border-top: 1px solid #64707f; }
+}
+
 @media (max-width: 900px) {
   .public-header { grid-template-columns: 1fr auto auto auto; }
   .season-button { gap: 10px; padding: 0 12px; font-size: .84rem; }
@@ -3620,21 +3632,64 @@ table { border-collapse: collapse; width: 100%; }
 /* The flag sits behind everything, oversized and softened so it reads as a
    backdrop rather than a sticker. */
 .cutout-flag { position: absolute; inset: -18% -12%; display: grid; place-items: center; overflow: hidden; }
-.cutout-flag-glyph { font-size: 8rem; line-height: 1; filter: blur(1px) saturate(1.15); opacity: .55; transform-origin: 50% 50%; animation: flag-wave 6s ease-in-out infinite; will-change: transform; }
-.cutout-sheen { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.22) 50%, transparent 62%); transform: translateX(-120%); animation: flag-sheen 6s ease-in-out infinite; }
+
+/* The filter lives on a page-level <svg>; it has no box of its own. */
+.flag-ripple-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* The emoji is the fallback layer now, sitting under the bitmap. It only
+   becomes visible if the bitmap fails to load, so it keeps the soft blurred
+   treatment that suited a glyph. */
+.cutout-flag-glyph { position: absolute; font-size: 8rem; line-height: 1; filter: blur(1px) saturate(1.15); opacity: .55; }
+
+/* Real flag artwork: filled to the stage, rippled by the SVG turbulence
+   filter, and carried across the card by a slow wave. Opacity is high enough
+   to read as a flag — the ::after scrim on the stage is what keeps the
+   player's name legible over it, so the flag itself need not be faded out. */
+/* Sized by width and left to the parent grid to centre, rather than stretched
+   to fill: flags are landscape (3:2) and the stage is portrait (3:4), so
+   `cover` would crop away the outer halves and leave a blown-up detail of the
+   middle — a giant coat of arms rather than a recognisable flag. Showing the
+   whole flag across the width and letting the stage gradient take the space
+   above and below is what keeps the country readable at card size. */
+.cutout-flag-img {
+  width: 116%; height: auto; max-width: none; opacity: .75;
+  filter: url(#ccl-flag-ripple) saturate(1.1) contrast(1.02);
+  transform-origin: 50% 50%;
+  animation: flag-wave 9s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Fold shading. The displacement filter bends the cloth but cannot light it;
+   these travelling bands are what stop it reading as flat printed paper. */
+.cutout-folds {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    102deg,
+    rgba(0,0,0,.20) 0px, rgba(0,0,0,0) 22px,
+    rgba(255,255,255,.10) 38px, rgba(0,0,0,0) 58px
+  );
+  mix-blend-mode: overlay; opacity: .85;
+  animation: flag-folds 9s linear infinite;
+}
+
+.cutout-sheen { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.22) 50%, transparent 62%); transform: translateX(-120%); animation: flag-sheen 9s ease-in-out infinite; }
 
 @keyframes flag-wave {
-  0%, 100% { transform: skewY(0deg) scale(1.02) translateX(0); }
-  25%      { transform: skewY(-2.2deg) scale(1.05) translateX(-3px); }
-  50%      { transform: skewY(0deg) scale(1.03) translateX(0); }
-  75%      { transform: skewY(2.2deg) scale(1.05) translateX(3px); }
+  0%, 100% { transform: skewY(0deg) scale(1.06) translateX(0); }
+  25%      { transform: skewY(-1.4deg) scale(1.09) translateX(-4px); }
+  50%      { transform: skewY(0deg) scale(1.07) translateX(0); }
+  75%      { transform: skewY(1.4deg) scale(1.09) translateX(4px); }
+}
+@keyframes flag-folds {
+  from { background-position: 0 0; }
+  to   { background-position: 80px 0; }
 }
 @keyframes flag-sheen {
   0%, 55%, 100% { transform: translateX(-120%); }
   75%           { transform: translateX(120%); }
 }
 
-.cutout-stage::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,21,37,.1) 40%, rgba(7,21,37,.86) 100%); pointer-events: none; }
+.cutout-stage::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,21,37,.42) 0%, rgba(7,21,37,.16) 42%, rgba(7,21,37,.88) 100%); pointer-events: none; }
 /* Inset rather than full-bleed: a transparent PNG would let the flag through
    anyway, but an ordinary rectangular photo would hide it completely and the
    backdrop would look unimplemented. Sitting the photo on the bottom edge at
@@ -3648,8 +3703,12 @@ table { border-collapse: collapse; width: 100%; }
 .player-cutout figcaption span { font-size: .72rem; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
-  .cutout-flag-glyph, .cutout-sheen { animation: none; }
+  /* Only the movement stops. The displacement filter and the fold shading are
+     the cloth's shape, not motion, so they stay — otherwise a reduced-motion
+     visitor gets a flat rectangle instead of a flag. */
+  .cutout-flag-img, .cutout-folds, .cutout-sheen { animation: none; }
   .cutout-sheen { opacity: 0; }
+  .cutout-flag-img { transform: scale(1.06); }
 }
 
 /* --- Public media cards --- */
@@ -3808,14 +3867,18 @@ table { border-collapse: collapse; width: 100%; }
 
 /* Long season names are the other width driver on Players. */
 .season-tags-list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 220px; }
-.season-pill { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Wraps within the cap rather than ellipsising. A season name is identifying
+   data — two campaigns can share a prefix — and at 236px of content against a
+   210px cap this truncated at every width including 1920, so the name was
+   never fully readable. Wrapping costs a little row height and hides nothing. */
+.season-pill { max-width: 210px; white-space: normal; overflow-wrap: anywhere; }
 
 @media (max-width: 1599px) {
   .row-action-label { display: none; }
   .row-action { padding: 7px 9px; }
   .admin-table th, .admin-table td { padding: 0 10px; }
   .season-tags-list { max-width: 160px; }
-  .season-pill { max-width: 150px; }
+  .season-pill { max-width: 150px; white-space: normal; }
 }
 
 /* Text cells may wrap so the table can compress to its container; controls,
@@ -3823,7 +3886,6 @@ table { border-collapse: collapse; width: 100%; }
 .admin-table td { white-space: normal; }
 .admin-table th { white-space: nowrap; }
 .admin-table td .row-actions-group,
-.admin-table td .season-pill,
 .admin-table td .position-tag,
 .admin-table td .shirt-badge,
 .admin-table td .status-chip,
@@ -3840,4 +3902,137 @@ table { border-collapse: collapse; width: 100%; }
 
 @media (max-width: 1320px) {
   .admin-table th, .admin-table td { padding: 0 8px; }
+}
+
+/* ==================================================================
+   Image upload field — file to storage, or a pasted URL
+   ================================================================== */
+
+.image-upload-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; align-items: center; gap: 9px; margin-top: 6px; }
+.image-upload-preview { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid #d5dbe0; border-radius: 7px; background: #f8fafc; color: #94a3b8; overflow: hidden; }
+.image-upload-preview img { width: 100%; height: 100%; object-fit: contain; }
+.image-upload-url { min-width: 0; }
+
+.ghost-button {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  height: 36px; padding: 0 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #d5dbe0; background: #fff; color: #334155;
+  font-size: .8rem; font-weight: 700;
+}
+.ghost-button:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; }
+.ghost-button:disabled { opacity: .6; cursor: default; }
+.ghost-button.danger { color: #b91c1c; border-color: #fecaca; padding: 0 10px; }
+.ghost-button.danger:hover:not(:disabled) { background: #fef2f2; border-color: #f87171; }
+
+.field-error { color: #b91c1c; font-weight: 600; }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* ==================================================================
+   Match result cards
+   ================================================================== */
+
+.results-section { padding-top: 62px; }
+.result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-top: 16px; }
+
+.result-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.result-card:hover { border-color: #94a3b8; box-shadow: 0 6px 18px rgba(7,21,37,.09); transform: translateY(-1px); }
+
+.result-side { display: grid; justify-items: center; gap: 7px; min-width: 0; text-align: center; }
+.result-side strong { font-family: var(--display); font-size: .93rem; line-height: 1.15; color: var(--navy); overflow-wrap: anywhere; }
+.result-side small { font-size: .72rem; color: var(--muted); }
+
+.result-middle { display: grid; justify-items: center; gap: 2px; min-width: 0; padding: 0 4px; }
+.result-score { display: flex; align-items: baseline; gap: 9px; font-family: var(--display); font-size: 2rem; line-height: 1; color: var(--navy); }
+.result-score i { font-style: normal; font-size: 1.1rem; color: #94a3b8; }
+/* The winner carries the weight; the loser recedes. A live or unplayed match
+   has no winner yet, so both sides stay neutral. */
+.result-score .won { color: var(--navy); }
+.result-score .lost { color: #a8b3c1; }
+.result-meta { font-size: .7rem; color: var(--muted); white-space: nowrap; }
+
+.result-live {
+  position: absolute; top: 9px; left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .6rem; font-weight: 800; letter-spacing: .08em; color: #dc2626;
+}
+
+@media (max-width: 620px) {
+  .result-grid { grid-template-columns: 1fr; }
+  .result-score { font-size: 1.7rem; }
+}
+
+/* ==================================================================
+   Story carousel — slides in from the right, holds, fades out
+   ================================================================== */
+
+.story-carousel { margin-top: 22px; }
+
+/* The stage is as tall as its tallest slide: every slide is stacked in the
+   same grid cell, so none of them is removed from layout and the panel does
+   not jump height as the rotation advances. */
+/* Clips the incoming slide's offset. Without this the off-stage slide sits
+   38px to the right of the container and widens the whole page. */
+.story-stage { display: grid; overflow: hidden; }
+.story-slide {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateX(38px);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.22, .61, .36, 1);
+  pointer-events: none;
+  visibility: hidden;
+}
+.story-slide.is-current { opacity: 1; transform: translateX(0); pointer-events: auto; visibility: visible; }
+
+.story-slide-inner {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 58% minmax(0, 1fr);
+  gap: 45px;
+  align-items: center;
+  padding: 0 0 18px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.story-slide-inner img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; display: block; }
+.story-slide-body { min-width: 0; }
+.story-slide-body h3 { font-family: var(--display); font-size: 2.4rem; line-height: 1.05; margin: 0 0 12px; color: var(--navy); }
+.story-slide-body p { color: var(--muted); margin: 12px 0 16px; }
+
+.story-carousel-controls { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 6px 0 4px; border-bottom: 1px solid var(--line); }
+.carousel-arrow {
+  width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--navy);
+}
+.carousel-arrow:hover { border-color: var(--navy); background: #f1f5f9; }
+.carousel-dots { display: flex; gap: 7px; }
+.carousel-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: #cbd5e1; cursor: pointer; transition: background .2s ease, width .2s ease; }
+.carousel-dot.is-current { width: 22px; border-radius: 4px; background: var(--green); }
+
+@media (max-width: 900px) {
+  .story-slide-inner { grid-template-columns: 1fr; gap: 18px; }
+  .story-slide-body h3 { font-size: 1.7rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The rotation never auto-starts; make the manual swap instant too. */
+  .story-slide { transition: none; transform: none; }
+  .story-slide.is-current { transform: none; }
 }

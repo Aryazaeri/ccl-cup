@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getCountry } from '../lib/countries'
+import { flagImageUrl, getCountry } from '../lib/countries'
 import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
@@ -114,6 +114,19 @@ type Props = {
 
 const nav = ['Home', 'Fixtures', 'Standings', 'Teams', 'Scorers', 'News', 'About']
 
+/**
+ * Is this player on the books for the given season?
+ *
+ * An empty or absent list means no season history was ever recorded, which is
+ * treated as "still current" rather than "never played" — otherwise every
+ * player imported before season membership existed would vanish from the site.
+ */
+function playerActiveIn(player: Player, seasonId?: number): boolean {
+  if (seasonId == null) return true
+  const active = player.activeSeasonIds
+  return !active || active.length === 0 || active.includes(seasonId)
+}
+
 export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, onAdmin }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [route, setRoute] = useState<PublicRoute>(() => parsePublicRoute(window.location.hash))
@@ -142,34 +155,79 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     [seasonOptions, selectedSeasonId],
   )
 
-  // Teams carry a season; matches do not. Rather than show an empty site when
-  // nothing matches, fall back to the full list — a switcher that blanks the
-  // page is worse than one that shows everything.
-  const seasonTeams = useMemo(() => {
-    if (!activeSeason) return teams
-    const scoped = teams.filter((team) => team.seasonId === activeSeason.id)
-    return scoped.length > 0 ? scoped : teams
-  }, [teams, activeSeason])
+  /**
+   * Whether the club records actually carry season membership.
+   *
+   * Local/demo data predates the column, so every team has `seasonId`
+   * undefined. Filtering that strictly would blank the whole portal. When no
+   * club anywhere claims a season the dataset is effectively one season and is
+   * shown whole; the moment any club does, scoping is real and enforced.
+   */
+  const seasonScopingAvailable = useMemo(() => teams.some((team) => team.seasonId != null), [teams])
 
-  // Fixtures now carry their own season id, so this is a direct filter rather
-  // than the club-membership inference it used to be. Fixtures predating the
-  // column have no seasonId; those fall back to club membership so they are
-  // not silently dropped from the site.
+  /**
+   * Clubs registered for the selected season.
+   *
+   * This deliberately does NOT fall back to the full list when a season has no
+   * clubs. It used to, and the effect was that picking an empty season showed
+   * every club in the database as though they were all competing in it — the
+   * switcher looked like it did nothing. An empty season is a real state and
+   * the sections below say so.
+   */
+  const seasonTeams = useMemo(() => {
+    if (!activeSeason || !seasonScopingAvailable) return teams
+    return teams.filter((team) => team.seasonId === activeSeason.id)
+  }, [teams, activeSeason, seasonScopingAvailable])
+
+  // Fixtures carry their own season id. Ones predating the column fall back to
+  // club membership so they are not dropped, but nothing falls back to "show
+  // everything" — see seasonTeams.
   const seasonMatches = useMemo(() => {
-    if (!activeSeason) return matches
+    if (!activeSeason || !seasonScopingAvailable) return matches
     const names = new Set(seasonTeams.map((team) => team.name))
-    const scoped = matches.filter((match) =>
+    return matches.filter((match) =>
       match.seasonId != null ? match.seasonId === activeSeason.id : names.has(match.home) || names.has(match.away),
     )
-    return scoped.length > 0 || matches.length === 0 ? scoped : matches
-  }, [matches, seasonTeams, activeSeason])
+  }, [matches, seasonTeams, activeSeason, seasonScopingAvailable])
 
+  /**
+   * Squad members for the selected season.
+   *
+   * Two conditions, not one. The club must be in the season, and the player
+   * must be active in it — `activeSeasonIds` is what makes a roster
+   * historically valid, so a player who left before this season is excluded
+   * from its scorer lists even though their club still competes. A player with
+   * no season list at all has no history recorded and is treated as current.
+   */
   const seasonPlayers = useMemo(() => {
-    if (seasonTeams.length === teams.length) return players
+    if (!activeSeason || !seasonScopingAvailable) return players
     const ids = new Set(seasonTeams.map((team) => team.id))
     const names = new Set(seasonTeams.map((team) => team.name))
-    return players.filter((player) => ids.has(player.teamId) || names.has(player.teamName))
-  }, [players, seasonTeams, teams.length])
+    return players.filter((player) => {
+      const inSeasonClub = ids.has(player.teamId) || (!!player.teamName && names.has(player.teamName))
+      return inSeasonClub && playerActiveIn(player, activeSeason.id)
+    })
+  }, [players, seasonTeams, activeSeason, seasonScopingAvailable])
+
+  /**
+   * Editorial, media and sponsors for the season.
+   *
+   * A null `seasonId` here means "not tied to a season" — an explainer about
+   * the competition, an evergreen partner — so those stay visible whichever
+   * season is selected. Only rows that name a different season drop out.
+   */
+  const seasonStories = useMemo(
+    () => (activeSeason ? stories.filter((s) => s.seasonId == null || s.seasonId === activeSeason.id) : stories),
+    [stories, activeSeason],
+  )
+  const seasonMedia = useMemo(
+    () => (activeSeason ? media.filter((m) => m.seasonId == null || m.seasonId === activeSeason.id) : media),
+    [media, activeSeason],
+  )
+  const seasonSponsors = useMemo(
+    () => (activeSeason ? sponsors.filter((x) => x.seasonId == null || x.seasonId === activeSeason.id) : sponsors),
+    [sponsors, activeSeason],
+  )
 
   // A live match outranks the next scheduled one — if something is being
   // played right now, that is the thing to lead with.
@@ -277,10 +335,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     setMenuOpen(false)
   }
 
-  const leadStory = stories[0]
+  const leadStory = seasonStories[0]
 
   return (
     <div className="public-site">
+      <FlagRippleDefs />
       <section className="hero" id="home">
         <img className="hero-photo" src="/assets/ccl-hero.png" alt="A floodlit CCL Cup football match" />
         <div className="hero-fade" />
@@ -456,90 +515,62 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             </div>
           )}
 
-          {/* Results rail */}
-          <div className="result-rail" id="results">
-            {completedOrLiveMatches.length > 0 ? (
-              completedOrLiveMatches.map((m) => {
-                const homeTeam = teamLookup.get(m.home)
-                const awayTeam = teamLookup.get(m.away)
-                return (
-                  <div
-                    key={m.id}
-                    className="rail-item clickable"
-                    onClick={() => openDetail({ kind: 'match', id: m.id })}
-                    title="Click to view match summary & timeline"
-                  >
-                    <TeamMark
-                      name={m.home}
-                      color={homeTeam?.color}
-                      secondaryColor={homeTeam?.secondaryColor}
-                      logoUrl={homeTeam?.logoUrl}
-                      size="sm"
-                    />
-                    <strong>{m.home}</strong>
-                    <em>{m.homeScore ?? 0}</em>
-                    <span>—</span>
-                    <em className="muted-score">{m.awayScore ?? 0}</em>
-                    <strong>{m.away}</strong>
-                    <TeamMark
-                      name={m.away}
-                      color={awayTeam?.color}
-                      secondaryColor={awayTeam?.secondaryColor}
-                      logoUrl={awayTeam?.logoUrl}
-                      size="sm"
-                    />
-                  </div>
-                )
-              })
-            ) : (
-              <div>
-                <span>First matches kicking off this week</span>
-              </div>
-            )}
-          </div>
         </div>
       </section>
 
       <main>
+        {/* Results — real match cards rather than the old fixed-height rail */}
+        <section className="results-section content-width" id="results">
+          <div className="section-title-row">
+            <h2>Results</h2>
+            <span className="hint-label">
+              {completedOrLiveMatches.length} played{activeSeason ? ` · ${activeSeason.year} ${activeSeason.name}` : ''}
+            </span>
+          </div>
+
+          {completedOrLiveMatches.length === 0 ? (
+            <p className="standings-note">No matches have been played in this season yet.</p>
+          ) : (
+            <div className="result-grid">
+              {completedOrLiveMatches.map((m) => (
+                <MatchResultCard
+                  key={m.id}
+                  match={m}
+                  homeTeam={teamLookup.get(m.home)}
+                  awayTeam={teamLookup.get(m.away)}
+                  onOpen={() => openDetail({ kind: 'match', id: m.id })}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* News & stories */}
         <section className="stories content-width" id="news">
           <div className="section-title-row">
             <h2>Latest stories</h2>
-            <button className="text-link" onClick={() => leadStory && openDetail({ kind: 'story', id: leadStory.id })}>
-              Read top story <ArrowRight size={18} />
-            </button>
+            {leadStory && (
+              <button className="text-link" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
+                Read top story <ArrowRight size={18} />
+              </button>
+            )}
           </div>
 
-          {leadStory && (
-            <article
-              className="lead-story clickable-card"
-              onClick={() => openDetail({ kind: 'story', id: leadStory.id })}
-              role="button"
-              tabIndex={0}
-            >
-              <img
-                src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'}
-                alt={leadStory.title}
-              />
-              <div>
-                <h3>{leadStory.title}</h3>
-                <div className="story-meta">
-                  {leadStory.publishedAt ?? '15 AUG 2026'}{' '}
-                  <span>{leadStory.category?.replace('_', ' ').toUpperCase() ?? 'MATCH REPORT'}</span>
-                </div>
-                <p>
-                  {leadStory.summary ??
-                    'In a tense, end-to-end clash, a stoppage-time strike sealed all three points and a place in the last eight.'}
-                </p>
-                <span className="read-more-text">
-                  Read full article <ArrowRight size={16} />
-                </span>
-              </div>
-            </article>
+          {seasonStories.length === 0 && (
+            <p className="standings-note">
+              No stories have been published for this season yet.
+            </p>
+          )}
+
+          {seasonStories.length > 0 && (
+            <StoryCarousel
+              stories={seasonStories}
+              onOpen={(story) => openDetail({ kind: 'story', id: story.id })}
+            />
           )}
 
           <div className="story-list">
-            {stories.slice(1, 4).map((story, index) => (
+            {seasonStories.slice(1, 4).map((story, index) => (
               <button
                 className="story-row"
                 key={story.id}
@@ -642,7 +673,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               </div>
               </div>
               ))}
-              {!hasResults ? (
+              {seasonTeams.length === 0 ? (
+                <p className="standings-note">
+                  No clubs are registered for this season, so there is no table to show yet.
+                </p>
+              ) : !hasResults ? (
                 <p className="standings-note">
                   No results have been entered yet — the table updates automatically as matches are completed.
                 </p>
@@ -651,6 +686,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
             <div className="fixtures-wrap" id="fixtures">
               <h2>Next fixtures</h2>
+              {upcomingFixtures.length === 0 && (
+                <p className="standings-note">No fixtures are scheduled for this season yet.</p>
+              )}
               <div className="fixtures-list">
                 {upcomingFixtures.map((match) => {
                   const homeTeam = teamLookup.get(match.home)
@@ -812,16 +850,16 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         </section>
 
         {/* Media Highlights */}
-        {media.length > 0 && (
+        {seasonMedia.length > 0 && (
           <section className="media-section content-width" id="media">
             <div className="section-title-row">
               <h2>Match highlights &amp; media</h2>
               <span className="hint-label">
-                {media.length} item{media.length === 1 ? '' : 's'}
+                {seasonMedia.length} item{seasonMedia.length === 1 ? '' : 's'}
               </span>
             </div>
             <div className="media-rail">
-              {media.slice(0, 6).map((asset) => {
+              {seasonMedia.slice(0, 6).map((asset) => {
                 const body = (
                   <>
                     {asset.thumbnailUrl ? (
@@ -902,12 +940,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <CommentsSection />
 
         {/* Sponsors */}
-        {sponsors.length > 0 && (
+        {seasonSponsors.length > 0 && (
           <section className="sponsors-section" id="sponsors">
             <div className="content-width">
               <h2 className="sponsors-title">Our partners</h2>
               <div className="sponsor-rail">
-                {sponsors.map((sponsor) => {
+                {seasonSponsors.map((sponsor) => {
                   const mark = sponsor.logoUrl ? (
                     <img src={sponsor.logoUrl} alt={sponsor.name} loading="lazy" />
                   ) : (
@@ -972,7 +1010,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <TeamRosterModal
           team={selectedTeamRoster}
           seasons={seasons}
-          players={players.filter((p) => p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name)}
+          players={players.filter(
+            (p) =>
+              (p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name) &&
+              playerActiveIn(p, selectedTeamRoster.seasonId ?? activeSeason?.id),
+          )}
           onOpenPlayer={(player) => openDetail({ kind: 'player', id: player.id })}
           onClose={closeDetail}
         />
@@ -1641,11 +1683,260 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
  * The player's own nationality wins over the club's country — a squad is
  * routinely mixed, and the flag is meant to say where the player is from.
  *
- * The flag is a large emoji glyph rather than an image: it needs no asset
- * pipeline and is already the flag source used everywhere else on the site.
- * It waves via a transform on a wrapper, with a sheen sweeping across it, and
- * both stop under `prefers-reduced-motion`.
+ * The backdrop is real flag artwork, not the emoji glyph it used to be. An
+ * emoji skewed a couple of degrees reads as a wobbling sticker, never as
+ * cloth, which is why the reference site (eurobusinesscup.com) ships painted
+ * waving-flag bitmaps instead. We get the same fabric look without sourcing a
+ * file per country: a flat flag bitmap displaced by an SVG turbulence filter,
+ * with fold shading and a sheen over the top.
+ *
+ * If the bitmap cannot load — offline, CDN blocked — the emoji glyph is still
+ * rendered underneath it, so the card degrades to what it looked like before
+ * rather than to an empty box.
  * ------------------------------------------------------------------ */
+
+/**
+ * The turbulence + displacement pair that bends the flat bitmap into folds,
+ * defined once for the whole page and referenced by id from every card.
+ *
+ * The fold geometry is deliberately static. Animating `baseFrequency` would
+ * make the folds travel, but Blink does not animate filter-primitive
+ * attributes over SMIL — the timeline runs and `beginElement()` succeeds while
+ * `baseFrequency.animVal` never moves, so in Chrome it would be dead markup.
+ * Static displacement is also what the reference site does: its waving flags
+ * are painted bitmaps, with no flag animation anywhere in its stylesheet.
+ *
+ * The motion instead comes from CSS, which is reliable everywhere: the cloth
+ * sways (`flag-wave`) and the fold shading travels across it (`flag-folds`).
+ */
+function FlagRippleDefs() {
+  return (
+    <svg className="flag-ripple-defs" aria-hidden="true" focusable="false">
+      <filter id="ccl-flag-ripple" x="-12%" y="-12%" width="124%" height="124%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.011 0.026" numOctaves="3" seed="7" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="17" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
+  )
+}
+
+function FlagBackdrop({ country }: { country: ReturnType<typeof getCountry> }) {
+  const src = flagImageUrl(country.code)
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <span className="cutout-flag" aria-hidden="true">
+      <span className="cutout-flag-glyph">{country.flag}</span>
+      {src && !failed ? (
+        <img
+          className="cutout-flag-img"
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+      <span className="cutout-folds" />
+      <span className="cutout-sheen" />
+    </span>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Story carousel
+ *
+ * Each story slides in from the right, holds, then fades out as the next one
+ * arrives. It advances on its own but stops the moment someone is interacting
+ * with it — hovering, or tabbing to a control inside it — because a panel that
+ * changes under the cursor while you are reading is worse than no rotation.
+ *
+ * Under `prefers-reduced-motion` the rotation does not start at all and the
+ * slide becomes a plain swap: the arrows and dots still work, so nothing is
+ * unreachable, it simply never moves by itself.
+ * ------------------------------------------------------------------ */
+
+const STORY_DWELL_MS = 6000
+
+function StoryCarousel({ stories, onOpen }: { stories: Story[]; onOpen: (story: Story) => void }) {
+  const [index, setIndex] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const count = stories.length
+
+  // Read once on mount rather than at module load, so it reflects the visitor's
+  // setting rather than whoever's machine built the bundle.
+  const [reducedMotion, setReducedMotion] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  // A story removed by a season switch must not leave the index past the end.
+  useEffect(() => { setIndex((i) => (i >= count ? 0 : i)) }, [count])
+
+  useEffect(() => {
+    if (paused || reducedMotion || count < 2) return
+    const timer = window.setTimeout(() => setIndex((i) => (i + 1) % count), STORY_DWELL_MS)
+    return () => window.clearTimeout(timer)
+  }, [index, paused, reducedMotion, count])
+
+  if (count === 0) return null
+  const go = (next: number) => setIndex(((next % count) + count) % count)
+
+  return (
+    <div
+      className="story-carousel"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+      aria-roledescription="carousel"
+      aria-label="Latest stories"
+    >
+      <div className="story-stage">
+        {stories.map((story, i) => (
+          <article
+            key={story.id}
+            className={`story-slide${i === index ? ' is-current' : ''}`}
+            aria-hidden={i !== index}
+            // Only the visible slide is reachable by keyboard or screen reader.
+            inert={i !== index}
+          >
+            <button className="story-slide-inner" onClick={() => onOpen(story)}>
+              <img
+                src={story.coverImageUrl || '/assets/ccl-celebration.png'}
+                alt=""
+                loading={i === 0 ? 'eager' : 'lazy'}
+              />
+              <div className="story-slide-body">
+                <h3>{story.title}</h3>
+                <div className="story-meta">
+                  {story.publishedAt ?? ''}
+                  {story.category && <span>{story.category.replace('_', ' ').toUpperCase()}</span>}
+                </div>
+                {story.summary && <p>{story.summary}</p>}
+                <span className="read-more-text">
+                  Read full article <ArrowRight size={16} />
+                </span>
+              </div>
+            </button>
+          </article>
+        ))}
+      </div>
+
+      {count > 1 && (
+        <div className="story-carousel-controls">
+          <button className="carousel-arrow" onClick={() => go(index - 1)} aria-label="Previous story">
+            <ArrowRight size={16} style={{ transform: 'rotate(180deg)' }} />
+          </button>
+          <div className="carousel-dots" role="tablist">
+            {stories.map((story, i) => (
+              <button
+                key={story.id}
+                role="tab"
+                aria-selected={i === index}
+                aria-label={`Story ${i + 1} of ${count}`}
+                className={`carousel-dot${i === index ? ' is-current' : ''}`}
+                onClick={() => go(i)}
+              />
+            ))}
+          </div>
+          <button className="carousel-arrow" onClick={() => go(index + 1)} aria-label="Next story">
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Match result card
+ *
+ * Replaces a rail that was absolutely positioned at a hard-coded `top: 727px`
+ * with a fixed 72px height, and held every played match in that one strip —
+ * so with a full fixture list most results were simply clipped out of sight,
+ * and below 700px the whole thing was display:none.
+ *
+ * The shape follows the reference site: each side shows crest, club and
+ * country, the score sits between them with the winner carrying the emphasis,
+ * and kick-off and venue sit underneath.
+ * ------------------------------------------------------------------ */
+
+function MatchResultCard({
+  match,
+  homeTeam,
+  awayTeam,
+  onOpen,
+}: {
+  match: Match
+  homeTeam?: Team
+  awayTeam?: Team
+  onOpen: () => void
+}) {
+  const home = match.homeScore ?? 0
+  const away = match.awayScore ?? 0
+  const played = match.homeScore != null && match.awayScore != null
+  const live = match.matchStatus === 'live'
+
+  // Only a finished match has a winner to emphasise; a live score is still moving.
+  const homeWon = played && !live && home > away
+  const awayWon = played && !live && away > home
+
+  return (
+    <article
+      className="result-card clickable"
+      onClick={onOpen}
+      title={`${match.home} v ${match.away} — view the match summary`}
+    >
+      {live && (
+        <span className="result-live">
+          <span className="live-dot" /> LIVE
+        </span>
+      )}
+
+      <div className="result-side">
+        <TeamMark
+          name={match.home}
+          color={homeTeam?.color}
+          secondaryColor={homeTeam?.secondaryColor}
+          logoUrl={homeTeam?.logoUrl}
+          size="md"
+        />
+        <strong>{match.home}</strong>
+        {homeTeam && <small>{getCountry(homeTeam.countryCode).name}</small>}
+      </div>
+
+      <div className="result-middle">
+        <div className="result-score">
+          <span className={homeWon ? 'won' : awayWon ? 'lost' : ''}>{played ? home : '–'}</span>
+          <i>–</i>
+          <span className={awayWon ? 'won' : homeWon ? 'lost' : ''}>{played ? away : '–'}</span>
+        </div>
+        <small className="result-meta">
+          {match.date}
+          {match.time ? ` · ${match.time}` : ''}
+        </small>
+        {match.venue && <small className="result-meta">{match.venue}</small>}
+      </div>
+
+      <div className="result-side away">
+        <TeamMark
+          name={match.away}
+          color={awayTeam?.color}
+          secondaryColor={awayTeam?.secondaryColor}
+          logoUrl={awayTeam?.logoUrl}
+          size="md"
+        />
+        <strong>{match.away}</strong>
+        {awayTeam && <small>{getCountry(awayTeam.countryCode).name}</small>}
+      </div>
+    </article>
+  )
+}
 
 function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
   const country = getCountry(player.nationality || team.countryCode)
@@ -1660,10 +1951,7 @@ function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
   return (
     <figure className="player-cutout" style={{ ['--club-color' as string]: team.color }}>
       <div className="cutout-stage">
-        <span className="cutout-flag" aria-hidden="true">
-          <span className="cutout-flag-glyph">{country.flag}</span>
-          <span className="cutout-sheen" />
-        </span>
+        <FlagBackdrop country={country} />
 
         {player.photoUrl ? (
           <img className="cutout-photo" src={player.photoUrl} alt={player.fullName} loading="lazy" />

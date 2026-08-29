@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCountry } from '../lib/countries'
-import { computeGroupStandings, computeTopScorers } from '../lib/standingsUtils'
+import { computeGroupStandings, computeTopAssists, computeTopScorers } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
@@ -178,6 +178,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   // Same engine the admin panel uses, so the two can never disagree.
   const topScorers = useMemo(
     () => computeTopScorers(seasonPlayers, seasonMatches, 10),
+    [seasonPlayers, seasonMatches],
+  )
+
+  const topAssists = useMemo(
+    () => computeTopAssists(seasonPlayers, seasonMatches, 5),
     [seasonPlayers, seasonMatches],
   )
 
@@ -720,6 +725,23 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 )
               })}
             </ol>
+          )}
+
+          {topAssists.length > 0 && (
+            <div className="assists-block">
+              <h3 className="assists-title">Most assists</h3>
+              <ol className="assist-list">
+                {topAssists.map((line) => (
+                  <li key={`${line.playerName}-${line.teamName}`}>
+                    <span className="assist-name">
+                      <strong>{line.playerName}</strong>
+                      <small>{line.teamName}</small>
+                    </span>
+                    <b>{line.assists}</b>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </section>
 
@@ -1388,6 +1410,7 @@ function MatchDetailsModal({
                   <span className="event-min">{ev.minute}'</span>
                   <span className="event-symbol">
                     {ev.eventType === 'goal' && '⚽'}
+                    {ev.eventType === 'assist' && '🅰️'}
                     {ev.eventType === 'penalty_scored' && '🎯'}
                     {ev.eventType === 'yellow_card' && '🟨'}
                     {ev.eventType === 'red_card' && '🟥'}

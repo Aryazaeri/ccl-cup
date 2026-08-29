@@ -451,9 +451,9 @@ function countableEvents(matches: Match[]): MatchEvent[] {
  * table (as an unlinked row) rather than being dropped — otherwise a typo in
  * the event log silently loses goals.
  *
- * Note: assists cannot currently be derived, because the event log has no
- * assist event type. Stored `player.assists` is carried through until one is
- * added.
+ * Assists are derived from 'assist' events, added in migration 202608290002.
+ * The stored `player.assists` column is no longer read: like goals, it was a
+ * number nobody could check against what happened in a match.
  */
 export function computePlayerStats(players: Player[], matches: Match[]): PlayerStatLine[] {
   const lines = new Map<string, PlayerStatLine>()
@@ -468,7 +468,7 @@ export function computePlayerStats(players: Player[], matches: Match[]): PlayerS
       teamName: player.teamName,
       teamId: player.teamId,
       goals: 0,
-      assists: player.assists ?? 0,
+      assists: 0,
       yellowCards: 0,
       redCards: 0,
       appearances: 0,
@@ -493,6 +493,7 @@ export function computePlayerStats(players: Player[], matches: Match[]): PlayerS
     }
 
     if (GOAL_EVENTS.includes(event.eventType)) line.goals += 1
+    else if (event.eventType === 'assist') line.assists += 1
     else if (event.eventType === 'yellow_card') line.yellowCards += 1
     else if (event.eventType === 'red_card') line.redCards += 1
   }
@@ -515,6 +516,18 @@ export function computeTopScorers(
         a.yellowCards - b.yellowCards ||
         a.playerName.localeCompare(b.playerName, 'tr'),
     )
+    .slice(0, limit)
+}
+
+/** Top assist providers, highest first. Ties broken by name. */
+export function computeTopAssists(
+  players: Player[],
+  matches: Match[],
+  limit = 10,
+): PlayerStatLine[] {
+  return computePlayerStats(players, matches)
+    .filter((line) => line.assists > 0)
+    .sort((a, b) => b.assists - a.assists || a.playerName.localeCompare(b.playerName, 'tr'))
     .slice(0, limit)
 }
 

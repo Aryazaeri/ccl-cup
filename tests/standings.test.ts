@@ -346,6 +346,28 @@ section('10. Player statistics from the event log')
 
   const emre = stats.find((s) => s.playerName === 'Emre Yılmaz')!
   check('stored goals are NOT trusted — derived value is 0', emre.goals, 0)
+  check('stored assists are NOT trusted either — derived value is 0', emre.assists, 0)
+}
+{
+  // Assists derive from the event log, added in migration 202608290002.
+  teamSeq = 0; matchSeq = 0
+  const match = played('A', 2, 'B', 0)
+  match.events = [
+    { id: 1, matchId: match.id, teamName: 'A', playerName: 'Striker', eventType: 'goal', minute: 10 },
+    { id: 2, matchId: match.id, teamName: 'A', playerName: 'Maker', eventType: 'assist', minute: 10 },
+    { id: 3, matchId: match.id, teamName: 'A', playerName: 'Striker', eventType: 'goal', minute: 55 },
+    { id: 4, matchId: match.id, teamName: 'A', playerName: 'Maker', eventType: 'assist', minute: 55 },
+  ]
+  const stats = computePlayerStats([], [match])
+  const maker = stats.find((s) => s.playerName === 'Maker')!
+  const striker = stats.find((s) => s.playerName === 'Striker')!
+  check('assists counted from events', maker.assists, 2)
+  check('an assist is not counted as a goal', maker.goals, 0)
+  check('scorer keeps goals and gains no assists', [striker.goals, striker.assists], [2, 0])
+
+  const uncounted = { ...match, matchStatus: 'scheduled' as const }
+  const none = computePlayerStats([], [uncounted]).find((s) => s.playerName === 'Maker')
+  check('assists on a non-completed match are ignored', none?.assists ?? 0, 0)
 }
 {
   teamSeq = 0; matchSeq = 0

@@ -174,7 +174,14 @@ export type AdminUser = {
 
 
 
-export type MatchEventType = 'goal' | 'yellow_card' | 'red_card' | 'substitution' | 'penalty_scored'
+/** Mirrors match_events_event_type_check. */
+export type MatchEventType =
+  | 'goal'
+  | 'assist'
+  | 'yellow_card'
+  | 'red_card'
+  | 'substitution'
+  | 'penalty_scored'
 
 export type MatchEvent = {
   id: number

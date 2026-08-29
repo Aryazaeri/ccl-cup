@@ -762,6 +762,13 @@ function Overview({
   onOpenModal: (value: 'season' | 'match' | 'team' | 'player' | 'story') => void
   onManageMatchScore: (match: Match) => void
 }) {
+  // Completed fixtures, most recent first. `matches` arrives ordered by
+  // kickoff ascending, so the tail is the newest.
+  const recentResults = useMemo(
+    () => matches.filter((m) => m.matchStatus === 'completed' && m.homeScore != null).slice(-4).reverse(),
+    [matches],
+  )
+
   const metrics = [
     { icon: Trophy, value: seasonsCount, label: 'Seasons & Tournaments' },
     { icon: Shield, value: teams.length, label: 'Clubs & Teams' },
@@ -790,24 +797,37 @@ function Overview({
         </section>
 
         <section className="admin-panel activity">
-          <h2>Recent tournament activity</h2>
-          {[
-            ['Nova FC updated squad roster (5 players active for 2026)', 'by Arya Zaeri', '30m ago'],
-            ['Match result: Marmara 2 - 1 Bosphorus recorded', 'by Arya Zaeri', '1h ago'],
-            ['Squad updated: Atlas SK registered Volkan Karaca (#10)', 'by Maya Patel', '3h ago'],
-            ['Quarter-final story published', 'by Liam O’Connor', '5h ago'],
-          ].map(([title, by, ago]) => (
-            <div className="activity-row" key={title}>
-              <span className="activity-icon">
-                <FileText />
-              </span>
-              <div>
-                <strong>{title}</strong>
-                <span>{by}</span>
+          <h2>Latest results</h2>
+          {/*
+            This panel used to be four hardcoded rows with invented staff names
+            and fabricated timestamps. There is no audit trail to build a real
+            activity feed from — audit_logs exists but nothing writes to it — so
+            it now shows the most recent actual results instead of inventing
+            history. Attribution returns when audit logging does.
+          */}
+          {recentResults.length === 0 ? (
+            <p className="empty-text">
+              No results recorded yet. Completed fixtures appear here as scores are entered.
+            </p>
+          ) : (
+            recentResults.map((match) => (
+              <div className="activity-row" key={match.id}>
+                <span className="activity-icon">
+                  <FileText />
+                </span>
+                <div>
+                  <strong>
+                    {match.home} {match.homeScore} &ndash; {match.awayScore} {match.away}
+                  </strong>
+                  <span>
+                    {match.stage}
+                    {match.venue && match.venue !== '—' ? ` · ${match.venue}` : ''}
+                  </span>
+                </div>
+                <time>{match.date}</time>
               </div>
-              <time>{ago}</time>
-            </div>
-          ))}
+            ))
+          )}
         </section>
       </div>
 
@@ -3125,7 +3145,7 @@ function TeamModal({
   // Form State for Live Preview
   const [name, setName] = useState(initial?.name ?? '')
   const [shortName, setShortName] = useState(initial?.shortName ?? '')
-  const [countryCode, setCountryCode] = useState(initial?.countryCode ?? 'TR')
+  const [countryCode, setCountryCode] = useState(initial?.countryCode ?? '')
   const [logoUrl, setLogoUrl] = useState(initial?.logoUrl ?? '')
   const [color, setColor] = useState(initial?.color ?? '#63e35b')
   const [secondaryColor, setSecondaryColor] = useState(initial?.secondaryColor ?? '#071525')
@@ -3192,6 +3212,20 @@ function TeamModal({
     setSaveError('')
     const data = new FormData(event.currentTarget)
     try {
+      // "Takım crud logo bayrak must" — the brief requires both, and neither
+      // was enforced. The country select cannot be left empty, and a club
+      // cannot be saved without a crest.
+      if (!countryCode) {
+        setSaveError('Choose the club\u2019s country — the flag is required.')
+        setSaving(false)
+        return
+      }
+      if (!String(data.get('logoUrl')).trim()) {
+        setSaveError('Add a club crest — upload one or pick from the preset gallery.')
+        setSaving(false)
+        return
+      }
+
       await onSave({
         id: initial?.id ?? Date.now(),
         seasonId: selectedSeasonId,
@@ -3385,7 +3419,14 @@ function TeamModal({
 
               <label className="span-2">
                 Country / Flag *
-                <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+                <select
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select a country…
+                  </option>
                   {COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.flag} {c.name} ({c.code})
@@ -4404,6 +4445,7 @@ function MatchEventsModal({
               Event Type
               <select name="eventType">
                 <option value="goal">⚽ Goal</option>
+                <option value="assist">🅰️ Assist</option>
                 <option value="penalty_scored">🎯 Penalty Scored</option>
                 <option value="yellow_card">🟨 Yellow Card</option>
                 <option value="red_card">🟥 Red Card</option>

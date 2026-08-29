@@ -368,7 +368,11 @@ async function loadRemote(): Promise<TournamentData> {
     summary: s.summary ? String(s.summary) : undefined,
     body: s.body ? String(s.body) : undefined,
     category: (s.category as Story['category']) || 'news',
-    status: s.status === 'published' ? 'Published' : 'Draft',
+    // articles_status_check allows draft | scheduled | published | archived.
+    // Collapsing everything that is not 'published' to 'Draft' made the
+    // Scheduled state unreachable even though the form offered it.
+    status:
+      s.status === 'published' ? 'Published' : s.status === 'scheduled' ? 'Scheduled' : 'Draft',
     publishedAt: s.published_at
       ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(
           new Date(String(s.published_at)),
@@ -793,6 +797,16 @@ export const tournamentRepository = {
       return saveLocal({ ...data, stories: data.stories.map((s) => (s.id === story.id ? story : s)) })
     }
     const status = story.status.toLowerCase()
+
+    // articles_published_date requires published_at when status is 'published'.
+    // Keep the original timestamp: overwriting it meant editing a published
+    // story silently changed the date it went out.
+    const { data: existing } = await supabase
+      .from('articles')
+      .select('published_at')
+      .eq('id', story.id)
+      .maybeSingle()
+
     const { error } = await supabase
       .from('articles')
       .update({
@@ -803,7 +817,8 @@ export const tournamentRepository = {
         category: story.category ?? 'news',
         status,
         cover_image_url: story.coverImageUrl ?? null,
-        published_at: status === 'published' ? new Date().toISOString() : null,
+        published_at:
+          status === 'published' ? (existing?.published_at ?? new Date().toISOString()) : null,
       })
       .eq('id', story.id)
     if (error) throw error

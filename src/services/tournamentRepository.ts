@@ -370,9 +370,17 @@ async function loadRemote(): Promise<TournamentData> {
     category: (s.category as Story['category']) || 'news',
     // articles_status_check allows draft | scheduled | published | archived.
     // Collapsing everything that is not 'published' to 'Draft' made the
-    // Scheduled state unreachable even though the form offered it.
+    // Scheduled state unreachable even though the form offered it; archived
+    // was the same trap one step behind, showing as Draft and inviting an
+    // editor to republish something deliberately retired.
     status:
-      s.status === 'published' ? 'Published' : s.status === 'scheduled' ? 'Scheduled' : 'Draft',
+      s.status === 'published'
+        ? 'Published'
+        : s.status === 'scheduled'
+        ? 'Scheduled'
+        : s.status === 'archived'
+        ? 'Archived'
+        : 'Draft',
     publishedAt: s.published_at
       ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(
           new Date(String(s.published_at)),

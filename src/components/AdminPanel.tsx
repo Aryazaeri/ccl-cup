@@ -4776,7 +4776,11 @@ function StoryForm({
             <option value="Published">Published</option>
             <option value="Draft">Draft</option>
             <option value="Scheduled">Scheduled</option>
+            <option value="Archived">Archived</option>
           </select>
+          <small className="field-hint">
+            Archived keeps a story on record without publishing it. It is hidden from the public site.
+          </small>
         </label>
 
         <label className="span-2">

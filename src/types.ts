@@ -185,7 +185,15 @@ export type AdminUser = {
 
 
 
-/** Mirrors match_events_event_type_check. */
+/**
+ * The subset of match_events_event_type_check the client offers.
+ *
+ * The constraint also permits 'own_goal' and 'penalty_missed'. Neither is
+ * recorded or rendered yet, so they are deliberately absent here rather than
+ * declared and unhandled — but a row carrying one can still arrive from SQL,
+ * which is why the timeline falls back to a neutral marker instead of drawing
+ * nothing.
+ */
 export type MatchEventType =
   | 'goal'
   | 'assist'
@@ -256,7 +264,8 @@ export type Story = {
   summary?: string
   body?: string
   category?: StoryCategory
-  status: 'Published' | 'Draft' | 'Scheduled'
+  /** Mirrors articles_status_check: draft | scheduled | published | archived. */
+  status: 'Published' | 'Draft' | 'Scheduled' | 'Archived'
   coverImageUrl?: string
   publishedAt?: string
 }

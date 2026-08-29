@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCountry } from '../lib/countries'
 import { computeGroupStandings, computeTopScorers } from '../lib/standingsUtils'
+import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
 import { Brand } from './Brand'
@@ -119,13 +120,18 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     return scoped.length > 0 ? scoped : teams
   }, [teams, activeSeason])
 
-  // A fixture belongs to the season its clubs play in. This is derived rather
-  // than stored because `matches` has no season column yet.
+  // Fixtures now carry their own season id, so this is a direct filter rather
+  // than the club-membership inference it used to be. Fixtures predating the
+  // column have no seasonId; those fall back to club membership so they are
+  // not silently dropped from the site.
   const seasonMatches = useMemo(() => {
-    if (seasonTeams.length === teams.length) return matches
+    if (!activeSeason) return matches
     const names = new Set(seasonTeams.map((team) => team.name))
-    return matches.filter((match) => names.has(match.home) || names.has(match.away))
-  }, [matches, seasonTeams, teams.length])
+    const scoped = matches.filter((match) =>
+      match.seasonId != null ? match.seasonId === activeSeason.id : names.has(match.home) || names.has(match.away),
+    )
+    return scoped.length > 0 || matches.length === 0 ? scoped : matches
+  }, [matches, seasonTeams, activeSeason])
 
   const seasonPlayers = useMemo(() => {
     if (seasonTeams.length === teams.length) return players
@@ -877,6 +883,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       {selectedTeamRoster && (
         <TeamRosterModal
           team={selectedTeamRoster}
+          seasons={seasons}
           players={players.filter((p) => p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name)}
           onClose={() => setSelectedTeamRoster(null)}
         />
@@ -1511,10 +1518,12 @@ function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
 
 function TeamRosterModal({
   team,
+  seasons,
   players,
   onClose,
 }: {
   team: Team
+  seasons: Season[]
   players: Player[]
   onClose: () => void
 }) {
@@ -1593,8 +1602,8 @@ function TeamRosterModal({
                     </td>
                     <td>
                       <div className="season-tags-list">
-                        {(p.activeSeasons && p.activeSeasons.length > 0 ? p.activeSeasons : ['2026 - Summer League']).map((s) => (
-                          <span key={s} className="season-pill">{s}</span>
+                        {seasonLabelsForIds(p.activeSeasonIds, seasons).map((label) => (
+                          <span key={label} className="season-pill">{label}</span>
                         ))}
                       </div>
                     </td>

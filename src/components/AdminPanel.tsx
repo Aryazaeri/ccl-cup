@@ -50,6 +50,7 @@ import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyLeague } from '../lib/leagueUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
+import { defaultSeasonId, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
   mediaRepository,
   moderationRepository,
@@ -57,7 +58,6 @@ import {
   usersRepository,
 } from '../services/tournamentRepository'
 import {
-  AVAILABLE_SEASONS,
   HOST_CITIES,
   type AdminSection,
   type Match,
@@ -488,6 +488,7 @@ export function AdminPanel({
             <PlayersManager
               players={players}
               teams={teams}
+              seasons={seasons}
               onDelete={confirmDeletePlayer}
               onEdit={(player) => {
                 setEditingPlayer(player)
@@ -503,6 +504,7 @@ export function AdminPanel({
           {activeSection === 'Matches' && (
             <MatchesManager
               matches={matches}
+              seasons={seasons}
               onDelete={confirmDeleteMatch}
               onEditMatch={(match) => setEditingMatch(match)}
               onManageEvents={(match) => setEventMatch(match)}
@@ -614,7 +616,9 @@ export function AdminPanel({
         />
       )}
 
-      {modal === 'match' && <MatchForm teams={teams} onClose={() => setModal(null)} onSave={onAddMatch} />}
+      {modal === 'match' && (
+        <MatchForm teams={teams} seasons={seasons} onClose={() => setModal(null)} onSave={onAddMatch} />
+      )}
 
       {editingMatch && (
         <MatchScoreModal
@@ -1750,12 +1754,14 @@ function TeamsManager({
 function PlayersManager({
   players,
   teams,
+  seasons,
   onDelete,
   onEdit,
   onAdd,
 }: {
   players: Player[]
   teams: Team[]
+  seasons: Season[]
   onDelete: (id: number) => Promise<void>
   onEdit: (player: Player) => void
   onAdd: () => void
@@ -1868,11 +1874,8 @@ function PlayersManager({
                 </td>
                 <td>
                   <div className="season-tags-list">
-                    {(player.activeSeasons && player.activeSeasons.length > 0
-                      ? player.activeSeasons
-                      : ['2026 - Summer League']
-                    ).map((s) => (
-                      <span key={s} className="season-pill">{s}</span>
+                    {seasonLabelsForIds(player.activeSeasonIds, seasons).map((label) => (
+                      <span key={label} className="season-pill">{label}</span>
                     ))}
                   </div>
                 </td>
@@ -1909,23 +1912,29 @@ function PlayersManager({
 
 function MatchesManager({
   matches,
+  seasons,
   onDelete,
   onEditMatch,
   onManageEvents,
   onAdd,
 }: {
   matches: Match[]
+  seasons: Season[]
   onDelete: (id: number) => Promise<void>
   onEditMatch: (match: Match) => void
   onManageEvents: (match: Match) => void
   onAdd: () => void
 }) {
   const [filterStatus, setFilterStatus] = useState<string>('All')
+  const [filterSeason, setFilterSeason] = useState<string>('All')
 
   const filtered = useMemo(() => {
-    if (filterStatus === 'All') return matches
-    return matches.filter((m) => m.matchStatus === filterStatus.toLowerCase())
-  }, [matches, filterStatus])
+    return matches.filter((m) => {
+      if (filterStatus !== 'All' && m.matchStatus !== filterStatus.toLowerCase()) return false
+      if (filterSeason !== 'All' && String(m.seasonId ?? '') !== filterSeason) return false
+      return true
+    })
+  }, [matches, filterStatus, filterSeason])
 
   return (
     <section className="manager-view">
@@ -1949,6 +1958,17 @@ function MatchesManager({
             <option value="Live">Live</option>
             <option value="Completed">Completed</option>
             <option value="Postponed">Postponed</option>
+          </select>
+        </div>
+        <div className="filter-group">
+          <span>Season:</span>
+          <select value={filterSeason} onChange={(e) => setFilterSeason(e.target.value)}>
+            <option value="All">All Seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={String(season.id)}>
+                {seasonLabel(season)}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -3121,11 +3141,6 @@ function TeamModal({
     return seasons.find((s) => s.id === selectedSeasonId) ?? seasons[0]
   }, [seasons, selectedSeasonId])
 
-  const availableSeasonNames = useMemo(() => {
-    if (seasons.length === 0) return ['2026 - Summer League']
-    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
-  }, [seasons])
-
   // Get dynamic available groups for the selected season
   const availableGroups = useMemo(() => {
     if (!currentSelectedSeason) return ['Group A', 'Group B', 'Group C', 'Group D']
@@ -3149,9 +3164,7 @@ function TeamModal({
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newPlayerNumber, setNewPlayerNumber] = useState('')
   const [newPlayerPosition, setNewPlayerPosition] = useState<PlayerPosition>('forward')
-  const [newPlayerSeason, setNewPlayerSeason] = useState<string>(() => {
-    return availableSeasonNames[0] || '2026 - Summer League'
-  })
+  const [newPlayerSeasonId, setNewPlayerSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
   const [addingPlayer, setAddingPlayer] = useState(false)
 
   // Filter pool players: players that are NOT already in this team
@@ -3261,7 +3274,7 @@ function TeamModal({
         shirtNumber: newPlayerNumber ? Number(newPlayerNumber) : undefined,
         position: newPlayerPosition,
         nationality: countryCode,
-        activeSeasons: [newPlayerSeason],
+        activeSeasonIds: newPlayerSeasonId ? [newPlayerSeasonId] : [],
       })
       setNewPlayerName('')
       setNewPlayerNumber('')
@@ -3595,12 +3608,12 @@ function TeamModal({
                       <option value="forward">⚡ Forward</option>
                     </select>
                     <select
-                      value={newPlayerSeason}
-                      onChange={(e) => setNewPlayerSeason(e.target.value)}
+                      value={newPlayerSeasonId ?? ''}
+                      onChange={(e) => setNewPlayerSeasonId(Number(e.target.value) || undefined)}
                     >
-                      {availableSeasonNames.map((s) => (
-                        <option key={s} value={s}>
-                          📅 {s}
+                      {seasons.map((season) => (
+                        <option key={season.id} value={season.id}>
+                          📅 {seasonLabel(season)}
                         </option>
                       ))}
                     </select>
@@ -3642,7 +3655,10 @@ function TeamModal({
                               <span className="shirt-badge">{p.shirtNumber ?? '-'}</span>
                               <div className="squad-player-meta">
                                 <strong>{p.fullName}</strong>
-                                <span>Active Seasons: {(p.activeSeasons ?? ['2026 - Summer League']).join(', ')}</span>
+                                <span>
+                                  Active Seasons:{' '}
+                                  {seasonLabelsForIds(p.activeSeasonIds, seasons).join(', ') || '—'}
+                                </span>
                               </div>
                               <button
                                 type="button"
@@ -3720,12 +3736,7 @@ function QuickSquadModal({
   const [poolSearch, setPoolSearch] = useState('')
   const [assigning, setAssigning] = useState(false)
 
-  const availableSeasonNames = useMemo(() => {
-    if (seasons.length === 0) return ['2026 - Summer League']
-    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
-  }, [seasons])
-
-  const [selectedSeason, setSelectedSeason] = useState<string>(() => availableSeasonNames[0] || '2026 - Summer League')
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
   const [adding, setAdding] = useState(false)
 
   const availablePoolPlayers = useMemo(() => {
@@ -3785,7 +3796,7 @@ function QuickSquadModal({
         shirtNumber: number ? Number(number) : undefined,
         position: pos,
         nationality: team.countryCode,
-        activeSeasons: [selectedSeason],
+        activeSeasonIds: selectedSeasonId ? [selectedSeasonId] : [],
       })
       setName('')
       setNumber('')
@@ -3924,10 +3935,13 @@ function QuickSquadModal({
                 <option value="midfielder">⚙️ Midfielder</option>
                 <option value="forward">⚡ Forward</option>
               </select>
-              <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)}>
-                {availableSeasonNames.map((s) => (
-                  <option key={s} value={s}>
-                    📅 {s}
+              <select
+                value={selectedSeasonId ?? ''}
+                onChange={(e) => setSelectedSeasonId(Number(e.target.value) || undefined)}
+              >
+                {seasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    📅 {seasonLabel(season)}
                   </option>
                 ))}
               </select>
@@ -3972,8 +3986,8 @@ function QuickSquadModal({
                   </td>
                   <td>
                     <div className="season-tags-list">
-                      {(p.activeSeasons && p.activeSeasons.length > 0 ? p.activeSeasons : ['2026 - Summer League']).map((s) => (
-                        <span key={s} className="season-pill">{s}</span>
+                      {seasonLabelsForIds(p.activeSeasonIds, seasons).map((label) => (
+                        <span key={label} className="season-pill">{label}</span>
                       ))}
                     </div>
                   </td>
@@ -4013,14 +4027,26 @@ function QuickSquadModal({
 
 function MatchForm({
   teams,
+  seasons,
   onClose,
   onSave,
 }: {
   teams: Team[]
+  seasons: Season[]
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {
-  const names = useMemo(() => teams.map((team) => team.name), [teams])
+  const [seasonId, setSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
+
+  // Only clubs registered for the chosen season can contest its fixtures.
+  // Clubs with no season recorded stay selectable rather than disappearing.
+  const names = useMemo(
+    () =>
+      teams
+        .filter((team) => !seasonId || team.seasonId == null || team.seasonId === seasonId)
+        .map((team) => team.name),
+    [teams, seasonId],
+  )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -4039,6 +4065,7 @@ function MatchForm({
     try {
       await onSave({
         id: Date.now(),
+        seasonId,
         home,
         away,
         stage: String(data.get('stage')),
@@ -4062,6 +4089,24 @@ function MatchForm({
   return (
     <Modal title="Create match fixture" onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
+        <label className="span-2">
+          Season *
+          <select
+            name="seasonId"
+            value={seasonId ?? ''}
+            onChange={(event) => setSeasonId(Number(event.target.value) || undefined)}
+            required
+          >
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">
+            Fixtures are recorded against a season, so concurrent competitions stay separate.
+          </small>
+        </label>
         <label>
           Home team
           <select name="home" defaultValue={names[0]}>
@@ -4405,21 +4450,23 @@ function PlayerForm({
   const [saveError, setSaveError] = useState('')
 
   const availableSeasonNames = useMemo(() => {
-    if (seasons.length === 0) return ['2026 - Summer League']
-    return seasons.map((s) => `${s.year} - ${s.fullName || s.name || s.city}`)
+    return seasons
   }, [seasons])
 
-  const [selectedSeasons, setSelectedSeasons] = useState<string[]>(() => {
-    if (initial?.activeSeasons && initial.activeSeasons.length > 0) return initial.activeSeasons
-    return [availableSeasonNames[0] || '2026 - Summer League']
+  // A player must belong to at least one season, so the last chip cannot be
+  // unselected.
+  const [selectedSeasonIds, setSelectedSeasonIds] = useState<number[]>(() => {
+    if (initial?.activeSeasonIds && initial.activeSeasonIds.length > 0) return initial.activeSeasonIds
+    const fallback = defaultSeasonId(seasons)
+    return fallback ? [fallback] : []
   })
 
-  const toggleSeason = (season: string) => {
-    if (selectedSeasons.includes(season)) {
-      if (selectedSeasons.length === 1) return
-      setSelectedSeasons(selectedSeasons.filter((s) => s !== season))
+  const toggleSeason = (seasonId: number) => {
+    if (selectedSeasonIds.includes(seasonId)) {
+      if (selectedSeasonIds.length === 1) return
+      setSelectedSeasonIds(selectedSeasonIds.filter((id) => id !== seasonId))
     } else {
-      setSelectedSeasons([...selectedSeasons, season])
+      setSelectedSeasonIds([...selectedSeasonIds, seasonId])
     }
   }
 
@@ -4444,7 +4491,7 @@ function PlayerForm({
         nationality: String(data.get('nationality')) || foundTeam?.countryCode || 'TR',
         photoUrl: String(data.get('photoUrl')).trim() || undefined,
         isCaptain: data.get('isCaptain') === 'on',
-        activeSeasons: selectedSeasons,
+        activeSeasonIds: selectedSeasonIds,
       })
       onClose()
     } catch (reason: unknown) {
@@ -4545,15 +4592,15 @@ function PlayerForm({
           <span className="field-label">Played Seasons of Year * (Select all that apply)</span>
           <div className="season-picker-chips">
             {availableSeasonNames.map((season) => {
-              const isSelected = selectedSeasons.includes(season)
+              const isSelected = selectedSeasonIds.includes(season.id)
               return (
                 <button
-                  key={season}
+                  key={season.id}
                   type="button"
                   className={`season-chip-btn ${isSelected ? 'active' : ''}`}
-                  onClick={() => toggleSeason(season)}
+                  onClick={() => toggleSeason(season.id)}
                 >
-                  {isSelected ? '✓ ' : '+ '} {season}
+                  {isSelected ? '✓ ' : '+ '} {seasonLabel(season)}
                 </button>
               )
             })}

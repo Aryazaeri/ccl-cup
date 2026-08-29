@@ -316,7 +316,7 @@ async function loadRemote(): Promise<TournamentData> {
     birthYear: p.birth_date ? new Date(String(p.birth_date)).getFullYear() : undefined,
     nationality: p.nationality ? String(p.nationality) : 'TR',
     isCaptain: Boolean(p.is_captain),
-    activeSeasons: Array.isArray(p.active_seasons) ? (p.active_seasons as string[]) : ['2026 - Summer League'],
+    activeSeasonIds: Array.isArray(p.active_season_ids) ? (p.active_season_ids as unknown[]).map(Number) : [],
     goals: Number(p.goals || 0),
     assists: Number(p.assists || 0),
     photoUrl: p.photo_url ? String(p.photo_url) : undefined,
@@ -354,6 +354,7 @@ async function loadRemote(): Promise<TournamentData> {
       awayScore: m.away_score != null ? Number(m.away_score) : undefined,
       // Draft fixtures must stay off the public site, so the database's
       // publication_status drives this rather than a hardcoded value.
+      seasonId: m.season_id != null ? Number(m.season_id) : undefined,
       status: m.publication_status === 'published' ? 'Scheduled' : 'Draft',
       referee: m.referee_name ? String(m.referee_name) : undefined,
       streamUrl: m.stream_url ? String(m.stream_url) : undefined,
@@ -573,7 +574,7 @@ export const tournamentRepository = {
       strong_foot: player.strongFoot ?? 'right',
       nationality: player.nationality ?? 'TR',
       is_captain: player.isCaptain ?? false,
-      active_seasons: player.activeSeasons ?? ['2026 - Summer League'],
+      active_season_ids: player.activeSeasonIds ?? [],
       goals: player.goals ?? 0,
       assists: player.assists ?? 0,
       photo_url: player.photoUrl ?? null,
@@ -597,7 +598,7 @@ export const tournamentRepository = {
         strong_foot: player.strongFoot ?? 'right',
         nationality: player.nationality ?? 'TR',
         is_captain: player.isCaptain ?? false,
-        active_seasons: player.activeSeasons ?? ['2026 - Summer League'],
+        active_season_ids: player.activeSeasonIds ?? [],
         goals: player.goals ?? 0,
         assists: player.assists ?? 0,
         photo_url: player.photoUrl ?? null,
@@ -623,7 +624,9 @@ export const tournamentRepository = {
       const data = loadLocal()
       return saveLocal({ ...data, matches: [match, ...data.matches] })
     }
-    const seasonId = await currentSeasonId()
+    // The form now carries a season; currentSeasonId is only the fallback for
+    // callers that predate the field.
+    const seasonId = match.seasonId ?? (await currentSeasonId())
     if (!seasonId) throw new Error('No season exists yet. Create a season before adding fixtures.')
 
     const { data: teams } = await supabase.from('teams').select('id, name')
@@ -667,7 +670,7 @@ export const tournamentRepository = {
       .eq('id', match.id)
       .maybeSingle()
 
-    const seasonId = existing?.season_id ? Number(existing.season_id) : await currentSeasonId()
+    const seasonId = match.seasonId ?? (existing?.season_id ? Number(existing.season_id) : await currentSeasonId())
     const { data: season } = seasonId
       ? await supabase.from('seasons').select('year, city').eq('id', seasonId).maybeSingle()
       : { data: null }
@@ -677,6 +680,7 @@ export const tournamentRepository = {
     const { error } = await supabase
       .from('matches')
       .update({
+        season_id: seasonId,
         stage: toDbStage(match.stage),
         group_id: await resolveGroupId(match.stage, seasonId),
         venue_id: venueId,

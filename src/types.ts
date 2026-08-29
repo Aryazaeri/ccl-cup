@@ -110,14 +110,6 @@ export type Team = {
   isActive?: boolean
 }
 
-export const AVAILABLE_SEASONS = [
-  '2026 - Summer League',
-  '2026 - CCL Cup',
-  '2025 - CCL Cup',
-  '2025 - Winter League',
-  '2024 - CCL Cup',
-]
-
 export type PlayerPosition = 'goalkeeper' | 'defender' | 'midfielder' | 'forward'
 export type StrongFoot = 'left' | 'right' | 'both'
 
@@ -132,7 +124,14 @@ export type Player = {
   birthYear?: number
   nationality?: string
   isCaptain?: boolean
-  activeSeasons?: string[]
+  /**
+   * Seasons this player is registered for, by season id.
+   *
+   * Replaces the previous string[] of display labels, which broke whenever a
+   * season was renamed — the live data had already drifted into two different
+   * labels for the same season.
+   */
+  activeSeasonIds?: number[]
   goals?: number
   assists?: number
   /**
@@ -202,6 +201,8 @@ export type Match = {
   referee?: string
   homeScore?: number
   awayScore?: number
+  /** The season this fixture belongs to. Stored, not inferred from its clubs. */
+  seasonId?: number
   matchStatus: MatchStatus
   status: 'Scheduled' | 'Draft'
   /**

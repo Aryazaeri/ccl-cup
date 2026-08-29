@@ -1609,7 +1609,7 @@ function TeamsManager({
       {/* TABLE VIEW */}
       {viewMode === 'table' ? (
         <div className="admin-panel">
-          <table className="admin-table">
+          <table className="admin-table teams-table">
             <thead>
               <tr>
                 <th>CLUB & CREST</th>
@@ -1689,7 +1689,7 @@ function TeamsManager({
                             onClick={() => onOpenSquadCanvas(team)}
                             title="Görsel Saha ve Kadro Tuvali (Tactical Formation & Pitch Canvas)"
                           >
-                            <Sparkles size={14} /> Saha Tuvali
+                            <Sparkles size={14} /> <span className="row-action-label">Saha Tuvali</span>
                           </button>
                         )}
                         <button
@@ -1697,10 +1697,15 @@ function TeamsManager({
                           onClick={() => onManageSquad(team)}
                           title="Manage Squad Roster"
                         >
-                          <Users size={14} /> Squad ({squad.length})
+                          <Users size={14} /> <span className="row-action-label">Squad</span> ({squad.length})
                         </button>
-                        <button className="row-action" onClick={() => onEdit(team)} title="Edit Club Details">
-                          <Edit2 size={14} /> Edit
+                        <button
+                          className="row-action"
+                          onClick={() => onEdit(team)}
+                          title="Edit Club Details"
+                          aria-label="Edit club details"
+                        >
+                          <Edit2 size={14} /> <span className="row-action-label">Edit</span>
                         </button>
                         <button className="row-action danger" onClick={() => void onDelete(team.id)} title="Delete Club">
                           <Trash2 size={14} />
@@ -1945,8 +1950,13 @@ function PlayersManager({
                 </td>
                 <td>
                   <div className="row-actions-group">
-                    <button className="row-action" onClick={() => onEdit(player)}>
-                      <Edit2 size={14} /> Edit
+                    <button
+                      className="row-action"
+                      onClick={() => onEdit(player)}
+                      title="Edit player"
+                      aria-label="Edit player"
+                    >
+                      <Edit2 size={14} /> <span className="row-action-label">Edit</span>
                     </button>
                     <button className="row-action danger" onClick={() => void onDelete(player.id)}>
                       <Trash2 size={14} />
@@ -3129,12 +3139,13 @@ function MatchTable({
                   <div className="row-actions-group">
                     {onEdit && (
                       <button className="row-action" onClick={() => onEdit(match)} title="Edit score & details">
-                        <Edit2 size={14} /> Score / Edit
+                        <Edit2 size={14} /> <span className="row-action-label">Score / Edit</span>
                       </button>
                     )}
                     {onManageEvents && (
                       <button className="row-action secondary" onClick={() => onManageEvents(match)} title="Manage events">
-                        <Flame size={14} /> Events ({match.events?.length ?? 0})
+                        <Flame size={14} /> <span className="row-action-label">Events</span> (
+                        {match.events?.length ?? 0})
                       </button>
                     )}
                     {onDelete && (

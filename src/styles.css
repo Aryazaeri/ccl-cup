@@ -3791,3 +3791,53 @@ table { border-collapse: collapse; width: 100%; }
 .player-stat-grid b { font-family: var(--display); font-size: 1.7rem; color: var(--navy); font-variant-numeric: tabular-nums; }
 .player-stat-grid span { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: center; }
 @media (max-width: 560px) { .player-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ==================================================================
+   Admin density
+   ------------------------------------------------------------------
+   Every cell is `white-space: nowrap`, so table width is driven purely
+   by content. The Teams action column alone ran to 350px of labelled
+   buttons, pushing the table to 1301px — wider than its container on
+   any screen below about 1680px, which is why the panel needed zooming
+   out to read. Labels collapse to their icons (each button keeps a
+   title and aria-label) and the cells lose some padding, which brings
+   every table inside a 1280px window.
+   ================================================================== */
+.admin-table th, .admin-table td { height: 64px; padding: 0 12px; }
+.admin-table th { height: 48px; }
+
+/* Long season names are the other width driver on Players. */
+.season-tags-list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 220px; }
+.season-pill { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1599px) {
+  .row-action-label { display: none; }
+  .row-action { padding: 7px 9px; }
+  .admin-table th, .admin-table td { padding: 0 10px; }
+  .season-tags-list { max-width: 160px; }
+  .season-pill { max-width: 150px; }
+}
+
+/* Text cells may wrap so the table can compress to its container; controls,
+   badges and figures stay on one line where wrapping would look broken. */
+.admin-table td { white-space: normal; }
+.admin-table th { white-space: nowrap; }
+.admin-table td .row-actions-group,
+.admin-table td .season-pill,
+.admin-table td .position-tag,
+.admin-table td .shirt-badge,
+.admin-table td .status-chip,
+.admin-table td .squad-badge,
+.admin-table td time { white-space: nowrap; }
+
+/* Below ~1400px the Teams table still cannot fit seven columns. Standings is
+   the one to drop: points and goal difference have their own module, and this
+   column only ever repeated it. Everything unique to a club stays visible. */
+@media (max-width: 1399px) {
+  .teams-table th:nth-child(6),
+  .teams-table td:nth-child(6) { display: none; }
+}
+
+@media (max-width: 1320px) {
+  .admin-table th, .admin-table td { padding: 0 8px; }
+}

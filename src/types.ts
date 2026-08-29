@@ -164,6 +164,8 @@ export type MediaAsset = {
   durationSeconds?: number
   isPublished: boolean
   createdAt?: string
+  /** Which season this asset belongs to; undefined means it is not season-specific. */
+  seasonId?: number
 }
 
 export type Sponsor = {
@@ -173,6 +175,8 @@ export type Sponsor = {
   websiteUrl?: string
   displayOrder: number
   isActive: boolean
+  /** Which season this sponsor backs; undefined means it runs across seasons. */
+  seasonId?: number
 }
 
 /** A staff account as the Users module sees it. */
@@ -268,6 +272,8 @@ export type Story = {
   status: 'Published' | 'Draft' | 'Scheduled' | 'Archived'
   coverImageUrl?: string
   publishedAt?: string
+  /** Which season this story belongs to; undefined means it is not season-specific. */
+  seasonId?: number
 }
 
 export type View = 'site' | 'admin'

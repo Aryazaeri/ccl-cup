@@ -45,6 +45,8 @@ import {
 } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
+import { ensureUploaded } from '../lib/assetStorage'
+import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyLeague } from '../lib/leagueUtils'
@@ -573,9 +575,9 @@ export function AdminPanel({
 
           {activeSection === 'Comments' && <CommentsManager />}
 
-          {activeSection === 'Media' && <MediaManager media={media} onRefresh={onRefresh} />}
+          {activeSection === 'Media' && <MediaManager media={media} seasons={seasons} onRefresh={onRefresh} />}
 
-          {activeSection === 'Sponsors' && <SponsorsManager sponsors={sponsors} onRefresh={onRefresh} />}
+          {activeSection === 'Sponsors' && <SponsorsManager sponsors={sponsors} seasons={seasons} onRefresh={onRefresh} />}
 
           {activeSection === 'Users' && <UsersManager currentRole={profile.role} />}
         </div>
@@ -764,6 +766,7 @@ export function AdminPanel({
       {modal === 'story' && (
         <StoryForm
           initial={editingStory}
+          seasons={seasons}
           onClose={() => {
             setModal(null)
             setEditingStory(null)
@@ -2536,7 +2539,7 @@ const emptyMedia = (): MediaAsset => ({
   isPublished: false,
 })
 
-function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: () => Promise<void> }) {
+function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seasons: Season[]; onRefresh: () => Promise<void> }) {
   const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<MediaAsset | null>(null)
   const [error, setError] = useState('')
@@ -2636,6 +2639,7 @@ function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: ()
       {editing ? (
         <MediaModal
           initial={editing}
+          seasons={seasons}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null)
@@ -2650,10 +2654,12 @@ function MediaManager({ media, onRefresh }: { media: MediaAsset[]; onRefresh: ()
 
 function MediaModal({
   initial,
+  seasons,
   onClose,
   onSaved,
 }: {
   initial: MediaAsset
+  seasons: Season[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -2674,6 +2680,7 @@ function MediaModal({
         thumbnailUrl: String(data.get('thumbnailUrl')).trim() || undefined,
         durationSeconds: data.get('duration') ? Number(data.get('duration')) : undefined,
         isPublished: data.get('isPublished') === 'on',
+        seasonId: Number(data.get('seasonId')) || undefined,
       })
       await onSaved()
     } catch (reason) {
@@ -2689,6 +2696,18 @@ function MediaModal({
         <label className="span-2">
           Title *
           <input name="title" defaultValue={initial.title} placeholder="e.g. Matchday 3 highlights" required />
+        </label>
+        <label className="span-2">
+          Season
+          <select name="seasonId" defaultValue={initial.seasonId ?? ''}>
+            <option value="">All seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">Shown in the public media rail only while this season is selected.</small>
         </label>
         <label>
           Type
@@ -2718,11 +2737,13 @@ function MediaModal({
             storage bucket configured yet.
           </small>
         </label>
-        <label className="span-2">
-          Thumbnail image URL
-          <input name="thumbnailUrl" type="url" defaultValue={initial.thumbnailUrl ?? ''} placeholder="https://…/thumb.jpg" />
-          <small className="field-hint">Shown as the card image on the public site.</small>
-        </label>
+        <ImageUploadField
+          name="thumbnailUrl"
+          label="Thumbnail image"
+          folder="media"
+          defaultValue={initial.thumbnailUrl ?? ''}
+          hint="Shown as the card image on the public site."
+        />
         <label className="checkbox-label span-2">
           <input type="checkbox" name="isPublished" defaultChecked={initial.isPublished} />
           Publish to the public site
@@ -2747,7 +2768,7 @@ const emptySponsor = (order: number): Sponsor => ({
   isActive: true,
 })
 
-function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefresh: () => Promise<void> }) {
+function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]; seasons: Season[]; onRefresh: () => Promise<void> }) {
   const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<Sponsor | null>(null)
   const [error, setError] = useState('')
@@ -2869,6 +2890,7 @@ function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefre
       {editing ? (
         <SponsorModal
           initial={editing}
+          seasons={seasons}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null)
@@ -2883,10 +2905,12 @@ function SponsorsManager({ sponsors, onRefresh }: { sponsors: Sponsor[]; onRefre
 
 function SponsorModal({
   initial,
+  seasons,
   onClose,
   onSaved,
 }: {
   initial: Sponsor
+  seasons: Season[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -2906,6 +2930,7 @@ function SponsorModal({
         websiteUrl: String(data.get('websiteUrl')).trim() || undefined,
         displayOrder: Number(data.get('displayOrder') || 0),
         isActive: data.get('isActive') === 'on',
+        seasonId: Number(data.get('seasonId')) || undefined,
       })
       await onSaved()
     } catch (reason) {
@@ -2922,10 +2947,29 @@ function SponsorModal({
           Sponsor name *
           <input name="name" defaultValue={initial.name} placeholder="e.g. Anadolu Enerji" required />
         </label>
+
         <label className="span-2">
-          Logo URL
-          <input name="logoUrl" type="url" defaultValue={initial.logoUrl ?? ''} placeholder="https://…/logo.svg" />
+          Season
+          <select name="seasonId" defaultValue={initial.seasonId ?? ''}>
+            <option value="">All seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">
+            Shown in the public sponsor rail only while this season is selected. Leave on
+            &ldquo;All seasons&rdquo; for a partner backing the whole competition.
+          </small>
         </label>
+        <ImageUploadField
+          name="logoUrl"
+          label="Logo"
+          folder="sponsors"
+          defaultValue={initial.logoUrl ?? ''}
+          hint="Shown in the public sponsor rail."
+        />
         <label>
           Website
           <input name="websiteUrl" type="url" defaultValue={initial.websiteUrl ?? ''} placeholder="https://example.com" />
@@ -3276,6 +3320,11 @@ function TeamModal({
         return
       }
 
+      // The picker hands back a base64 data URL for a freshly chosen file.
+      // Push the bytes into storage and keep only the URL — a crest inlined
+      // into the row would be re-sent to every visitor of the public site.
+      const storedLogoUrl = await ensureUploaded(String(data.get('logoUrl')) || undefined, 'logos')
+
       await onSave({
         id: initial?.id ?? Date.now(),
         seasonId: selectedSeasonId,
@@ -3283,7 +3332,7 @@ function TeamModal({
         shortName: String(data.get('shortName')).toUpperCase() || undefined,
         countryCode,
         countryName: selectedCountry.name,
-        logoUrl: String(data.get('logoUrl')) || undefined,
+        logoUrl: storedLogoUrl,
         color: String(data.get('color')),
         secondaryColor: String(data.get('secondaryColor')) || undefined,
         managerName: String(data.get('managerName')) || undefined,
@@ -4666,19 +4715,13 @@ function PlayerForm({
           <small className="field-hint">Drives the flag behind this player's roster card.</small>
         </label>
 
-        <label className="span-2">
-          Cutout Photo URL
-          <input
-            name="photoUrl"
-            type="url"
-            defaultValue={initial?.photoUrl ?? ''}
-            placeholder="https://…/player-cutout.png"
-          />
-          <small className="field-hint">
-            A background-free PNG works best — it is layered over the player's flag on roster cards.
-          </small>
-        </label>
-
+        <ImageUploadField
+          name="photoUrl"
+          label="Cutout Photo"
+          folder="players"
+          defaultValue={initial?.photoUrl ?? ''}
+          hint="A background-free PNG works best — it is layered over the player's flag on roster cards."
+        />
         {/* PLAYED SEASONS PICKER */}
         <div className="span-2 season-picker-field">
           <span className="field-label">Played Seasons of Year * (Select all that apply)</span>
@@ -4717,10 +4760,12 @@ function PlayerForm({
 
 function StoryForm({
   initial,
+  seasons,
   onClose,
   onSave,
 }: {
   initial: Story | null
+  seasons: Season[]
   onClose: () => void
   onSave: (story: Story) => Promise<void>
 }) {
@@ -4741,6 +4786,7 @@ function StoryForm({
         body: String(data.get('body')) || undefined,
         coverImageUrl: String(data.get('coverImageUrl')) || undefined,
         status: String(data.get('status')) as Story['status'],
+        seasonId: Number(data.get('seasonId')) || undefined,
         publishedAt: initial?.publishedAt ?? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
       })
       onClose()
@@ -4757,6 +4803,22 @@ function StoryForm({
         <label className="span-2">
           Headline / Title *
           <input name="title" defaultValue={initial?.title ?? ''} placeholder="Enter article headline" required />
+        </label>
+
+        <label className="span-2">
+          Season
+          <select name="seasonId" defaultValue={initial?.seasonId ?? ''}>
+            <option value="">All seasons — not tied to one campaign</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">
+            The public newsroom shows this story only while its season is selected. Leave on
+            &ldquo;All seasons&rdquo; for evergreen pieces such as rules or venue guides.
+          </small>
         </label>
 
         <label>
@@ -4783,14 +4845,13 @@ function StoryForm({
           </small>
         </label>
 
-        <label className="span-2">
-          Cover Image URL (Optional)
-          <input
-            name="coverImageUrl"
-            defaultValue={initial?.coverImageUrl ?? ''}
-            placeholder="e.g. /assets/ccl-celebration.png"
-          />
-        </label>
+        <ImageUploadField
+          name="coverImageUrl"
+          label="Cover Image"
+          folder="articles"
+          defaultValue={initial?.coverImageUrl ?? ''}
+          hint="Used as the hero image on the newsroom carousel and the article page."
+        />
 
         <label className="span-2">
           Summary (Brief teaser)

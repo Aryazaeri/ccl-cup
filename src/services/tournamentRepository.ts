@@ -66,6 +66,22 @@ function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
+/**
+ * Stand every other season down from being the current one.
+ *
+ * `is_current` is meant to name a single season — it is what the public
+ * switcher opens on. Nothing enforced that, so seasons accumulated the flag
+ * and "the current season" stopped meaning anything. Called before a season
+ * claims the flag, so the claim is exclusive.
+ */
+async function clearCurrentSeason(exceptId?: number): Promise<void> {
+  if (!supabase) return
+  let query = supabase.from('seasons').update({ is_current: false }).eq('is_current', true)
+  if (exceptId != null) query = query.neq('id', exceptId)
+  const { error } = await query
+  if (error) throw error
+}
+
 /* ------------------------------------------------------------------ *
  * Schema bridge
  *
@@ -387,6 +403,7 @@ async function loadRemote(): Promise<TournamentData> {
         )
       : undefined,
     coverImageUrl: s.cover_image_url ? String(s.cover_image_url) : undefined,
+    seasonId: s.season_id != null ? Number(s.season_id) : undefined,
   }))
 
   const media: MediaAsset[] = (mediaRes.data ?? []).map((m: Record<string, unknown>) => ({
@@ -398,6 +415,7 @@ async function loadRemote(): Promise<TournamentData> {
     durationSeconds: m.duration_seconds != null ? Number(m.duration_seconds) : undefined,
     isPublished: Boolean(m.is_published),
     createdAt: m.created_at ? String(m.created_at) : undefined,
+    seasonId: m.season_id != null ? Number(m.season_id) : undefined,
   }))
 
   const sponsors: Sponsor[] = (sponsorsRes.data ?? []).map((s2: Record<string, unknown>) => ({
@@ -407,6 +425,7 @@ async function loadRemote(): Promise<TournamentData> {
     websiteUrl: s2.website_url ? String(s2.website_url) : undefined,
     displayOrder: Number(s2.display_order || 0),
     isActive: Boolean(s2.is_active),
+    seasonId: s2.season_id != null ? Number(s2.season_id) : undefined,
   }))
 
   return {
@@ -438,11 +457,17 @@ export const tournamentRepository = {
       const data = loadLocal()
       return saveLocal({ ...data, seasons: [season, ...data.seasons] })
     }
+    // A new season does NOT take over as current unless it says so. Defaulting
+    // this to true meant every season ever created claimed to be the current
+    // one, so the public switcher opened on whichever happened to sort first —
+    // including an empty draft, which made the whole portal look broken.
+    if (season.isActive) await clearCurrentSeason()
+
     const { error } = await supabase.from('seasons').insert({
       id: season.id,
       name: season.name,
       slug: `${slugify(season.fullName || season.name)}-${Date.now().toString(36)}`,
-      is_current: season.isActive ?? true,
+      is_current: season.isActive ?? false,
       // `seasons_public_read` gates on status, so a season left at the 'draft'
       // default would be invisible to the public site.
       status: 'published',
@@ -466,6 +491,8 @@ export const tournamentRepository = {
       const data = loadLocal()
       return saveLocal({ ...data, seasons: data.seasons.map((s) => (s.id === season.id ? season : s)) })
     }
+    if (season.isActive) await clearCurrentSeason(season.id)
+
     const { error } = await supabase
       .from('seasons')
       .update({
@@ -793,6 +820,7 @@ export const tournamentRepository = {
       category: story.category ?? 'news',
       status,
       cover_image_url: story.coverImageUrl ?? null,
+      season_id: story.seasonId ?? null,
       published_at: status === 'published' ? new Date().toISOString() : null,
     })
     if (error) throw error
@@ -825,6 +853,7 @@ export const tournamentRepository = {
         category: story.category ?? 'news',
         status,
         cover_image_url: story.coverImageUrl ?? null,
+        season_id: story.seasonId ?? null,
         published_at:
           status === 'published' ? (existing?.published_at ?? new Date().toISOString()) : null,
       })
@@ -1040,6 +1069,7 @@ export const mediaRepository = {
       thumbnail_url: asset.thumbnailUrl || null,
       duration_seconds: asset.durationSeconds ?? null,
       is_published: asset.isPublished,
+      season_id: asset.seasonId ?? null,
     }
     // media_assets.id is GENERATED ALWAYS, so a new row must not carry one.
     const { error } = asset.id
@@ -1070,6 +1100,7 @@ export const sponsorsRepository = {
       website_url: sponsor.websiteUrl || null,
       display_order: sponsor.displayOrder,
       is_active: sponsor.isActive,
+      season_id: sponsor.seasonId ?? null,
     }
     const { error } = sponsor.id
       ? await client.from('sponsors').update(payload).eq('id', sponsor.id)

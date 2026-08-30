@@ -1,4 +1,4 @@
-import type { LeagueSlot, SeasonGroup, SeasonGroupLeague, Team } from '../types'
+import type { SeasonGroup, SeasonGroupLeague, Team } from '../types'
 
 const GROUP_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
 

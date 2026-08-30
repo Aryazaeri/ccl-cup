@@ -7,7 +7,6 @@ import {
   CircleUserRound,
   Clock,
   Cloud,
-  Dices,
   Edit2,
   FileText,
   Filter,
@@ -23,7 +22,6 @@ import {
   LogOut,
   MapPin,
   Menu,
-  MoreVertical,
   Newspaper,
   Plus,
   Search,
@@ -37,7 +35,6 @@ import {
   Sparkles,
   Trash2,
   Trophy,
-  UserCheck,
   UserMinus,
   UserPlus,
   Users,
@@ -49,7 +46,6 @@ import { ensureUploaded } from '../lib/assetStorage'
 import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
-import { generateEmptyLeague } from '../lib/leagueUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
 import { defaultSeasonId, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
@@ -79,7 +75,6 @@ import {
   type Sponsor,
   type Story,
   type StoryCategory,
-  type StrongFoot,
   type Team,
   type TournamentBracket,
   type TournamentFormat,
@@ -664,7 +659,6 @@ export function AdminPanel({
       {editingMatch && (
         <MatchScoreModal
           match={editingMatch}
-          teams={teams}
           onClose={() => setEditingMatch(null)}
           onSave={onUpdateMatch}
         />
@@ -696,7 +690,6 @@ export function AdminPanel({
           }}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
-          onDeletePlayer={confirmDeletePlayer}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -710,7 +703,6 @@ export function AdminPanel({
           onClose={() => setSquadTeam(null)}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
-          onDeletePlayer={confirmDeletePlayer}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -3115,18 +3107,6 @@ function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
   )
 }
 
-function ModulePlaceholder({ section }: { section: AdminSection }) {
-  return (
-    <section className="module-placeholder">
-      <div>
-        <BarChart3 />
-      </div>
-      <h2>{section} module</h2>
-      <p>This prototype includes the module shell. Its detailed forms can be connected in the production build.</p>
-    </section>
-  )
-}
-
 function MatchTable({
   matches,
   onEdit,
@@ -3218,7 +3198,6 @@ function TeamModal({
   onSave,
   onAddPlayer,
   onUpdatePlayer,
-  onDeletePlayer,
   onOpenSquadCanvas,
 }: {
   initial: Team | null
@@ -3229,7 +3208,6 @@ function TeamModal({
   onSave: (team: Team) => Promise<void>
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer?: (player: Player) => Promise<void>
-  onDeletePlayer: (id: number) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
@@ -3852,7 +3830,6 @@ function QuickSquadModal({
   onClose,
   onAddPlayer,
   onUpdatePlayer,
-  onDeletePlayer,
   onOpenSquadCanvas,
 }: {
   team: Team
@@ -3862,7 +3839,6 @@ function QuickSquadModal({
   onClose: () => void
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer?: (player: Player) => Promise<void>
-  onDeletePlayer: (id: number) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
   const [squadMode, setSquadMode] = useState<'pool' | 'new'>('pool')
@@ -4306,12 +4282,10 @@ function MatchForm({
 
 function MatchScoreModal({
   match,
-  teams,
   onClose,
   onSave,
 }: {
   match: Match
-  teams: Team[]
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {

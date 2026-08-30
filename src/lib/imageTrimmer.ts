@@ -15,7 +15,7 @@ export type CropConfig = {
  * of the actual emblem/logo, then crops and centers it with padding.
  */
 export async function smartAutoTrimImage(imageSrc: string, paddingRatio: number = 0.06): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {

@@ -3,7 +3,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  Clock3,
   Flame,
   Goal,
   MapPin,
@@ -15,7 +14,6 @@ import {
   Send,
   Shield,
   User,
-  Users,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'

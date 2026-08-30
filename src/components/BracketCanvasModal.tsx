@@ -7,7 +7,6 @@ import {
   Plus,
   RotateCcw,
   Search,
-  Shield,
   Trophy,
   X,
 } from 'lucide-react'

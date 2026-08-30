@@ -116,7 +116,7 @@ export function LeagueCanvasModal({
       teamCountryCode: team.countryCode,
     }
 
-    let updated: LeagueSlot[] = []
+    let updated: LeagueSlot[]
     if (targetIdx >= withoutTeam.length) {
       // Add to end
       updated = [...withoutTeam, newSlot]

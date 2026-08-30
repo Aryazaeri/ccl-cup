@@ -79,7 +79,7 @@ export default function App() {
         message = reason
       }
       setDataError(message)
-      throw new Error(message)
+      throw new Error(message, { cause: reason })
     }
   }
 

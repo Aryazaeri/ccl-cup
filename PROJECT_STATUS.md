@@ -153,7 +153,11 @@ The role architecture from the initial schema — `set_user_role()`, the self-pr
 
 `AuthContext` defines five roles and `canAccessAdmin()` only blocks `viewer`. Inside `AdminPanel`, `profile.role` is rendered as text and never consulted. An `editor` has the same power as a `super_admin`.
 
-### P0 — Demo credentials were a live backdoor — **RESOLVED 24 Aug**
+### P0 — Demo credentials were a live backdoor — **RESOLVED 24 Aug; account removed 30 Aug**
+
+> The `admin@ccl.test` Supabase Auth user was deleted from the Supabase dashboard on
+> 30 August. The password still appears in git history back to `ab4a8c7`, but it no
+> longer authenticates against anything, so the history copy is inert.
 
 `AuthContext.signIn` falls through to a hardcoded `admin@ccl.test` account (password redacted here — it is still in git history) granting `super_admin`, and this path runs **even when Supabase is configured** (it triggers when the Supabase call throws). Must be stripped or build-flagged before deployment.
 

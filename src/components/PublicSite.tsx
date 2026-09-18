@@ -334,6 +334,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }
 
   const leadStory = seasonStories[0]
+  const latestResult = completedOrLiveMatches[0] ?? null
+  const spotlightGroup = standingsGroups[0]
 
   return (
     <div className="public-site">
@@ -419,169 +421,131 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
         <div className="hero-content content-width">
           <div className="hero-copy">
-            <h1>
-              The city
-              <br />
-              plays here.
-            </h1>
-            <p>Fixtures, live match stories, and every decisive moment from the CCL Cup.</p>
+            <span className="hero-kicker">
+              Corporate Champions League {activeSeason?.year ?? '2026'}
+            </span>
+            <h1>{activeSeason?.city || 'Antalya'}</h1>
+            <div className="hero-stage-line">
+              <span />
+              <strong>{nextMatch?.stage || activeSeason?.seasonType || 'Group stage'}</strong>
+            </div>
+            <p>The city plays here. Follow every fixture, table change and decisive moment from the CCL Cup.</p>
             <div className="hero-actions">
               <button className="button button-primary" onClick={() => scrollTo('fixtures')}>
-                View fixtures <ArrowRight size={19} />
+                Explore matchday <ArrowRight size={19} />
               </button>
-              <button className="text-link" onClick={() => scrollTo('teams')}>
-                Explore squads <ArrowRight size={18} />
+              <button className="text-link" onClick={() => scrollTo('standings')}>
+                View the table <ArrowRight size={18} />
               </button>
             </div>
           </div>
-
-          {nextMatch && (
-            <div
-              className="featured-match clickable-card"
-              aria-label="Next match"
-              onClick={() => openDetail({ kind: 'match', id: nextMatch.id })}
-              role="button"
-              tabIndex={0}
-            >
-              <div className="match-label">
-                {nextMatch.matchStatus === 'live' ? (
-                  nextMatch.streamUrl ? (
-                    // The badge only becomes a link when there is somewhere to
-                    // go. stopPropagation keeps the card's own click from
-                    // opening the modal underneath it.
-                    <a
-                      className="live-stream-link"
-                      href={nextMatch.streamUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <span className="live-dot" aria-hidden="true" />
-                      LIVE — WATCH NOW
-                      <ArrowRight size={15} />
-                    </a>
-                  ) : (
-                    <span className="live-flag">
-                      <span className="live-dot" aria-hidden="true" />
-                      LIVE MATCH
-                    </span>
-                  )
-                ) : (
-                  'NEXT FIXTURE'
-                )}
-              </div>
-              <div className="match-versus">
-                <span>
-                  <TeamMark
-                    name={nextMatch.home}
-                    color={teamLookup.get(nextMatch.home)?.color}
-                    secondaryColor={teamLookup.get(nextMatch.home)?.secondaryColor}
-                    logoUrl={teamLookup.get(nextMatch.home)?.logoUrl}
-                    countryCode={teamLookup.get(nextMatch.home)?.countryCode}
-                  />
-                  <strong>{nextMatch.home}</strong>
-                </span>
-                <b>
-                  {nextMatch.homeScore != null && nextMatch.awayScore != null
-                    ? `${nextMatch.homeScore} - ${nextMatch.awayScore}`
-                    : 'VS'}
-                </b>
-                <span>
-                  <strong>{nextMatch.away}</strong>
-                  <TeamMark
-                    name={nextMatch.away}
-                    color={teamLookup.get(nextMatch.away)?.color}
-                    secondaryColor={teamLookup.get(nextMatch.away)?.secondaryColor}
-                    logoUrl={teamLookup.get(nextMatch.away)?.logoUrl}
-                    countryCode={teamLookup.get(nextMatch.away)?.countryCode}
-                  />
-                </span>
-              </div>
-              <div className="match-meta">
-                <span>
-                  <CalendarDays size={17} />
-                  {nextMatch.date.toUpperCase()} · {nextMatch.time}
-                </span>
-                <span>
-                  <MapPin size={17} />
-                  {nextMatch.venue}
-                </span>
-                <span className="details-hint">
-                  Details <ArrowRight size={16} />
-                </span>
-              </div>
-            </div>
-          )}
-
         </div>
       </section>
 
       <main>
-        {/* Results — real match cards rather than the old fixed-height rail */}
-        <section className="results-section content-width" id="results">
-          <div className="section-title-row">
-            <h2>Results</h2>
-            <span className="hint-label">
-              {completedOrLiveMatches.length} played{activeSeason ? ` · ${activeSeason.year} ${activeSeason.name}` : ''}
-            </span>
+        <section className="matchday-ribbon content-width" aria-label="Matchday overview">
+          <div className="ribbon-item ribbon-result">
+            <span className="ribbon-label">Latest result</span>
+            {latestResult ? (
+              <button onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
+                <span>{latestResult.home}</span>
+                <b>{latestResult.homeScore ?? 0} — {latestResult.awayScore ?? 0}</b>
+                <span>{latestResult.away}</span>
+              </button>
+            ) : <strong>Results coming soon</strong>}
           </div>
-
-          {completedOrLiveMatches.length === 0 ? (
-            <p className="standings-note">No matches have been played in this season yet.</p>
-          ) : (
-            <div className="result-grid">
-              {completedOrLiveMatches.map((m) => (
-                <MatchResultCard
-                  key={m.id}
-                  match={m}
-                  homeTeam={teamLookup.get(m.home)}
-                  awayTeam={teamLookup.get(m.away)}
-                  onOpen={() => openDetail({ kind: 'match', id: m.id })}
-                />
-              ))}
-            </div>
-          )}
+          <div className="ribbon-item ribbon-next">
+            <span className="ribbon-label">Next match</span>
+            {nextMatch ? (
+              <button onClick={() => openDetail({ kind: 'match', id: nextMatch.id })}>
+                <span>{nextMatch.home}</span>
+                <b>{nextMatch.time}</b>
+                <span>{nextMatch.away}</span>
+                <small>{nextMatch.date} · {nextMatch.venue}</small>
+              </button>
+            ) : <strong>Fixture to be confirmed</strong>}
+          </div>
+          <button className="ribbon-cta" onClick={() => scrollTo('fixtures')}>
+            All fixtures <ArrowRight size={17} />
+          </button>
         </section>
 
-        {/* News & stories */}
-        <section className="stories content-width" id="news">
-          <div className="section-title-row">
-            <h2>Latest stories</h2>
-            {leadStory && (
-              <button className="text-link" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
-                Read top story <ArrowRight size={18} />
+        <section className="editorial-board content-width" id="news">
+          <article className="match-report">
+            <div className="editorial-heading">
+              <span>01</span>
+              <h2>Match report</h2>
+            </div>
+            {leadStory ? (
+              <button className="report-feature" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
+                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt="" />
+                <span className="report-copy">
+                  <small>{leadStory.category?.replace('_', ' ') || 'Latest story'} · {leadStory.publishedAt || 'This season'}</small>
+                  <strong>{leadStory.title}</strong>
+                  <span>{leadStory.summary || 'The latest story from inside the CCL Cup.'}</span>
+                  <em>Read full report <ArrowRight size={15} /></em>
+                </span>
               </button>
+            ) : (
+              <p className="standings-note">The first match report will appear here.</p>
             )}
+          </article>
+
+          <aside className="news-desk">
+            <div className="editorial-heading">
+              <span>02</span>
+              <h2>News</h2>
+            </div>
+            <div className="news-desk-list">
+              {seasonStories.slice(1, 5).map((story, index) => (
+                <button key={story.id} onClick={() => openDetail({ kind: 'story', id: story.id })}>
+                  <span className={`news-desk-thumb story-thumb-${(index % 3) + 1}`} />
+                  <span>
+                    <small>{story.publishedAt || story.category?.replace('_', ' ') || 'CCL Cup'}</small>
+                    <strong>{story.title}</strong>
+                  </span>
+                  <ArrowRight size={17} />
+                </button>
+              ))}
+              {seasonStories.length < 2 ? <p className="standings-note">More news will appear here as the season develops.</p> : null}
+            </div>
+          </aside>
+        </section>
+
+        <section className="editorial-snapshot content-width" aria-label="Competition snapshot">
+          <div className="snapshot-table">
+            <div className="editorial-heading"><span>03</span><h2>{spotlightGroup?.groupName || 'League table'}</h2></div>
+            <div className="snapshot-rows">
+              {spotlightGroup?.rows.slice(0, 5).map((row) => {
+                const team = teamById.get(row.teamId)
+                return (
+                  <button key={row.teamId} onClick={() => team && openDetail({ kind: 'team', id: team.id })}>
+                    <b>{row.position}</b>
+                    <TeamMark name={row.teamName} color={row.color} secondaryColor={team?.secondaryColor} logoUrl={row.logoUrl} size="sm" />
+                    <strong>{row.teamName}</strong>
+                    <span>{row.played} PL</span>
+                    <em>{row.points} PTS</em>
+                  </button>
+                )
+              })}
+            </div>
+            <button className="snapshot-link" onClick={() => scrollTo('standings')}>Full standings <ArrowRight size={15} /></button>
           </div>
 
-          {seasonStories.length === 0 && (
-            <p className="standings-note">
-              No stories have been published for this season yet.
-            </p>
-          )}
-
-          {seasonStories.length > 0 && (
-            <StoryCarousel
-              stories={seasonStories}
-              onOpen={(story) => openDetail({ kind: 'story', id: story.id })}
-            />
-          )}
-
-          <div className="story-list">
-            {seasonStories.slice(1, 4).map((story, index) => (
-              <button
-                className="story-row"
-                key={story.id}
-                onClick={() => openDetail({ kind: 'story', id: story.id })}
-              >
-                <span className={`story-thumb story-thumb-${(index % 3) + 1}`} />
-                <div className="story-row-info">
-                  <strong>{story.title}</strong>
-                  {story.summary && <span className="story-row-summary">{story.summary}</span>}
+          <div className="snapshot-scorers">
+            <div className="editorial-heading"><span>04</span><h2>Top scorers</h2></div>
+            <div className="snapshot-scorer-rail">
+              {topScorers.slice(0, 4).map((line, index) => (
+                <div key={`${line.playerName}-${line.teamName}`}>
+                  <span className="snapshot-rank">0{index + 1}</span>
+                  <span className="snapshot-player-art"><User size={42} strokeWidth={1.25} /></span>
+                  <strong>{line.playerName}</strong>
+                  <small>{line.teamName}</small>
+                  <b>{line.goals}<span> goals</span></b>
                 </div>
-                <ArrowRight />
-              </button>
-            ))}
+              ))}
+              {topScorers.length === 0 ? <p className="standings-note">The scorer race begins with the first goal.</p> : null}
+            </div>
           </div>
         </section>
 
@@ -1738,201 +1702,6 @@ function FlagBackdrop({ country }: { country: ReturnType<typeof getCountry> }) {
       <span className="cutout-folds" />
       <span className="cutout-sheen" />
     </span>
-  )
-}
-
-/* ------------------------------------------------------------------ *
- * Story carousel
- *
- * Each story slides in from the right, holds, then fades out as the next one
- * arrives. It advances on its own but stops the moment someone is interacting
- * with it — hovering, or tabbing to a control inside it — because a panel that
- * changes under the cursor while you are reading is worse than no rotation.
- *
- * Under `prefers-reduced-motion` the rotation does not start at all and the
- * slide becomes a plain swap: the arrows and dots still work, so nothing is
- * unreachable, it simply never moves by itself.
- * ------------------------------------------------------------------ */
-
-const STORY_DWELL_MS = 6000
-
-function StoryCarousel({ stories, onOpen }: { stories: Story[]; onOpen: (story: Story) => void }) {
-  const [index, setIndex] = useState(0)
-  const [paused, setPaused] = useState(false)
-  const count = stories.length
-
-  // Read once on mount rather than at module load, so it reflects the visitor's
-  // setting rather than whoever's machine built the bundle.
-  const [reducedMotion, setReducedMotion] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const sync = () => setReducedMotion(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
-
-  // A story removed by a season switch must not leave the index past the end.
-  useEffect(() => { setIndex((i) => (i >= count ? 0 : i)) }, [count])
-
-  useEffect(() => {
-    if (paused || reducedMotion || count < 2) return
-    const timer = window.setTimeout(() => setIndex((i) => (i + 1) % count), STORY_DWELL_MS)
-    return () => window.clearTimeout(timer)
-  }, [index, paused, reducedMotion, count])
-
-  if (count === 0) return null
-  const go = (next: number) => setIndex(((next % count) + count) % count)
-
-  return (
-    <div
-      className="story-carousel"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocusCapture={() => setPaused(true)}
-      onBlurCapture={() => setPaused(false)}
-      aria-roledescription="carousel"
-      aria-label="Latest stories"
-    >
-      <div className="story-stage">
-        {stories.map((story, i) => (
-          <article
-            key={story.id}
-            className={`story-slide${i === index ? ' is-current' : ''}`}
-            aria-hidden={i !== index}
-            // Only the visible slide is reachable by keyboard or screen reader.
-            inert={i !== index}
-          >
-            <button className="story-slide-inner" onClick={() => onOpen(story)}>
-              <img
-                src={story.coverImageUrl || '/assets/ccl-celebration.png'}
-                alt=""
-                loading={i === 0 ? 'eager' : 'lazy'}
-              />
-              <div className="story-slide-body">
-                <h3>{story.title}</h3>
-                <div className="story-meta">
-                  {story.publishedAt ?? ''}
-                  {story.category && <span>{story.category.replace('_', ' ').toUpperCase()}</span>}
-                </div>
-                {story.summary && <p>{story.summary}</p>}
-                <span className="read-more-text">
-                  Read full article <ArrowRight size={16} />
-                </span>
-              </div>
-            </button>
-          </article>
-        ))}
-      </div>
-
-      {count > 1 && (
-        <div className="story-carousel-controls">
-          <button className="carousel-arrow" onClick={() => go(index - 1)} aria-label="Previous story">
-            <ArrowRight size={16} style={{ transform: 'rotate(180deg)' }} />
-          </button>
-          <div className="carousel-dots" role="tablist">
-            {stories.map((story, i) => (
-              <button
-                key={story.id}
-                role="tab"
-                aria-selected={i === index}
-                aria-label={`Story ${i + 1} of ${count}`}
-                className={`carousel-dot${i === index ? ' is-current' : ''}`}
-                onClick={() => go(i)}
-              />
-            ))}
-          </div>
-          <button className="carousel-arrow" onClick={() => go(index + 1)} aria-label="Next story">
-            <ArrowRight size={16} />
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ *
- * Match result card
- *
- * Replaces a rail that was absolutely positioned at a hard-coded `top: 727px`
- * with a fixed 72px height, and held every played match in that one strip —
- * so with a full fixture list most results were simply clipped out of sight,
- * and below 700px the whole thing was display:none.
- *
- * The shape follows the reference site: each side shows crest, club and
- * country, the score sits between them with the winner carrying the emphasis,
- * and kick-off and venue sit underneath.
- * ------------------------------------------------------------------ */
-
-function MatchResultCard({
-  match,
-  homeTeam,
-  awayTeam,
-  onOpen,
-}: {
-  match: Match
-  homeTeam?: Team
-  awayTeam?: Team
-  onOpen: () => void
-}) {
-  const home = match.homeScore ?? 0
-  const away = match.awayScore ?? 0
-  const played = match.homeScore != null && match.awayScore != null
-  const live = match.matchStatus === 'live'
-
-  // Only a finished match has a winner to emphasise; a live score is still moving.
-  const homeWon = played && !live && home > away
-  const awayWon = played && !live && away > home
-
-  return (
-    <article
-      className="result-card clickable"
-      onClick={onOpen}
-      title={`${match.home} v ${match.away} — view the match summary`}
-    >
-      {live && (
-        <span className="result-live">
-          <span className="live-dot" /> LIVE
-        </span>
-      )}
-
-      <div className="result-side">
-        <TeamMark
-          name={match.home}
-          color={homeTeam?.color}
-          secondaryColor={homeTeam?.secondaryColor}
-          logoUrl={homeTeam?.logoUrl}
-          size="md"
-        />
-        <strong>{match.home}</strong>
-        {homeTeam && <small>{getCountry(homeTeam.countryCode).name}</small>}
-      </div>
-
-      <div className="result-middle">
-        <div className="result-score">
-          <span className={homeWon ? 'won' : awayWon ? 'lost' : ''}>{played ? home : '–'}</span>
-          <i>–</i>
-          <span className={awayWon ? 'won' : homeWon ? 'lost' : ''}>{played ? away : '–'}</span>
-        </div>
-        <small className="result-meta">
-          {match.date}
-          {match.time ? ` · ${match.time}` : ''}
-        </small>
-        {match.venue && <small className="result-meta">{match.venue}</small>}
-      </div>
-
-      <div className="result-side away">
-        <TeamMark
-          name={match.away}
-          color={awayTeam?.color}
-          secondaryColor={awayTeam?.secondaryColor}
-          logoUrl={awayTeam?.logoUrl}
-          size="md"
-        />
-        <strong>{match.away}</strong>
-        {awayTeam && <small>{getCountry(awayTeam.countryCode).name}</small>}
-      </div>
-    </article>
   )
 }
 

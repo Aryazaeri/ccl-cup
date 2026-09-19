@@ -275,6 +275,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }, [teams])
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams])
+  const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players])
 
   // Derived from results on every render — never read from the stored
   // points/played columns, which are no longer the source of truth.
@@ -658,15 +659,26 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 <ol className="pg-stickers">
                   {topScorers.slice(0, 8).map((line, index) => {
                     const team = teamLookup.get(line.teamName)
+                    const player = line.playerId != null ? playerById.get(line.playerId) : undefined
                     const kit = {
                       '--kit': team?.color || '#0e4d35',
                       '--kit-2': team?.secondaryColor || '#f3f5f1',
                     } as React.CSSProperties
+                    // With a cutout photo the sticker becomes a proper player
+                    // card — portrait over their flag, as on the squad view.
+                    // Without one it keeps the club crest on the kit stripes.
                     const content = (
                       <>
-                        <span className="pg-sticker-kit" style={kit}>
+                        <span className={player?.photoUrl ? 'pg-sticker-kit has-photo' : 'pg-sticker-kit'} style={kit}>
                           <span className="pg-sticker-rank">{index + 1}</span>
-                          <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
+                          {player?.photoUrl ? (
+                            <>
+                              <FlagBackdrop country={getCountry(player.nationality || team?.countryCode)} />
+                              <img className="cutout-photo" src={player.photoUrl} alt="" loading="lazy" />
+                            </>
+                          ) : (
+                            <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
+                          )}
                         </span>
                         <strong>{line.playerName}</strong>
                         <small>{line.teamName}</small>

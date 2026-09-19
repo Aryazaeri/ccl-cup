@@ -4299,6 +4299,9 @@ button.pg-sticker:hover { transform: translateY(-3px) rotate(-1.2deg); }
   background: linear-gradient(128deg, var(--kit) 0 56%, var(--kit-2) 56% 64%, var(--kit) 64% 100%);
 }
 .pg-sticker-kit .team-mark-wrapper { padding: 12px; border-radius: 50%; background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .2); }
+.pg-sticker-kit.has-photo { overflow: hidden; background: linear-gradient(180deg, #0f2740 0%, #071525 100%); }
+.pg-sticker-kit.has-photo::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7, 21, 37, .2) 0%, transparent 45%, rgba(7, 21, 37, .55) 100%); pointer-events: none; }
+.pg-sticker-kit .pg-sticker-rank { z-index: 2; }
 .pg-sticker-rank {
   position: absolute;
   top: 8px;

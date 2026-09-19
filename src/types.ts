@@ -246,6 +246,22 @@ export type Match = {
 export type CommentStatus = 'pending' | 'approved' | 'rejected'
 
 /**
+ * What TypeSafe (Jev) made of a comment, from `comment_screenings`. Staff-only
+ * by RLS; the public site never receives it.
+ */
+export type CommentScreening = {
+  action: 'approve' | 'review' | 'reject'
+  /** Hazard ids plus 'severity' / 'uncertain', strongest first. */
+  reasons: string[]
+  /** Probability 0–1 per hazard: spam, abuse, hate, personal_info, off_topic. */
+  hazards: Record<string, number>
+  /** 0 (harmless) to 3 (severe). */
+  severity: number
+  model: string
+  policy: string
+}
+
+/**
  * A visitor-submitted comment. Submissions always land as `pending`; only
  * rows a moderator has approved are ever readable by the public, which is
  * enforced by row-level security rather than by this type.
@@ -258,6 +274,8 @@ export type Comment = {
   storyId?: number | null
   status: CommentStatus
   createdAt?: string
+  /** Moderation view only; absent when the comment has not been screened. */
+  screening?: CommentScreening
 }
 
 export type StoryCategory = 'news' | 'match_report' | 'announcement' | 'press' | 'panorama'

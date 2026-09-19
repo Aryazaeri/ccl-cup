@@ -275,6 +275,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }, [teams])
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams])
+  const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players])
 
   // Derived from results on every render — never read from the stored
   // points/played columns, which are no longer the source of truth.
@@ -374,6 +375,18 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
   return (
     <div className="public-site programme">
+      {/* A button, not an #anchor: the hash is the router here, so a
+          "#main" link would be read as a route rather than a jump. */}
+      <button
+        className="skip-link"
+        onClick={() => {
+          const main = document.getElementById('main-content')
+          main?.focus()
+          main?.scrollIntoView()
+        }}
+      >
+        Skip to content
+      </button>
       <FlagRippleDefs />
       <section className="pg-hero" id="home">
         <img className="pg-hero-photo" src="/assets/ccl-hero.png" alt="" />
@@ -382,7 +395,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <button className="brand-button" onClick={() => scrollTo('home')}>
             <Brand />
           </button>
-          <nav className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
+          <nav id="public-nav" className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
             {nav.map((item) => (
               <button key={item.id} onClick={() => scrollTo(item.id)}>
                 {item.label}
@@ -444,10 +457,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
           <button
             className="menu-button"
-            aria-label="Toggle navigation"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            aria-controls="public-nav"
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            {menuOpen ? <X /> : <Menu />}
+            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
         </header>
 
@@ -520,7 +535,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         </div>
       </section>
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <section className="pg-section content-width" id="fixtures">
           <h2 className="pg-heading">Fixtures and results</h2>
           {seasonMatches.length === 0 ? (
@@ -557,8 +572,20 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                     key={group.groupId}
                     role="tab"
                     aria-selected={group === shownGroup}
+                    // Roving tabindex: Tab reaches the selected group, the
+                    // arrow keys move between groups, as the tabs pattern expects.
+                    tabIndex={group === shownGroup ? 0 : -1}
                     className={group === shownGroup ? 'is-selected' : ''}
                     onClick={() => setGroupIndex(index)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+                      event.preventDefault()
+                      const step = event.key === 'ArrowRight' ? 1 : -1
+                      const next = (index + step + standingsGroups.length) % standingsGroups.length
+                      setGroupIndex(next)
+                      const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                      tabs?.[next]?.focus()
+                    }}
                   >
                     {group.groupName}
                   </button>
@@ -578,9 +605,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                       <th scope="col" className="pg-num">Pos</th>
                       <th scope="col">Club</th>
                       <th scope="col" className="pg-num" title="Played">P</th>
-                      <th scope="col" className="pg-num" title="Won">W</th>
-                      <th scope="col" className="pg-num" title="Drawn">D</th>
-                      <th scope="col" className="pg-num" title="Lost">L</th>
+                      <th scope="col" className="pg-num pg-detail" title="Won">W</th>
+                      <th scope="col" className="pg-num pg-detail" title="Drawn">D</th>
+                      <th scope="col" className="pg-num pg-detail" title="Lost">L</th>
                       <th scope="col" className="pg-num pg-wide" title="Goals for">GF</th>
                       <th scope="col" className="pg-num pg-wide" title="Goals against">GA</th>
                       <th scope="col" className="pg-num" title="Goal difference">GD</th>
@@ -609,9 +636,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                             </button>
                           </td>
                           <td className="pg-num">{row.played}</td>
-                          <td className="pg-num">{row.won}</td>
-                          <td className="pg-num">{row.drawn}</td>
-                          <td className="pg-num">{row.lost}</td>
+                          <td className="pg-num pg-detail">{row.won}</td>
+                          <td className="pg-num pg-detail">{row.drawn}</td>
+                          <td className="pg-num pg-detail">{row.lost}</td>
                           <td className="pg-num pg-wide">{row.goalsFor}</td>
                           <td className="pg-num pg-wide">{row.goalsAgainst}</td>
                           <td className="pg-num">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
@@ -658,15 +685,26 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 <ol className="pg-stickers">
                   {topScorers.slice(0, 8).map((line, index) => {
                     const team = teamLookup.get(line.teamName)
+                    const player = line.playerId != null ? playerById.get(line.playerId) : undefined
                     const kit = {
                       '--kit': team?.color || '#0e4d35',
                       '--kit-2': team?.secondaryColor || '#f3f5f1',
                     } as React.CSSProperties
+                    // With a cutout photo the sticker becomes a proper player
+                    // card — portrait over their flag, as on the squad view.
+                    // Without one it keeps the club crest on the kit stripes.
                     const content = (
                       <>
-                        <span className="pg-sticker-kit" style={kit}>
+                        <span className={player?.photoUrl ? 'pg-sticker-kit has-photo' : 'pg-sticker-kit'} style={kit}>
                           <span className="pg-sticker-rank">{index + 1}</span>
-                          <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
+                          {player?.photoUrl ? (
+                            <>
+                              <FlagBackdrop country={getCountry(player.nationality || team?.countryCode)} />
+                              <img className="cutout-photo" src={player.photoUrl} alt="" loading="lazy" />
+                            </>
+                          ) : (
+                            <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
+                          )}
                         </span>
                         <strong>{line.playerName}</strong>
                         <small>{line.teamName}</small>
@@ -1289,6 +1327,15 @@ function CommentsSection() {
 
       <div className="comments-grid">
         <form className="comment-form" onSubmit={submit}>
+          {/* Always in the DOM, so screen readers announce the change when
+              the form is swapped for the confirmation below. */}
+          <p className="sr-only" role="status">
+            {sent === 'approved'
+              ? 'Your comment is live.'
+              : sent === 'pending'
+                ? 'Your comment has been sent for review.'
+                : ''}
+          </p>
           {sent ? (
             <div className="comment-sent">
               <Check size={20} />
@@ -1316,6 +1363,7 @@ function CommentsSection() {
                   onChange={(event) => setAuthorName(event.target.value)}
                   placeholder="e.g. Deniz Kaya"
                   maxLength={60}
+                  autoComplete="name"
                   required
                 />
               </label>
@@ -1330,7 +1378,11 @@ function CommentsSection() {
                   required
                 />
               </label>
-              {error ? <p className="comment-error">{error}</p> : null}
+              {error ? (
+                <p className="comment-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <button className="button button-primary" type="submit" disabled={sending}>
                 {sending ? 'Sending…' : 'Send comment'} <Send size={17} />
               </button>

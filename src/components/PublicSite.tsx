@@ -1287,8 +1287,8 @@ function SearchOverlay({
  *
  * Submissions are held for review — the database only ever returns approved
  * rows to the public, and refuses an insert that does not arrive as pending.
- * Until the moderation module exists, submitted comments are visible to staff
- * in the database and nowhere else, which is the intended behaviour.
+ * The submit-comment Edge Function screens each one with TypeSafe: clearly
+ * clean comments are approved at once, the rest wait for a moderator.
  * ------------------------------------------------------------------ */
 
 function CommentsSection() {
@@ -1297,7 +1297,7 @@ function CommentsSection() {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const [sent, setSent] = useState(false)
+  const [sent, setSent] = useState<'approved' | 'pending' | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1314,10 +1314,11 @@ function CommentsSection() {
     setSending(true)
     setError('')
     try {
-      await commentsRepository.submit({ authorName, body })
+      const status = await commentsRepository.submit({ authorName, body })
       setAuthorName('')
       setBody('')
-      setSent(true)
+      setSent(status)
+      if (status === 'approved') setComments(await commentsRepository.listApproved())
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your comment could not be sent.')
     } finally {
@@ -1329,7 +1330,7 @@ function CommentsSection() {
     <section className="comments-section content-width" id="feedback">
       <div className="section-title-row">
         <h2>Fan feedback</h2>
-        <span className="hint-label">Comments are reviewed before they appear</span>
+        <span className="hint-label">Comments are checked before they appear</span>
       </div>
 
       <div className="comments-grid">
@@ -1337,11 +1338,18 @@ function CommentsSection() {
           {sent ? (
             <div className="comment-sent">
               <Check size={20} />
-              <div>
-                <strong>Thanks — your comment has been sent for review.</strong>
-                <span>It will appear here once a moderator approves it.</span>
-              </div>
-              <button type="button" className="text-link" onClick={() => setSent(false)}>
+              {sent === 'approved' ? (
+                <div>
+                  <strong>Thanks — your comment is live.</strong>
+                  <span>It now appears with the other comments.</span>
+                </div>
+              ) : (
+                <div>
+                  <strong>Thanks — your comment has been sent for review.</strong>
+                  <span>It will appear here once a moderator approves it.</span>
+                </div>
+              )}
+              <button type="button" className="text-link" onClick={() => setSent(null)}>
                 Write another
               </button>
             </div>

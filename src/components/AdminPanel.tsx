@@ -2353,10 +2353,48 @@ function StandingsManager({
 /* ------------------------------------------------------------------ *
  * Comment moderation
  *
- * Nothing a visitor submits is public until it is approved here — the read
- * policy on `comments` only returns approved rows, so this screen is the only
- * thing standing between a submission and the site.
+ * Nothing a visitor submits is public until it is approved — the read policy
+ * on `comments` only returns approved rows. The submit-comment Edge Function
+ * screens each submission with TypeSafe (Jev) and approves or rejects the
+ * clear-cut ones itself; everything else waits here, with Jev's reasons shown
+ * alongside. A moderator's decision always overrides the screening.
  * ------------------------------------------------------------------ */
+
+const SCREENING_REASON_LABELS: Record<string, string> = {
+  spam: 'Spam',
+  abuse: 'Abusive',
+  hate: 'Hateful',
+  personal_info: 'Personal info',
+  off_topic: 'Off-topic',
+  severity: 'Harmful to publish',
+  uncertain: 'Not clearly clean',
+}
+
+const SCREENING_ACTION_LABELS: Record<NonNullable<Comment['screening']>['action'], string> = {
+  approve: 'Jev: approved',
+  review: 'Jev: needs a human',
+  reject: 'Jev: rejected',
+}
+
+function ScreeningNote({ screening }: { screening: Comment['screening'] }) {
+  if (!screening) return <p className="screening-note is-empty">Not screened by Jev.</p>
+  return (
+    <div className={`screening-note screening-${screening.action}`}>
+      <strong>
+        <Sparkles size={13} /> {SCREENING_ACTION_LABELS[screening.action]}
+      </strong>
+      {screening.reasons.map((reason) => (
+        <span key={reason} className="screening-reason">
+          {SCREENING_REASON_LABELS[reason] ?? reason}
+          {reason in screening.hazards ? ` ${Math.round(screening.hazards[reason] * 100)}%` : ''}
+        </span>
+      ))}
+      <span className="screening-meta" title={`Model ${screening.model}, policy ${screening.policy}`}>
+        severity {screening.severity.toFixed(1)}/3
+      </span>
+    </div>
+  )
+}
 
 const COMMENT_FILTERS: { key: Comment['status'] | 'all'; label: string }[] = [
   { key: 'pending', label: 'Awaiting review' },
@@ -2454,7 +2492,18 @@ function CommentsManager() {
                 <span className={`status-chip status-${comment.status}`}>{comment.status}</span>
               </header>
               <p>{comment.body}</p>
+              <ScreeningNote screening={comment.screening} />
               <footer>
+                {comment.status === 'pending' && (
+                  <button
+                    className="mini-button"
+                    disabled={busyId === comment.id}
+                    title="Ask TypeSafe (Jev) to screen this comment again"
+                    onClick={() => void act(comment.id, () => moderationRepository.rescreen(comment.id))}
+                  >
+                    <Sparkles size={14} /> {comment.screening ? 'Re-screen' : 'Screen with Jev'}
+                  </button>
+                )}
                 {comment.status !== 'approved' && (
                   <button
                     className="mini-button approve"

@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { initialMatches, initialPlayers, initialSeasons, initialStories, initialTeams } from '../data'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import type {
@@ -961,8 +962,14 @@ export const commentsRepository = {
     }
   },
 
-  /** Submits a comment for review. Always lands as `pending`. */
-  async submit(draft: CommentDraft): Promise<void> {
+  /**
+   * Submits a comment. It lands as `pending`; the `submit-comment` Edge
+   * Function then screens it with TypeSafe and may approve it on the spot,
+   * which is the only way this resolves to `'approved'`. If the function is
+   * not deployed or unreachable, the comment is inserted directly and waits
+   * for a moderator, exactly as before screening existed.
+   */
+  async submit(draft: CommentDraft): Promise<'approved' | 'pending'> {
     const authorName = draft.authorName.trim()
     const body = draft.body.trim()
     if (authorName.length < 2) throw new Error('Please enter your name.')
@@ -980,8 +987,23 @@ export const commentsRepository = {
         status: 'pending',
       }
       localStorage.setItem(commentsStorageKey, JSON.stringify([comment, ...existing]))
-      return
+      return 'pending'
     }
+
+    const screened = await supabase.functions.invoke<{ status?: string }>('submit-comment', {
+      body: { authorName, body, matchId: draft.matchId ?? null, storyId: draft.storyId ?? null },
+    })
+    if (!screened.error) return screened.data?.status === 'approved' ? 'approved' : 'pending'
+    // A 400 is the function rejecting the input: show its message. Anything
+    // else (not deployed, network, 5xx before the insert) falls back below.
+    if (screened.error instanceof FunctionsHttpError) {
+      const response = screened.error.context as Response
+      if (response.status === 400) {
+        const detail = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(detail?.error ?? 'Your comment could not be sent.')
+      }
+    }
+    console.warn('Comment screening unavailable; submitting for manual review:', screened.error)
 
     const { error } = await supabase.from('comments').insert({
       author_name: authorName,
@@ -996,6 +1018,7 @@ export const commentsRepository = {
       }
       throw error
     }
+    return 'pending'
   },
 }
 
@@ -1031,19 +1054,57 @@ function mapComment(row: Record<string, unknown>): Comment {
           hour12: false,
         }).format(new Date(String(row.created_at)))
       : undefined,
+    screening: mapScreening(row.comment_screenings),
+  }
+}
+
+/** PostgREST embeds a one-to-one relation as an object; tolerate an array too. */
+function mapScreening(value: unknown): Comment['screening'] {
+  const row = (Array.isArray(value) ? value[0] : value) as Record<string, unknown> | null | undefined
+  if (!row) return undefined
+  return {
+    action: row.action as NonNullable<Comment['screening']>['action'],
+    reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+    hazards: (row.hazards as Record<string, number> | null) ?? {},
+    severity: Number(row.severity),
+    model: String(row.model),
+    policy: String(row.policy),
   }
 }
 
 export const moderationRepository = {
-  /** Every comment regardless of status — staff only, enforced by RLS. */
+  /** Every comment regardless of status, with its TypeSafe screening when one
+   *  exists — staff only, enforced by RLS on both tables. */
   async listAll(): Promise<Comment[]> {
     const client = requireSupabase('Comment moderation')
+    const withScreening = await client
+      .from('comments')
+      .select('*, comment_screenings(*)')
+      .order('created_at', { ascending: false })
+    if (!withScreening.error) return (withScreening.data ?? []).map(mapComment)
+
+    // PGRST200: no such relationship, i.e. 202609190001 has not been applied
+    // yet. Moderation still works; it just has no screening to show.
+    if (withScreening.error.code !== 'PGRST200') throw withScreening.error
     const { data, error } = await client
       .from('comments')
       .select('*')
       .order('created_at', { ascending: false })
     if (error) throw error
     return (data ?? []).map(mapComment)
+  },
+
+  /** Screens (or re-screens) one comment with TypeSafe via the Edge Function.
+   *  The function applies the policy only while the comment is still pending. */
+  async rescreen(id: number): Promise<void> {
+    const client = requireSupabase('Comment screening')
+    const { error } = await client.functions.invoke('submit-comment', { body: { commentId: id } })
+    if (!error) return
+    if (error instanceof FunctionsHttpError) {
+      const detail = (await (error.context as Response).json().catch(() => null)) as { error?: string } | null
+      if (detail?.error) throw new Error(detail.error)
+    }
+    throw new Error('Screening is unavailable. Is the submit-comment function deployed?')
   },
 
   async setStatus(id: number, status: Comment['status']): Promise<void> {

@@ -10,7 +10,7 @@ to `index.html`.
 - Dev: `npm run dev` (vite, bound to 127.0.0.1)
 - Build: `npm run build` (`tsc -b && vite build` — type errors fail the build)
 - Lint: `npm run lint` (`eslint .`)
-- Test: `npm test` (`tsx tests/standings.test.ts && tsx tests/bracket.test.ts`)
+- Test: `npm test` (runs each `tests/*.test.ts` with `tsx`)
 - Preview a build: `npm run preview`
 
 There is no vitest/jest here — tests are plain `tsx` scripts over the pure helpers.
@@ -25,6 +25,10 @@ There is no vitest/jest here — tests are plain `tsx` scripts over the pure hel
 - `src/services/tournamentRepository.ts` — all Supabase reads/writes go through here
 - `src/auth/AuthContext.tsx` — auth state
 - `supabase/migrations/` — schema; `supabase/seed.sql` and `seed_demo_season.sql` — fixtures
+- `supabase/functions/submit-comment/` — Deno Edge Function that stores visitor comments and
+  screens them with TypeSafe (Jev). `screening.ts` is pure (questions + routing policy) and is
+  what `tests/commentScreening.test.ts` covers. Needs the `TYPESAFE_API_KEY` function secret;
+  the key must never go in a `VITE_` variable, which would ship it to every visitor.
 
 ## Notes
 

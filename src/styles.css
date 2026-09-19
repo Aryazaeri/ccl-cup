@@ -4126,6 +4126,9 @@ table { border-collapse: collapse; width: 100%; }
 }
 .pg-hero .public-header,
 .pg-hero-body { position: relative; z-index: 2; }
+/* Above the hero body: the mobile menu and the season dropdown open out of
+   the header and must cover the scoreboard, not sit underneath it. */
+.pg-hero .public-header { z-index: 3; }
 .pg-hero-body { padding: 64px 0 76px; }
 
 .pg-hero-title { margin: 0 0 22px; font-family: var(--display); font-size: clamp(1.7rem, 2.6vw, 2.3rem); font-weight: 800; line-height: 1; letter-spacing: .005em; }
@@ -4230,7 +4233,9 @@ table { border-collapse: collapse; width: 100%; }
 .pg-fixture time { color: var(--muted); font-size: .88rem; font-weight: 600; }
 .pg-fixture-team { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .pg-fixture-team.is-away { justify-content: flex-end; text-align: right; }
-.pg-fixture-team strong { min-width: 0; overflow: hidden; font-size: .98rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* Wrap to two lines rather than truncate: "LEVANT CAPI…" in a two-column
+   layout hides which club it is, which is the one thing the row must say. */
+.pg-fixture-team strong { min-width: 0; display: -webkit-box; overflow: hidden; font-size: .98rem; font-weight: 600; line-height: 1.2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .pg-fixture-score { font-family: var(--display); font-size: 1.55rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pg-fixture-time { color: var(--turf); font-size: 1rem; font-weight: 700; }
 .pg-fixture small { grid-column: 2 / -1; color: var(--muted); font-size: .82rem; text-align: center; }
@@ -4242,7 +4247,7 @@ table { border-collapse: collapse; width: 100%; }
 .pg-tabs button:hover { background: var(--chalk); }
 .pg-tabs button.is-selected { background: var(--turf); color: var(--chalk); }
 
-.pg-table-card { border: 1px solid var(--rule); border-radius: var(--radius); background: #fff; overflow: hidden; }
+.pg-table-card { border: 1px solid var(--rule); border-radius: var(--radius); background: #fff; overflow-x: auto; }
 .pg-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .pg-table th { padding: 13px 12px; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: .82rem; font-weight: 600; text-align: left; white-space: nowrap; }
 .pg-table td { padding: 11px 12px; border-bottom: 1px solid #eaeee8; font-size: .98rem; }
@@ -4457,6 +4462,24 @@ button.pg-sticker:hover { transform: translateY(-3px) rotate(-1.2deg); }
   .pg-club span, .pg-club small { font-size: .84rem; }
   .pg-sticker-kit { height: 118px; }
   .pg-sticker strong { font-size: 1.2rem; }
+  .programme .comments-section .section-title-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
+
+/* Phones: keep the columns a table is read for — position, club, played,
+   goal difference, points. W/D/L and form are one tap away on the club. */
+@media (max-width: 560px) {
+  .pg-table .pg-detail,
+  .pg-table .pg-form-col { display: none; }
+  .pg-table th, .pg-table td { padding-inline: 8px; }
+  .pg-table .pg-num { width: 38px; }
+  .pg-club-cell strong { white-space: normal; line-height: 1.2; }
+}
+
+/* Touch targets: at least 44px tall for the controls thumbs actually hit. */
+.programme .menu-button { width: 44px; height: 44px; display: none; place-items: center; }
+.programme .public-footer nav button { min-height: 44px; padding-inline: 2px; }
+@media (max-width: 1050px) {
+  .programme .menu-button { display: grid; }
 }
 
 @media (prefers-reduced-motion: reduce) {

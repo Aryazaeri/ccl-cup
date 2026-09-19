@@ -578,9 +578,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                       <th scope="col" className="pg-num">Pos</th>
                       <th scope="col">Club</th>
                       <th scope="col" className="pg-num" title="Played">P</th>
-                      <th scope="col" className="pg-num" title="Won">W</th>
-                      <th scope="col" className="pg-num" title="Drawn">D</th>
-                      <th scope="col" className="pg-num" title="Lost">L</th>
+                      <th scope="col" className="pg-num pg-detail" title="Won">W</th>
+                      <th scope="col" className="pg-num pg-detail" title="Drawn">D</th>
+                      <th scope="col" className="pg-num pg-detail" title="Lost">L</th>
                       <th scope="col" className="pg-num pg-wide" title="Goals for">GF</th>
                       <th scope="col" className="pg-num pg-wide" title="Goals against">GA</th>
                       <th scope="col" className="pg-num" title="Goal difference">GD</th>
@@ -609,9 +609,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                             </button>
                           </td>
                           <td className="pg-num">{row.played}</td>
-                          <td className="pg-num">{row.won}</td>
-                          <td className="pg-num">{row.drawn}</td>
-                          <td className="pg-num">{row.lost}</td>
+                          <td className="pg-num pg-detail">{row.won}</td>
+                          <td className="pg-num pg-detail">{row.drawn}</td>
+                          <td className="pg-num pg-detail">{row.lost}</td>
                           <td className="pg-num pg-wide">{row.goalsFor}</td>
                           <td className="pg-num pg-wide">{row.goalsAgainst}</td>
                           <td className="pg-num">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>

@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   Flame,
-  Goal,
   MapPin,
   Menu,
   MessageCircle,
@@ -110,7 +109,27 @@ type Props = {
   onAdmin: () => void
 }
 
-const nav = ['Home', 'Fixtures', 'Standings', 'Teams', 'Scorers', 'News', 'About']
+// Order matches the sections on the page.
+const nav = [
+  { label: 'Fixtures', id: 'fixtures' },
+  { label: 'Standings', id: 'standings' },
+  { label: 'Scorers', id: 'scorers' },
+  { label: 'News', id: 'news' },
+  { label: 'Clubs', id: 'teams' },
+  { label: 'About', id: 'about' },
+]
+
+const STORY_CATEGORY_LABELS: Record<string, string> = {
+  news: 'News',
+  match_report: 'Match report',
+  announcement: 'Announcement',
+  press: 'Press',
+  panorama: 'Feature',
+}
+
+function storyCategoryLabel(category?: string): string {
+  return (category && STORY_CATEGORY_LABELS[category]) || 'Story'
+}
 
 /**
  * Is this player on the books for the given season?
@@ -130,6 +149,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const [route, setRoute] = useState<PublicRoute>(() => parsePublicRoute(window.location.hash))
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [groupIndex, setGroupIndex] = useState(0)
 
   /* ---------------- Season scoping ---------------- */
 
@@ -227,16 +247,6 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     [sponsors, activeSeason],
   )
 
-  // A live match outranks the next scheduled one — if something is being
-  // played right now, that is the thing to lead with.
-  const nextMatch = useMemo(
-    () =>
-      seasonMatches.find((m) => m.matchStatus === 'live') ??
-      seasonMatches.find((m) => m.matchStatus === 'scheduled') ??
-      seasonMatches[0],
-    [seasonMatches],
-  )
-
   const completedOrLiveMatches = useMemo(
     () => seasonMatches.filter((m) => m.matchStatus === 'completed' || m.matchStatus === 'live'),
     [seasonMatches],
@@ -296,13 +306,6 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     [seasonTeams],
   )
 
-  // Genuinely upcoming games lead; if the season is over, the most recent
-  // fixtures still fill the panel rather than leaving it empty.
-  const upcomingFixtures = useMemo(() => {
-    const scheduled = seasonMatches.filter((match) => match.matchStatus === 'scheduled')
-    return (scheduled.length > 0 ? scheduled : seasonMatches).slice(0, 4)
-  }, [seasonMatches])
-
   const playersByTeamId = useMemo(() => {
     const counts = new Map<number, number>()
     for (const player of seasonPlayers) {
@@ -320,7 +323,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }, [])
 
   const openDetail = (next: PublicRoute) => {
-    window.location.hash = routeToHash(next)
+    window.location.assign(routeToHash(next))
   }
   const closeDetail = () => {
     // Prefer going back so the detail view does not pile up in history.
@@ -333,28 +336,56 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     setMenuOpen(false)
   }
 
+  // Matches arrive in kickoff order, so the most recent result is the last
+  // completed one. A match in progress outranks it.
+  const liveMatch = seasonMatches.find((m) => m.matchStatus === 'live') ?? null
+  const recentResults = [...completedOrLiveMatches].reverse()
+  const latestResult = liveMatch ?? recentResults.find((m) => m.matchStatus === 'completed') ?? null
+  const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
+  const upcomingMatch = scheduledMatches[0] ?? null
+  const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   const leadStory = seasonStories[0]
-  const latestResult = completedOrLiveMatches[0] ?? null
-  const spotlightGroup = standingsGroups[0]
+  const seasonTitle = activeSeason ? `CCL Cup ${activeSeason.city} ${activeSeason.year}` : 'CCL Cup'
+
+  const fixtureRow = (match: Match) => {
+    const homeTeam = teamLookup.get(match.home)
+    const awayTeam = teamLookup.get(match.away)
+    const played = match.homeScore != null && match.awayScore != null
+    return (
+      <li key={match.id}>
+        <button className="pg-fixture" onClick={() => openDetail({ kind: 'match', id: match.id })}>
+          <time>{match.date}</time>
+          <span className="pg-fixture-team">
+            <TeamMark name={match.home} color={homeTeam?.color} secondaryColor={homeTeam?.secondaryColor} logoUrl={homeTeam?.logoUrl} size="sm" />
+            <strong>{match.home}</strong>
+          </span>
+          <b className={played ? 'pg-fixture-score' : 'pg-fixture-time'}>
+            {played ? `${match.homeScore}–${match.awayScore}` : match.time}
+          </b>
+          <span className="pg-fixture-team is-away">
+            <strong>{match.away}</strong>
+            <TeamMark name={match.away} color={awayTeam?.color} secondaryColor={awayTeam?.secondaryColor} logoUrl={awayTeam?.logoUrl} size="sm" />
+          </span>
+          <small>{match.matchStatus === 'live' ? 'Live now' : match.venue}</small>
+        </button>
+      </li>
+    )
+  }
 
   return (
-    <div className="public-site">
+    <div className="public-site programme">
       <FlagRippleDefs />
-      <section className="hero" id="home">
-        <img className="hero-photo" src="/assets/ccl-hero.png" alt="A floodlit CCL Cup football match" />
-        <div className="hero-fade" />
+      <section className="pg-hero" id="home">
+        <img className="pg-hero-photo" src="/assets/ccl-hero.png" alt="" />
+        <div className="pg-hero-shade" />
         <header className="public-header content-width">
           <button className="brand-button" onClick={() => scrollTo('home')}>
             <Brand />
           </button>
           <nav className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
-            {nav.map((item, index) => (
-              <button
-                className={index === 0 ? 'active' : ''}
-                key={item}
-                onClick={() => scrollTo(item.toLowerCase())}
-              >
-                {item}
+            {nav.map((item) => (
+              <button key={item.id} onClick={() => scrollTo(item.id)}>
+                {item.label}
               </button>
             ))}
           </nav>
@@ -374,8 +405,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               disabled={seasonOptions.length === 0}
               onClick={() => setSeasonMenuOpen((open) => !open)}
             >
-              {activeSeason ? `${activeSeason.year} ${activeSeason.name}` : 'Season'}
-              <ChevronDown size={18} />
+              {activeSeason ? `${activeSeason.city} ${activeSeason.year}` : 'Season'}
+              <ChevronDown size={16} />
             </button>
             {seasonMenuOpen && seasonOptions.length > 0 && (
               <>
@@ -391,6 +422,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                           className={isSelected ? 'is-selected' : ''}
                           onClick={() => {
                             setSelectedSeasonId(season.id)
+                            setGroupIndex(0)
                             setSeasonMenuOpen(false)
                           }}
                         >
@@ -419,208 +451,182 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </button>
         </header>
 
-        <div className="hero-content content-width">
-          <div className="hero-copy">
-            <span className="hero-kicker">
-              Corporate Champions League {activeSeason?.year ?? '2026'}
-            </span>
-            <h1>{activeSeason?.city || 'Antalya'}</h1>
-            <div className="hero-stage-line">
-              <span />
-              <strong>{nextMatch?.stage || activeSeason?.seasonType || 'Group stage'}</strong>
-            </div>
-            <p>The city plays here. Follow every fixture, table change and decisive moment from the CCL Cup.</p>
-            <div className="hero-actions">
-              <button className="button button-primary" onClick={() => scrollTo('fixtures')}>
-                Explore matchday <ArrowRight size={19} />
-              </button>
-              <button className="text-link" onClick={() => scrollTo('standings')}>
-                View the table <ArrowRight size={18} />
-              </button>
-            </div>
+        <div className="pg-hero-body content-width">
+          <h1 className={latestResult ? 'pg-hero-title' : 'pg-hero-title is-large'}>{seasonTitle}</h1>
+
+          {latestResult ? (
+            <button className="pg-scoreboard" onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
+              <span className="pg-scoreboard-status">
+                {latestResult.matchStatus === 'live' ? <span className="pg-live">Live</span> : 'Full time'}
+                <span>
+                  {latestResult.date}, {latestResult.stage}
+                </span>
+              </span>
+              <span className="pg-scoreboard-row">
+                <span className="pg-scoreboard-team">
+                  <TeamMark
+                    name={latestResult.home}
+                    color={teamLookup.get(latestResult.home)?.color}
+                    secondaryColor={teamLookup.get(latestResult.home)?.secondaryColor}
+                    logoUrl={teamLookup.get(latestResult.home)?.logoUrl}
+                    size="lg"
+                  />
+                  <strong>{latestResult.home}</strong>
+                </span>
+                <span className="pg-scoreboard-score" aria-label={`${latestResult.homeScore ?? 0} to ${latestResult.awayScore ?? 0}`}>
+                  <b>{latestResult.homeScore ?? 0}</b>
+                  <b>{latestResult.awayScore ?? 0}</b>
+                </span>
+                <span className="pg-scoreboard-team is-away">
+                  <TeamMark
+                    name={latestResult.away}
+                    color={teamLookup.get(latestResult.away)?.color}
+                    secondaryColor={teamLookup.get(latestResult.away)?.secondaryColor}
+                    logoUrl={teamLookup.get(latestResult.away)?.logoUrl}
+                    size="lg"
+                  />
+                  <strong>{latestResult.away}</strong>
+                </span>
+              </span>
+            </button>
+          ) : (
+            <p className="pg-hero-lede">
+              {upcomingMatch
+                ? `The season kicks off on ${upcomingMatch.date}. Results, tables and scorers appear here as matches are played.`
+                : 'Fixtures for this season will be published here once the draw is made.'}
+            </p>
+          )}
+
+          {upcomingMatch ? (
+            <button className="pg-next" onClick={() => openDetail({ kind: 'match', id: upcomingMatch.id })}>
+              <span className="pg-next-label">Next match</span>
+              <strong>
+                {upcomingMatch.home} v {upcomingMatch.away}
+              </strong>
+              <span>
+                {upcomingMatch.date}, {upcomingMatch.time} at {upcomingMatch.venue}
+              </span>
+            </button>
+          ) : null}
+
+          <div className="pg-hero-actions">
+            <button className="pg-button" onClick={() => scrollTo('fixtures')}>
+              See all fixtures
+            </button>
+            <button className="pg-button is-ghost" onClick={() => scrollTo('standings')}>
+              See the table
+            </button>
           </div>
         </div>
       </section>
 
       <main>
-        <section className="matchday-ribbon content-width" aria-label="Matchday overview">
-          <div className="ribbon-item ribbon-result">
-            <span className="ribbon-label">Latest result</span>
-            {latestResult ? (
-              <button onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
-                <span>{latestResult.home}</span>
-                <b>{latestResult.homeScore ?? 0} — {latestResult.awayScore ?? 0}</b>
-                <span>{latestResult.away}</span>
-              </button>
-            ) : <strong>Results coming soon</strong>}
-          </div>
-          <div className="ribbon-item ribbon-next">
-            <span className="ribbon-label">Next match</span>
-            {nextMatch ? (
-              <button onClick={() => openDetail({ kind: 'match', id: nextMatch.id })}>
-                <span>{nextMatch.home}</span>
-                <b>{nextMatch.time}</b>
-                <span>{nextMatch.away}</span>
-                <small>{nextMatch.date} · {nextMatch.venue}</small>
-              </button>
-            ) : <strong>Fixture to be confirmed</strong>}
-          </div>
-          <button className="ribbon-cta" onClick={() => scrollTo('fixtures')}>
-            All fixtures <ArrowRight size={17} />
-          </button>
-        </section>
-
-        <section className="editorial-board content-width" id="news">
-          <article className="match-report">
-            <div className="editorial-heading">
-              <span>01</span>
-              <h2>Match report</h2>
-            </div>
-            {leadStory ? (
-              <button className="report-feature" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
-                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt="" />
-                <span className="report-copy">
-                  <small>{leadStory.category?.replace('_', ' ') || 'Latest story'} · {leadStory.publishedAt || 'This season'}</small>
-                  <strong>{leadStory.title}</strong>
-                  <span>{leadStory.summary || 'The latest story from inside the CCL Cup.'}</span>
-                  <em>Read full report <ArrowRight size={15} /></em>
-                </span>
-              </button>
-            ) : (
-              <p className="standings-note">The first match report will appear here.</p>
-            )}
-          </article>
-
-          <aside className="news-desk">
-            <div className="editorial-heading">
-              <span>02</span>
-              <h2>News</h2>
-            </div>
-            <div className="news-desk-list">
-              {seasonStories.slice(1, 5).map((story, index) => (
-                <button key={story.id} onClick={() => openDetail({ kind: 'story', id: story.id })}>
-                  <span className={`news-desk-thumb story-thumb-${(index % 3) + 1}`} />
-                  <span>
-                    <small>{story.publishedAt || story.category?.replace('_', ' ') || 'CCL Cup'}</small>
-                    <strong>{story.title}</strong>
-                  </span>
-                  <ArrowRight size={17} />
-                </button>
-              ))}
-              {seasonStories.length < 2 ? <p className="standings-note">More news will appear here as the season develops.</p> : null}
-            </div>
-          </aside>
-        </section>
-
-        <section className="editorial-snapshot content-width" aria-label="Competition snapshot">
-          <div className="snapshot-table">
-            <div className="editorial-heading"><span>03</span><h2>{spotlightGroup?.groupName || 'League table'}</h2></div>
-            <div className="snapshot-rows">
-              {spotlightGroup?.rows.slice(0, 5).map((row) => {
-                const team = teamById.get(row.teamId)
-                return (
-                  <button key={row.teamId} onClick={() => team && openDetail({ kind: 'team', id: team.id })}>
-                    <b>{row.position}</b>
-                    <TeamMark name={row.teamName} color={row.color} secondaryColor={team?.secondaryColor} logoUrl={row.logoUrl} size="sm" />
-                    <strong>{row.teamName}</strong>
-                    <span>{row.played} PL</span>
-                    <em>{row.points} PTS</em>
-                  </button>
-                )
-              })}
-            </div>
-            <button className="snapshot-link" onClick={() => scrollTo('standings')}>Full standings <ArrowRight size={15} /></button>
-          </div>
-
-          <div className="snapshot-scorers">
-            <div className="editorial-heading"><span>04</span><h2>Top scorers</h2></div>
-            <div className="snapshot-scorer-rail">
-              {topScorers.slice(0, 4).map((line, index) => (
-                <div key={`${line.playerName}-${line.teamName}`}>
-                  <span className="snapshot-rank">0{index + 1}</span>
-                  <span className="snapshot-player-art"><User size={42} strokeWidth={1.25} /></span>
-                  <strong>{line.playerName}</strong>
-                  <small>{line.teamName}</small>
-                  <b>{line.goals}<span> goals</span></b>
-                </div>
-              ))}
-              {topScorers.length === 0 ? <p className="standings-note">The scorer race begins with the first goal.</p> : null}
-            </div>
-          </div>
-        </section>
-
-        {/* Standings & next fixtures */}
-        <section className="data-band" id="standings">
-          <div className="content-width data-grid">
-            <div className="standings-wrap">
-              <div className="section-head-with-action">
-                <h2>{standingsGroups.length > 1 ? 'Group Standings' : 'League Table'}</h2>
-                <span className="hint-label">Click a club to view squad</span>
+        <section className="pg-section content-width" id="fixtures">
+          <h2 className="pg-heading">Fixtures and results</h2>
+          {seasonMatches.length === 0 ? (
+            <p className="pg-empty">No fixtures have been scheduled for this season yet.</p>
+          ) : (
+            <div className="pg-fixture-columns">
+              <div>
+                <h3 className="pg-subheading">Latest results</h3>
+                {recentResults.length === 0 ? (
+                  <p className="pg-empty">No results yet. The first scores appear here at full time.</p>
+                ) : (
+                  <ol className="pg-fixture-list">{recentResults.slice(0, 5).map(fixtureRow)}</ol>
+                )}
               </div>
-              {standingsGroups.map((group) => (
-              <div className="standings-group" key={group.groupId}>
-              {standingsGroups.length > 1 ? <h3 className="standings-group-title">{group.groupName}</h3> : null}
+              <div>
+                <h3 className="pg-subheading">Coming up</h3>
+                {scheduledMatches.length === 0 ? (
+                  <p className="pg-empty">Every fixture this season has been played.</p>
+                ) : (
+                  <ol className="pg-fixture-list">{scheduledMatches.slice(0, 5).map(fixtureRow)}</ol>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="pg-section content-width" id="standings">
+          <div className="pg-heading-row">
+            <h2 className="pg-heading">Standings</h2>
+            {standingsGroups.length > 1 ? (
+              <div className="pg-tabs" role="tablist" aria-label="Choose a group">
+                {standingsGroups.map((group, index) => (
+                  <button
+                    key={group.groupId}
+                    role="tab"
+                    aria-selected={group === shownGroup}
+                    className={group === shownGroup ? 'is-selected' : ''}
+                    onClick={() => setGroupIndex(index)}
+                  >
+                    {group.groupName}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {seasonTeams.length === 0 || !shownGroup ? (
+            <p className="pg-empty">No clubs are registered for this season yet, so there is no table to show.</p>
+          ) : (
+            <div className="pg-table-card" role={standingsGroups.length > 1 ? 'tabpanel' : undefined}>
               <div className="table-scroll">
-                <table>
+                <table className="pg-table">
                   <thead>
                     <tr>
-                      <th>POS</th>
-                      <th>TEAM</th>
-                      <th>P</th>
-                      <th>W</th>
-                      <th>D</th>
-                      <th>L</th>
-                      <th>GF</th>
-                      <th>GA</th>
-                      <th>GD</th>
-                      <th>PTS</th>
-                      <th className="form-column">FORM</th>
+                      <th scope="col" className="pg-num">Pos</th>
+                      <th scope="col">Club</th>
+                      <th scope="col" className="pg-num" title="Played">P</th>
+                      <th scope="col" className="pg-num" title="Won">W</th>
+                      <th scope="col" className="pg-num" title="Drawn">D</th>
+                      <th scope="col" className="pg-num" title="Lost">L</th>
+                      <th scope="col" className="pg-num pg-wide" title="Goals for">GF</th>
+                      <th scope="col" className="pg-num pg-wide" title="Goals against">GA</th>
+                      <th scope="col" className="pg-num" title="Goal difference">GD</th>
+                      <th scope="col" className="pg-num" title="Points">Pts</th>
+                      <th scope="col" className="pg-form-col">Form</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {group.rows.map((row) => {
+                    {shownGroup.rows.map((row) => {
                       const country = getCountry(row.countryCode)
                       const team = teamById.get(row.teamId)
                       return (
-                        <tr
-                          key={row.teamId}
-                          className="clickable-row"
-                          onClick={() => team && openDetail({ kind: 'team', id: team.id })}
-                          title="Click to view team roster"
-                        >
-                          <td>{row.position}</td>
+                        <tr key={row.teamId} onClick={() => team && openDetail({ kind: 'team', id: team.id })}>
+                          <td className="pg-num">{row.position}</td>
                           <td>
-                            <span className="team-cell">
-                              <TeamMark
-                                name={row.teamName}
-                                color={row.color}
-                                secondaryColor={team?.secondaryColor}
-                                logoUrl={row.logoUrl}
-                                countryCode={row.countryCode}
-                              />
-                              <div className="team-name-cell">
-                                <strong>{row.teamName}</strong>
-                                <span className="team-flag-country" title={country.name}>{country.flag}</span>
-                              </div>
-                            </span>
+                            <button
+                              className="pg-club-cell"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (team) openDetail({ kind: 'team', id: team.id })
+                              }}
+                            >
+                              <TeamMark name={row.teamName} color={row.color} secondaryColor={team?.secondaryColor} logoUrl={row.logoUrl} size="sm" />
+                              <strong>{row.teamName}</strong>
+                              <span title={country.name}>{country.flag}</span>
+                            </button>
                           </td>
-                          <td>{row.played}</td>
-                          <td>{row.won}</td>
-                          <td>{row.drawn}</td>
-                          <td>{row.lost}</td>
-                          <td>{row.goalsFor}</td>
-                          <td>{row.goalsAgainst}</td>
-                          <td>{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
-                          <td>
-                            <strong>{row.points}</strong>
-                          </td>
-                          <td className="form-column">
+                          <td className="pg-num">{row.played}</td>
+                          <td className="pg-num">{row.won}</td>
+                          <td className="pg-num">{row.drawn}</td>
+                          <td className="pg-num">{row.lost}</td>
+                          <td className="pg-num pg-wide">{row.goalsFor}</td>
+                          <td className="pg-num pg-wide">{row.goalsAgainst}</td>
+                          <td className="pg-num">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
+                          <td className="pg-num pg-points">{row.points}</td>
+                          <td className="pg-form-col">
                             {row.form.length === 0 ? (
-                              <span className="form-empty">—</span>
+                              <span className="pg-muted">None yet</span>
                             ) : (
-                              <span className="form-guide">
+                              <span className="pg-form">
                                 {row.form.map((result, index) => (
-                                  <span key={index} className={`form-pip form-pip-${result.toLowerCase()}`}>
+                                  <span
+                                    key={index}
+                                    className={`pg-form-pip is-${result.toLowerCase()}`}
+                                    title={result === 'W' ? 'Won' : result === 'D' ? 'Drawn' : 'Lost'}
+                                  >
                                     {result}
                                   </span>
                                 ))}
@@ -633,193 +639,150 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   </tbody>
                 </table>
               </div>
-              </div>
-              ))}
-              {seasonTeams.length === 0 ? (
-                <p className="standings-note">
-                  No clubs are registered for this season, so there is no table to show yet.
-                </p>
-              ) : !hasResults ? (
-                <p className="standings-note">
-                  No results have been entered yet — the table updates automatically as matches are completed.
-                </p>
-              ) : null}
+              <p className="pg-table-note">
+                {hasResults
+                  ? 'Three points for a win, one for a draw. Select a club to see its squad.'
+                  : 'No results yet. The table updates itself as matches are completed.'}
+              </p>
             </div>
+          )}
+        </section>
 
-            <div className="fixtures-wrap" id="fixtures">
-              <h2>Next fixtures</h2>
-              {upcomingFixtures.length === 0 && (
-                <p className="standings-note">No fixtures are scheduled for this season yet.</p>
-              )}
-              <div className="fixtures-list">
-                {upcomingFixtures.map((match) => {
-                  const homeTeam = teamLookup.get(match.home)
-                  const awayTeam = teamLookup.get(match.away)
-                  return (
-                    <div
-                      className="fixture-row clickable"
-                      key={match.id}
-                      onClick={() => openDetail({ kind: 'match', id: match.id })}
-                      title="Click to view match info"
-                    >
-                      <time>{match.date.toUpperCase()}</time>
-                      <span className="fixture-team">
-                        <TeamMark
-                          name={match.home}
-                          color={homeTeam?.color}
-                          secondaryColor={homeTeam?.secondaryColor}
-                          logoUrl={homeTeam?.logoUrl}
-                          size="sm"
-                        />
-                        <strong>{match.home}</strong>
-                      </span>
-                      <b>
-                        {match.homeScore != null && match.awayScore != null
-                          ? `${match.homeScore} : ${match.awayScore}`
-                          : match.time}
-                      </b>
-                      <span className="fixture-team away">
-                        <strong>{match.away}</strong>
-                        <TeamMark
-                          name={match.away}
-                          color={awayTeam?.color}
-                          secondaryColor={awayTeam?.secondaryColor}
-                          logoUrl={awayTeam?.logoUrl}
-                          size="sm"
-                        />
-                      </span>
-                      <span>{match.venue}</span>
-                    </div>
-                  )
-                })}
+        <section className="pg-band" id="scorers">
+          <div className="content-width">
+            <h2 className="pg-heading">Top scorers</h2>
+            {topScorers.length === 0 ? (
+              <p className="pg-empty">No goals yet. The scorer race starts with the first one.</p>
+            ) : (
+              <div className={topAssists.length > 0 ? 'pg-scorers has-assists' : 'pg-scorers'}>
+                <ol className="pg-stickers">
+                  {topScorers.slice(0, 8).map((line, index) => {
+                    const team = teamLookup.get(line.teamName)
+                    const kit = {
+                      '--kit': team?.color || '#0e4d35',
+                      '--kit-2': team?.secondaryColor || '#f3f5f1',
+                    } as React.CSSProperties
+                    const content = (
+                      <>
+                        <span className="pg-sticker-kit" style={kit}>
+                          <span className="pg-sticker-rank">{index + 1}</span>
+                          <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
+                        </span>
+                        <strong>{line.playerName}</strong>
+                        <small>{line.teamName}</small>
+                        <span className="pg-sticker-goals">
+                          <b>{line.goals}</b> {line.goals === 1 ? 'goal' : 'goals'}
+                        </span>
+                      </>
+                    )
+                    return (
+                      <li key={`${line.playerName}-${line.teamName}`}>
+                        {line.playerId != null ? (
+                          <button className="pg-sticker" onClick={() => openDetail({ kind: 'player', id: line.playerId! })}>
+                            {content}
+                          </button>
+                        ) : (
+                          <div className="pg-sticker">{content}</div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ol>
+
+                {topAssists.length > 0 ? (
+                  <aside className="pg-assists">
+                    <h3 className="pg-subheading">Most assists</h3>
+                    <ol>
+                      {topAssists.map((line) => (
+                        <li key={`${line.playerName}-${line.teamName}`}>
+                          <span>
+                            <strong>{line.playerName}</strong>
+                            <small>{line.teamName}</small>
+                          </span>
+                          <b>{line.assists}</b>
+                        </li>
+                      ))}
+                    </ol>
+                  </aside>
+                ) : null}
               </div>
-            </div>
+            )}
           </div>
         </section>
 
-        {/* Participating clubs */}
-        <section className="participants content-width" id="teams">
-          <div className="section-title-row">
-            <h2>Participating clubs</h2>
-            <span className="hint-label">
-              {participants.length} {participants.length === 1 ? 'club' : 'clubs'}
-              {activeSeason ? ` · ${activeSeason.year} ${activeSeason.name}` : ''}
-            </span>
-          </div>
-
-          {participants.length === 0 ? (
-            <p className="standings-note">No clubs have been registered for this season yet.</p>
+        <section className="pg-section content-width" id="news">
+          <h2 className="pg-heading">News</h2>
+          {!leadStory ? (
+            <p className="pg-empty">Match reports and club news will appear here during the season.</p>
           ) : (
-            <div className="participant-grid">
+            <div className="pg-news">
+              <button className="pg-lead-story" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
+                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt="" />
+                <span className="pg-lead-copy">
+                  <small>
+                    {storyCategoryLabel(leadStory.category)}
+                    {leadStory.publishedAt ? `, ${leadStory.publishedAt}` : ''}
+                  </small>
+                  <strong>{leadStory.title}</strong>
+                  {leadStory.summary ? <span>{leadStory.summary}</span> : null}
+                  <em>Read the full story</em>
+                </span>
+              </button>
+              {seasonStories.length > 1 ? (
+                <ul className="pg-story-list">
+                  {seasonStories.slice(1, 5).map((story) => (
+                    <li key={story.id}>
+                      <button onClick={() => openDetail({ kind: 'story', id: story.id })}>
+                        <small>
+                          {storyCategoryLabel(story.category)}
+                          {story.publishedAt ? `, ${story.publishedAt}` : ''}
+                        </small>
+                        <strong>{story.title}</strong>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          )}
+        </section>
+
+        <section className="pg-section content-width" id="teams">
+          <h2 className="pg-heading">Clubs</h2>
+          {participants.length === 0 ? (
+            <p className="pg-empty">No clubs have been registered for this season yet.</p>
+          ) : (
+            <ul className="pg-clubs">
               {participants.map((team) => {
                 const country = getCountry(team.countryCode)
                 const squadSize = playersByTeamId.get(team.id) ?? 0
                 return (
-                  <button
-                    className="participant-card"
-                    key={team.id}
-                    onClick={() => openDetail({ kind: 'team', id: team.id })}
-                    title={`View the ${team.name} squad`}
-                  >
-                    <span className="participant-flag" title={country.name}>
-                      {country.flag}
-                    </span>
-                    <TeamMark
-                      name={team.name}
-                      color={team.color}
-                      secondaryColor={team.secondaryColor}
-                      logoUrl={team.logoUrl}
-                      countryCode={team.countryCode}
-                      size="lg"
-                    />
-                    <strong className="participant-name">{team.name}</strong>
-                    <span className="participant-country">{country.name}</span>
-                    <span className="participant-meta">
-                      <span>{team.groupName ?? 'Group A'}</span>
+                  <li key={team.id}>
+                    <button
+                      className="pg-club"
+                      style={{ '--kit': team.color || '#0e4d35' } as React.CSSProperties}
+                      onClick={() => openDetail({ kind: 'team', id: team.id })}
+                    >
+                      <TeamMark name={team.name} color={team.color} secondaryColor={team.secondaryColor} logoUrl={team.logoUrl} size="lg" />
+                      <strong>{team.name}</strong>
                       <span>
-                        {squadSize} {squadSize === 1 ? 'player' : 'players'}
+                        {country.flag} {country.name}
                       </span>
-                    </span>
-                    {team.managerName ? (
-                      <span className="participant-manager">Manager · {team.managerName}</span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Top scorers */}
-        <section className="scorers-section content-width" id="scorers">
-          <div className="section-title-row">
-            <h2>Top scorers</h2>
-            <span className="hint-label">Derived from the match event log</span>
-          </div>
-
-          {topScorers.length === 0 ? (
-            <p className="standings-note">
-              No goals have been recorded yet — this list builds itself as match events are logged.
-            </p>
-          ) : (
-            <ol className="scorer-list">
-              {topScorers.map((line, index) => {
-                const team = teamLookup.get(line.teamName)
-                return (
-                  <li className="scorer-row" key={`${line.playerName}-${line.teamName}`}>
-                    <span className="scorer-rank">{index + 1}</span>
-                    <TeamMark
-                      name={line.teamName}
-                      color={team?.color}
-                      secondaryColor={team?.secondaryColor}
-                      logoUrl={team?.logoUrl}
-                      size="sm"
-                    />
-                    <span className="scorer-identity">
-                      <strong>{line.playerName}</strong>
-                      <small>{line.teamName}</small>
-                    </span>
-                    <span className="scorer-cards">
-                      {line.yellowCards > 0 ? <span className="card-tally yellow">{line.yellowCards}</span> : null}
-                      {line.redCards > 0 ? <span className="card-tally red">{line.redCards}</span> : null}
-                    </span>
-                    <span className="scorer-goals">
-                      <Goal size={16} />
-                      <b>{line.goals}</b>
-                    </span>
+                      <small>
+                        {team.groupName ? `${team.groupName}, ` : ''}
+                        {squadSize} {squadSize === 1 ? 'player' : 'players'}
+                      </small>
+                    </button>
                   </li>
                 )
               })}
-            </ol>
-          )}
-
-          {topAssists.length > 0 && (
-            <div className="assists-block">
-              <h3 className="assists-title">Most assists</h3>
-              <ol className="assist-list">
-                {topAssists.map((line) => (
-                  <li key={`${line.playerName}-${line.teamName}`}>
-                    <span className="assist-name">
-                      <strong>{line.playerName}</strong>
-                      <small>{line.teamName}</small>
-                    </span>
-                    <b>{line.assists}</b>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            </ul>
           )}
         </section>
 
-        {/* Media Highlights */}
         {seasonMedia.length > 0 && (
-          <section className="media-section content-width" id="media">
-            <div className="section-title-row">
-              <h2>Match highlights &amp; media</h2>
-              <span className="hint-label">
-                {seasonMedia.length} item{seasonMedia.length === 1 ? '' : 's'}
-              </span>
-            </div>
+          <section className="pg-section media-section content-width" id="media">
+            <h2 className="pg-heading">Highlights</h2>
             <div className="media-rail">
               {seasonMedia.slice(0, 6).map((asset) => {
                 const body = (
@@ -861,47 +824,38 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </section>
         )}
 
-        {/* About */}
-        <section className="about-section" id="about">
-          <div className="content-width about-grid">
-            <div className="about-lead">
-              <span className="eyebrow">About the Cup</span>
-              <h2>{SITE_CONFIG.about.intro}</h2>
+        <section className="pg-about" id="about">
+          <div className="content-width pg-about-grid">
+            <div>
+              <h2 className="pg-heading">About the cup</h2>
+              <p className="pg-about-lead">{SITE_CONFIG.about.intro}</p>
               <p>{SITE_CONFIG.about.history}</p>
-              <p className="about-vision">{SITE_CONFIG.about.vision}</p>
+              <p>{SITE_CONFIG.about.vision}</p>
             </div>
-
-            <div className="about-panels">
-              <div className="about-panel">
-                <h3>
-                  <Shield size={17} /> Competition rules
-                </h3>
-                <ul>
-                  {SITE_CONFIG.about.rules.map((rule) => (
-                    <li key={rule}>{rule}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="about-panel">
-                <h3>
-                  <MapPin size={17} /> Venues &amp; kick-off
-                </h3>
-                <p>{SITE_CONFIG.about.venueNote}</p>
-                {activeSeason ? (
-                  <p className="about-host">
-                    Host city this season: <strong>{activeSeason.city}</strong>
-                  </p>
-                ) : null}
-              </div>
+            <div className="pg-about-facts">
+              <h3 className="pg-subheading">
+                <Shield size={17} /> Competition rules
+              </h3>
+              <ul>
+                {SITE_CONFIG.about.rules.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ul>
+              <h3 className="pg-subheading">
+                <MapPin size={17} /> Venues and kick-off
+              </h3>
+              <p>{SITE_CONFIG.about.venueNote}</p>
+              {activeSeason ? (
+                <p>
+                  Host city this season: <strong>{activeSeason.city}</strong>
+                </p>
+              ) : null}
             </div>
           </div>
         </section>
 
-        {/* Fan feedback */}
         <CommentsSection />
 
-        {/* Sponsors */}
         {seasonSponsors.length > 0 && (
           <section className="sponsors-section" id="sponsors">
             <div className="content-width">
@@ -940,17 +894,17 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <div className="content-width">
           <Brand />
           <nav aria-label="Footer navigation">
-            <button onClick={() => scrollTo('about')}>About the Cup</button>
-            <button onClick={() => scrollTo('teams')}>Squads &amp; Clubs</button>
-            <button onClick={() => scrollTo('fixtures')}>Schedule &amp; Fixtures</button>
-            <button onClick={() => scrollTo('scorers')}>Top Scorers</button>
-            <button onClick={() => scrollTo('news')}>Newsroom</button>
+            {nav.map((item) => (
+              <button key={item.id} onClick={() => scrollTo(item.id)}>
+                {item.label}
+              </button>
+            ))}
             <button onClick={onAdmin}>Staff login</button>
           </nav>
 
           <SocialLinks />
 
-          <small>© 2026 Corporate Champions League. Built for competition and community.</small>
+          <small>© {activeSeason?.year ?? new Date().getFullYear()} Corporate Champions League</small>
         </div>
       </footer>
 

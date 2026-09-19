@@ -10,7 +10,7 @@ export function generateEmptyGroupLeague(groupCount: number = 4): SeasonGroupLea
     const letter = GROUP_LETTERS[i] || `${i + 1}`
     groups.push({
       id: `group_${letter.toLowerCase()}`,
-      name: `Grup ${letter}`,
+      name: `Group ${letter}`,
       slots: [],
     })
   }
@@ -40,7 +40,7 @@ export function autoSeedGroupLeague(
     const letter = GROUP_LETTERS[i] || `${i + 1}`
     groups.push({
       id: `group_${letter.toLowerCase()}`,
-      name: `Grup ${letter}`,
+      name: `Group ${letter}`,
       slots: [],
     })
   }

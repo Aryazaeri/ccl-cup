@@ -169,7 +169,7 @@ export function LeagueCanvasModal({
 
   return (
     <Modal
-      title={`⚽ ${seasonTitle || 'Lig'} - Lig Tablosu (Dynamic Single-File Canvas)`}
+      title={`⚽ ${seasonTitle || 'League'} - League table`}
       onClose={onClose}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -177,18 +177,18 @@ export function LeagueCanvasModal({
         {/* TOP TOOLBAR */}
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
-            <span className="toolbar-label">Eklenen Takımlar:</span>
+            <span className="toolbar-label">Teams added:</span>
             <div className="count-pill-btn active">
-              {placedSlots.length} Takım Yerleşti
+              {placedSlots.length} teams placed
             </div>
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Tüm Kulüpleri Doldur">
-              <Dices size={16} /> Otomatik Kura / Tümünü Ekle
+            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Add all clubs">
+              <Dices size={16} /> Add all clubs
             </button>
-            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Tabloyu Temizle">
-              <RotateCcw size={16} /> Temizle
+            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear table">
+              <RotateCcw size={16} /> Clear
             </button>
             <button
               type="button"
@@ -199,7 +199,7 @@ export function LeagueCanvasModal({
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Lig Tablosunu Kaydet ({placedSlots.length} Takım)
+              <Check size={16} /> Save league table ({placedSlots.length} teams)
             </button>
           </div>
         </header>
@@ -212,7 +212,7 @@ export function LeagueCanvasModal({
               <Search size={15} />
               <input
                 type="text"
-                placeholder="Kulüp ara..."
+                placeholder="Search clubs…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -221,7 +221,7 @@ export function LeagueCanvasModal({
             <div className="sidebar-stats-row">
               <span>Toplam Eklenen:</span>
               <strong>
-                {placedSlots.length} / {teams.length} Kulüp
+                {placedSlots.length} / {teams.length} clubs
               </strong>
             </div>
 
@@ -259,7 +259,7 @@ export function LeagueCanvasModal({
                       </small>
                     </div>
                     {isPlaced && (
-                      <span className="placed-indicator-badge" title="Tabloda Yer Aldı">
+                      <span className="placed-indicator-badge" title="In the table">
                         ✓
                       </span>
                     )}
@@ -268,7 +268,7 @@ export function LeagueCanvasModal({
               })}
 
               {filteredTeams.length === 0 && (
-                <div className="empty-teams-notice">Kulüp bulunamadı.</div>
+                <div className="empty-teams-notice">No clubs found.</div>
               )}
             </div>
           </aside>
@@ -280,11 +280,11 @@ export function LeagueCanvasModal({
                 <div className="league-header-left">
                   <Trophy size={18} className="trophy-gold" />
                   <h3>
-                    Lig Sıralaması ve Katılımcı Takımlar ({placedSlots.length} Takım)
+                    League order ({placedSlots.length} teams)
                   </h3>
                 </div>
                 <span className="league-drag-hint">
-                  💡 Kulüpleri sürükleyip ekleyin. Liste sonuna her zaman yeni sıra (+1) otomatik eklenir.
+                  💡 Drag clubs in. A new position is always added at the end of the list.
                 </span>
               </div>
 
@@ -334,16 +334,16 @@ export function LeagueCanvasModal({
                         </div>
                         <span className="slot-zone-pill">
                           {pos === 1
-                            ? '🥇 Lider / Şampiyonluk Adayı'
+                            ? '🥇 Leader'
                             : isTopZone
-                            ? '🏆 Üst Sıra'
-                            : 'Lig Sırası'}
+                            ? '🏆 Top places'
+                            : 'Position'}
                         </span>
                         <button
                           type="button"
                           className="btn-slot-remove"
                           onClick={(e) => removeTeamFromPosition(pos, e)}
-                          title="Takımı Tablodan Çıkar"
+                          title="Remove from table"
                         >
                           <X size={15} />
                         </button>
@@ -369,8 +369,8 @@ export function LeagueCanvasModal({
                     <Plus size={16} className="empty-plus" />
                     <span>
                       {dragOverPosition === nextPlusOnePosition
-                        ? `Buraya Bırak (#${nextPlusOnePosition}. Sıra)`
-                        : `+ Sıra #${nextPlusOnePosition}: Kulübü buraya sürükleyin veya tıklayın`}
+                        ? `Drop here (position ${nextPlusOnePosition})`
+                        : `+ Position ${nextPlusOnePosition}: drag a club here or click`}
                     </span>
                   </div>
                 </div>

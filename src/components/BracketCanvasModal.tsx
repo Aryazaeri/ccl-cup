@@ -165,7 +165,7 @@ export function BracketCanvasModal({
 
   return (
     <Modal
-      title={`🏆 ${seasonTitle || 'Tournament'} - Eleme Ağacı (Bracket Canvas)`}
+      title={`🏆 ${seasonTitle || 'Tournament'} - Knockout bracket`}
       onClose={onClose}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -173,7 +173,7 @@ export function BracketCanvasModal({
         {/* TOP TOOLBAR */}
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
-            <span className="toolbar-label">Eleme Formatı:</span>
+            <span className="toolbar-label">Format:</span>
             <div className="team-count-pills">
               {[4, 8, 16].map((count) => (
                 <button
@@ -182,18 +182,18 @@ export function BracketCanvasModal({
                   className={`count-pill-btn ${teamCount === count ? 'active' : ''}`}
                   onClick={() => handleTeamCountChange(count)}
                 >
-                  {count} Takım ({count === 4 ? 'Yarı Final' : count === 8 ? 'Çeyrek Final' : 'Son 16'})
+                  {count} teams ({count === 4 ? 'semi-finals' : count === 8 ? 'quarter-finals' : 'round of 16'})
                 </button>
               ))}
             </div>
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Rastgele Eşleştir">
-              <Dices size={16} /> Otomatik Kura / Doldur
+            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Random draw">
+              <Dices size={16} /> Auto draw
             </button>
-            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Ağacı Temizle">
-              <RotateCcw size={16} /> Temizle
+            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear bracket">
+              <RotateCcw size={16} /> Clear
             </button>
             <button
               type="button"
@@ -204,7 +204,7 @@ export function BracketCanvasModal({
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Ağacı Kaydet
+              <Check size={16} /> Save bracket
             </button>
           </div>
         </header>
@@ -217,16 +217,16 @@ export function BracketCanvasModal({
               <Search size={15} />
               <input
                 type="text"
-                placeholder="Kulüp ara..."
+                placeholder="Search clubs…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <div className="sidebar-stats-row">
-              <span>Yerleştirilen:</span>
+              <span>Placed:</span>
               <strong>
-                {placedTeamIds.size} / {teamCount} Takım
+                {placedTeamIds.size} / {teamCount} teams
               </strong>
             </div>
 
@@ -264,7 +264,7 @@ export function BracketCanvasModal({
                       </small>
                     </div>
                     {isPlaced && (
-                      <span className="placed-indicator-badge" title="Ağaçta Yer Aldı">
+                      <span className="placed-indicator-badge" title="In the bracket">
                         ✓
                       </span>
                     )}
@@ -273,7 +273,7 @@ export function BracketCanvasModal({
               })}
 
               {filteredTeams.length === 0 && (
-                <div className="empty-teams-notice">Kulüp bulunamadı.</div>
+                <div className="empty-teams-notice">No clubs found.</div>
               )}
             </div>
           </aside>
@@ -286,7 +286,7 @@ export function BracketCanvasModal({
                   <div key={round.roundIndex} className={`bracket-round-column round-${rIdx}`}>
                     <div className="round-header-banner">
                       <h4>{round.roundName}</h4>
-                      <span>{round.matches.length} Eşleşme</span>
+                      <span>{round.matches.length} matches</span>
                     </div>
 
                     <div className="round-matches-stack">
@@ -300,7 +300,7 @@ export function BracketCanvasModal({
                           {/* SLOT 1 */}
                           <BracketSlotView
                             slot={match.slot1}
-                            slotLabel="Takım 1"
+                            slotLabel="Team 1"
                             isDragOver={dragOverSlotId === match.slot1.slotId}
                             onDragOver={(e) => handleDragOver(e, match.slot1.slotId)}
                             onDragLeave={(e) => handleDragLeave(e, match.slot1.slotId)}
@@ -314,7 +314,7 @@ export function BracketCanvasModal({
                           {/* SLOT 2 */}
                           <BracketSlotView
                             slot={match.slot2}
-                            slotLabel="Takım 2"
+                            slotLabel="Team 2"
                             isDragOver={dragOverSlotId === match.slot2.slotId}
                             onDragOver={(e) => handleDragOver(e, match.slot2.slotId)}
                             onDragLeave={(e) => handleDragLeave(e, match.slot2.slotId)}
@@ -355,15 +355,15 @@ export function BracketCanvasModal({
                 {/* CHAMPION PODIUM */}
                 <div className="bracket-round-column champion-column">
                   <div className="round-header-banner champion-header">
-                    <h4>🏆 Şampiyon</h4>
-                    <span>Final Kazananı</span>
+                    <h4>🏆 Champion</h4>
+                    <span>Final winner</span>
                   </div>
                   <div className="champion-podium-box">
                     <Trophy size={48} className="trophy-gold" />
                     <div className="champion-slot-container">
                       <div className="champion-slot-target">
-                        <strong>Final Şampiyonu</strong>
-                        <span>Turnuva Kupası</span>
+                        <strong>Champion</strong>
+                        <span>Tournament trophy</span>
                       </div>
                     </div>
                   </div>
@@ -417,7 +417,7 @@ function BracketSlotView({
           type="button"
           className="btn-slot-remove"
           onClick={onRemove}
-          title="Takımı Çıkar"
+          title="Remove team"
         >
           <X size={13} />
         </button>
@@ -434,7 +434,7 @@ function BracketSlotView({
       onClick={onClick}
     >
       <Plus size={14} className="empty-plus-icon" />
-      <span>{isDragOver ? 'Buraya Bırak' : `+ ${slotLabel}`}</span>
+      <span>{isDragOver ? 'Drop here' : `+ ${slotLabel}`}</span>
     </div>
   )
 }

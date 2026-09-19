@@ -367,7 +367,7 @@ export function SquadCanvasModal({
 
   return (
     <Modal
-      title={`🏟️ ${team.name} — Görsel Kadro & Saha Diziliş Tuvali`}
+      title={`🏟️ ${team.name} — Squad & formation`}
       onClose={onClose}
       className={`squad-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >

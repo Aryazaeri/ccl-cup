@@ -205,7 +205,7 @@ export function GroupLeagueCanvasModal({
 
   return (
     <Modal
-      title={`🗂️ ${seasonTitle || 'Grup Ligi'} - Çoklu Grup Tablosu (Group League Canvas)`}
+      title={`🗂️ ${seasonTitle || 'Group league'} - Group tables`}
       onClose={onClose}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -213,7 +213,7 @@ export function GroupLeagueCanvasModal({
         {/* TOP TOOLBAR */}
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
-            <span className="toolbar-label">Grup Sayısı:</span>
+            <span className="toolbar-label">Groups:</span>
             <select
               className="league-count-select"
               value={groupCount}
@@ -221,22 +221,22 @@ export function GroupLeagueCanvasModal({
             >
               {groupCountOptions.map((c) => (
                 <option key={c} value={c}>
-                  {c} Gruplu Format ({c === 2 ? 'Grup A, B' : c === 4 ? 'Grup A, B, C, D' : `${c} Grup`})
+                  {c} groups ({c === 2 ? 'A, B' : c === 4 ? 'A, B, C, D' : `${c} groups`})
                 </option>
               ))}
             </select>
 
             <div className="count-pill-btn active" style={{ marginLeft: 8 }}>
-              Toplam: {totalPlacedCount} Takım Yerleşti
+              Total: {totalPlacedCount} teams placed
             </div>
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Rastgele Kura ile Dağıt">
-              <Dices size={16} /> Otomatik Kura / Gruplara Dağıt
+            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Random draw">
+              <Dices size={16} /> Auto draw
             </button>
-            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Tüm Grupları Temizle">
-              <RotateCcw size={16} /> Temizle
+            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear all groups">
+              <RotateCcw size={16} /> Clear
             </button>
             <button
               type="button"
@@ -247,7 +247,7 @@ export function GroupLeagueCanvasModal({
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Grupları Kaydet ({totalPlacedCount} Takım)
+              <Check size={16} /> Save groups ({totalPlacedCount} teams)
             </button>
           </div>
         </header>
@@ -260,16 +260,16 @@ export function GroupLeagueCanvasModal({
               <Search size={15} />
               <input
                 type="text"
-                placeholder="Kulüp ara..."
+                placeholder="Search clubs…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <div className="sidebar-stats-row">
-              <span>Toplam Yerleştirilen:</span>
+              <span>Placed:</span>
               <strong>
-                {totalPlacedCount} / {teams.length} Kulüp
+                {totalPlacedCount} / {teams.length} clubs
               </strong>
             </div>
 
@@ -308,8 +308,8 @@ export function GroupLeagueCanvasModal({
                       </small>
                     </div>
                     {isPlaced && (
-                      <span className="placed-indicator-badge" title={`Yerleşti: ${assignedGroupName}`}>
-                        {assignedGroupName?.replace('Grup ', '')}
+                      <span className="placed-indicator-badge" title={`In ${assignedGroupName}`}>
+                        {assignedGroupName?.replace(/^Gr(?:ou|u)p /, '')}
                       </span>
                     )}
                   </div>
@@ -317,7 +317,7 @@ export function GroupLeagueCanvasModal({
               })}
 
               {filteredTeams.length === 0 && (
-                <div className="empty-teams-notice">Kulüp bulunamadı.</div>
+                <div className="empty-teams-notice">No clubs found.</div>
               )}
             </div>
           </aside>
@@ -341,7 +341,7 @@ export function GroupLeagueCanvasModal({
                           <h4>{group.name}</h4>
                         </div>
                         <span className="group-team-badge">
-                          {group.slots.length} Takım
+                          {group.slots.length} teams
                         </span>
                       </div>
 
@@ -396,7 +396,7 @@ export function GroupLeagueCanvasModal({
                                   type="button"
                                   className="btn-slot-remove"
                                   onClick={(e) => removeTeamFromGroup(group.id, pos, e)}
-                                  title="Gruptan Çıkar"
+                                  title="Remove from group"
                                 >
                                   <X size={14} />
                                 </button>
@@ -422,8 +422,8 @@ export function GroupLeagueCanvasModal({
                             <Plus size={15} className="empty-plus" />
                             <span>
                               {isDragOverPlusOne
-                                ? `Bırak (#${nextPlusOnePos}. Sıra)`
-                                : `+ Sıra #${nextPlusOnePos}`}
+                                ? `Drop (position ${nextPlusOnePos})`
+                                : `+ Position ${nextPlusOnePos}`}
                             </span>
                           </div>
                         </div>

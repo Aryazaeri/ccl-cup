@@ -154,21 +154,21 @@ export function ImageTrimmerModal({
   }
 
   return (
-    <Modal title="✂️ Logo Kırpma & Akıllı Sığdırma (Smart Logo Trimmer)" onClose={onClose}>
+    <Modal title="✂️ Crop logo" onClose={onClose}>
       <div className="trimmer-modal-shell">
         <div className="trimmer-content-grid">
           {/* LEFT: INTERACTIVE CROP CANVAS & PAN WORKSPACE */}
           <div className="trimmer-workspace-panel">
             <div className="trimmer-workspace-header">
-              <span>Sürükleyerek logonun konumunu ayarlayın:</span>
+              <span>Drag to position the logo:</span>
               <button
                 type="button"
                 className="btn-smart-trim-action"
                 onClick={handleSmartAutoTrim}
                 disabled={isProcessing}
-                title="Kenar boşluklarını otomatik kırp ve ortala"
+                title="Trim the empty edges and centre the logo"
               >
-                <Sparkles size={15} /> Akıllı Otomatik Kırp & Sığdır
+                <Sparkles size={15} /> Auto trim & fit
               </button>
             </div>
 
@@ -228,17 +228,17 @@ export function ImageTrimmerModal({
                   type="button"
                   className="btn-crop-tool"
                   onClick={handleRotate}
-                  title="90° Sağa Döndür"
+                  title="Rotate 90° right"
                 >
-                  <RotateCw size={15} /> Döndür
+                  <RotateCw size={15} /> Rotate
                 </button>
                 <button
                   type="button"
                   className="btn-crop-tool secondary"
                   onClick={handleReset}
-                  title="Merkeze Sıfırla"
+                  title="Reset to centre"
                 >
-                  <Maximize size={15} /> Sıfırla
+                  <Maximize size={15} /> Reset
                 </button>
               </div>
             </div>
@@ -246,15 +246,15 @@ export function ImageTrimmerModal({
 
           {/* RIGHT: REAL-TIME COMPONENT PREVIEW PANEL */}
           <aside className="trimmer-preview-sidebar">
-            <h4>Bileşen Önizlemeleri</h4>
+            <h4>Previews</h4>
             <span className="preview-subtitle">
-              Logonuzun sitedeki farklı alanlarda nasıl görüneceği:
+              How the logo will look around the site:
             </span>
 
             <div className="previews-collection">
               {/* 1. LARGE SHIELD BADGE PREVIEW */}
               <div className="preview-card-item">
-                <label>Kulüp Sayfası Arması</label>
+                <label>Club page crest</label>
                 <div
                   className="preview-shield-box"
                   style={{ borderColor: teamColor || '#63e35b' }}
@@ -265,7 +265,7 @@ export function ImageTrimmerModal({
 
               {/* 2. CIRCLE PROFILE PREVIEW */}
               <div className="preview-card-item">
-                <label>Maç & Liste Simgesi</label>
+                <label>Match & list icon</label>
                 <div className="preview-circle-box">
                   <img src={currentPreview} alt="Circle Preview" />
                 </div>
@@ -273,12 +273,12 @@ export function ImageTrimmerModal({
 
               {/* 3. MINI MATCH STRIP PREVIEW */}
               <div className="preview-card-item">
-                <label>Canlı Skor Şeridi</label>
+                <label>Live score strip</label>
                 <div className="preview-match-row">
                   <div className="mini-team-thumb">
                     <img src={currentPreview} alt="Mini" />
                   </div>
-                  <strong>{teamName.toUpperCase() || 'KULÜP'}</strong>
+                  <strong>{teamName.toUpperCase() || 'CLUB'}</strong>
                 </div>
               </div>
             </div>
@@ -288,7 +288,7 @@ export function ImageTrimmerModal({
         {/* BOTTOM ACTION BAR */}
         <div className="trimmer-actions-bar">
           <button type="button" className="button button-admin secondary" onClick={onClose}>
-            <X size={15} /> İptal
+            <X size={15} /> Cancel
           </button>
           <button
             type="button"
@@ -296,7 +296,7 @@ export function ImageTrimmerModal({
             onClick={handleSaveAndApply}
             disabled={isProcessing}
           >
-            <Check size={16} /> {isProcessing ? 'İşleniyor...' : 'Kırp & Logoyu Uygula'}
+            <Check size={16} /> {isProcessing ? 'Processing…' : 'Apply crop'}
           </button>
         </div>
       </div>

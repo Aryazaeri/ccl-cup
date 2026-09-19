@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { canAccessAdmin, useAuth } from './auth/AuthContext'
-import { AdminPanel } from './components/AdminPanel'
-import { LoginPage } from './components/LoginPage'
 import { PublicSite } from './components/PublicSite'
 import { withDerivedTeamTotals } from './lib/standingsUtils'
 import { tournamentRepository, type TournamentData } from './services/tournamentRepository'
 import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
+
+// Staff-only screens load on demand: the admin panel and its canvas editors
+// are most of the app's code, and no public visitor ever needs them.
+const AdminPanel = lazy(() => import('./components/AdminPanel').then((module) => ({ default: module.AdminPanel })))
+const LoginPage = lazy(() => import('./components/LoginPage').then((module) => ({ default: module.LoginPage })))
+
+const loadingScreen = (
+  <div className="app-loading">
+    <span />
+    <strong>Loading CCL Cup…</strong>
+  </div>
+)
 
 const currentView = (): View => (window.location.hash.startsWith('#admin') ? 'admin' : 'site')
 
@@ -83,10 +93,16 @@ export default function App() {
     }
   }
 
-  if (dataLoading || auth.loading) return <div className="app-loading"><span /><strong>Loading CCL Cup…</strong></div>
+  if (dataLoading || auth.loading) return loadingScreen
 
   if (view === 'admin') {
-    if (!auth.profile) return <LoginPage onBack={() => navigate('site')} />
+    if (!auth.profile) {
+      return (
+        <Suspense fallback={loadingScreen}>
+          <LoginPage onBack={() => navigate('site')} />
+        </Suspense>
+      )
+    }
     if (!canAccessAdmin(auth.profile.role)) {
       return (
         <main className="access-denied">
@@ -97,6 +113,7 @@ export default function App() {
       )
     }
     return (
+      <Suspense fallback={loadingScreen}>
       <AdminPanel
         seasons={seasons}
         teams={derivedTeams}
@@ -130,6 +147,7 @@ export default function App() {
         onSignOut={auth.signOut}
         onViewSite={() => navigate('site')}
       />
+      </Suspense>
     )
   }
 

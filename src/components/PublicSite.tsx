@@ -375,6 +375,18 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
   return (
     <div className="public-site programme">
+      {/* A button, not an #anchor: the hash is the router here, so a
+          "#main" link would be read as a route rather than a jump. */}
+      <button
+        className="skip-link"
+        onClick={() => {
+          const main = document.getElementById('main-content')
+          main?.focus()
+          main?.scrollIntoView()
+        }}
+      >
+        Skip to content
+      </button>
       <FlagRippleDefs />
       <section className="pg-hero" id="home">
         <img className="pg-hero-photo" src="/assets/ccl-hero.png" alt="" />
@@ -383,7 +395,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <button className="brand-button" onClick={() => scrollTo('home')}>
             <Brand />
           </button>
-          <nav className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
+          <nav id="public-nav" className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
             {nav.map((item) => (
               <button key={item.id} onClick={() => scrollTo(item.id)}>
                 {item.label}
@@ -445,10 +457,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
           <button
             className="menu-button"
-            aria-label="Toggle navigation"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            aria-controls="public-nav"
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            {menuOpen ? <X /> : <Menu />}
+            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
         </header>
 
@@ -521,7 +535,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         </div>
       </section>
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <section className="pg-section content-width" id="fixtures">
           <h2 className="pg-heading">Fixtures and results</h2>
           {seasonMatches.length === 0 ? (
@@ -558,8 +572,20 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                     key={group.groupId}
                     role="tab"
                     aria-selected={group === shownGroup}
+                    // Roving tabindex: Tab reaches the selected group, the
+                    // arrow keys move between groups, as the tabs pattern expects.
+                    tabIndex={group === shownGroup ? 0 : -1}
                     className={group === shownGroup ? 'is-selected' : ''}
                     onClick={() => setGroupIndex(index)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+                      event.preventDefault()
+                      const step = event.key === 'ArrowRight' ? 1 : -1
+                      const next = (index + step + standingsGroups.length) % standingsGroups.length
+                      setGroupIndex(next)
+                      const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                      tabs?.[next]?.focus()
+                    }}
                   >
                     {group.groupName}
                   </button>
@@ -1301,6 +1327,15 @@ function CommentsSection() {
 
       <div className="comments-grid">
         <form className="comment-form" onSubmit={submit}>
+          {/* Always in the DOM, so screen readers announce the change when
+              the form is swapped for the confirmation below. */}
+          <p className="sr-only" role="status">
+            {sent === 'approved'
+              ? 'Your comment is live.'
+              : sent === 'pending'
+                ? 'Your comment has been sent for review.'
+                : ''}
+          </p>
           {sent ? (
             <div className="comment-sent">
               <Check size={20} />
@@ -1328,6 +1363,7 @@ function CommentsSection() {
                   onChange={(event) => setAuthorName(event.target.value)}
                   placeholder="e.g. Deniz Kaya"
                   maxLength={60}
+                  autoComplete="name"
                   required
                 />
               </label>
@@ -1342,7 +1378,11 @@ function CommentsSection() {
                   required
                 />
               </label>
-              {error ? <p className="comment-error">{error}</p> : null}
+              {error ? (
+                <p className="comment-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <button className="button button-primary" type="submit" disabled={sending}>
                 {sending ? 'Sending…' : 'Send comment'} <Send size={17} />
               </button>

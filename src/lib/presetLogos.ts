@@ -13,7 +13,7 @@ function makeSvgDataUri(svgContent: string): string {
 export const PRESET_LOGOS: { id: string; name: string; url: string; category: string }[] = [
   {
     id: 'crest-lion',
-    name: 'Aslan Şampiyon Arma',
+    name: 'Lion Champion Crest',
     category: 'animals',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -29,7 +29,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-eagle',
-    name: 'Kartal Güç Arma',
+    name: 'Eagle Power Crest',
     category: 'animals',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -43,7 +43,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-crown',
-    name: 'Kraliyet Tacı Arma',
+    name: 'Royal Crown Crest',
     category: 'classic',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -59,7 +59,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-star',
-    name: 'Yıldız Atletik Arma',
+    name: 'Star Athletic Crest',
     category: 'modern',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -72,7 +72,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-shield-lightning',
-    name: 'Yıldırım Kalkanı',
+    name: 'Lightning Shield',
     category: 'modern',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -84,7 +84,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-soccer-ball',
-    name: 'Klasik Futbol Kalkanı',
+    name: 'Classic Football Shield',
     category: 'classic',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -97,7 +97,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-flame',
-    name: 'Ateş Meşale Arma',
+    name: 'Torch Flame Crest',
     category: 'modern',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -110,7 +110,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-diamond',
-    name: 'Elmas Armada',
+    name: 'Diamond Crest',
     category: 'modern',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -123,7 +123,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-corporate-v',
-    name: 'Zafer & Vizyon Arma',
+    name: 'Victory & Vision Crest',
     category: 'classic',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
@@ -135,7 +135,7 @@ export const PRESET_LOGOS: { id: string; name: string; url: string; category: st
   },
   {
     id: 'crest-phoenix',
-    name: 'Zümrüdüanka Arma',
+    name: 'Phoenix Crest',
     category: 'animals',
     url: makeSvgDataUri(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">

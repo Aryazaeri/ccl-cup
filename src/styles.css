@@ -4524,3 +4524,31 @@ button.pg-sticker:hover { transform: translateY(-3px) rotate(-1.2deg); }
    whole page or dialog. Their contents keep their own focus rings. */
 main:focus,
 .modal:focus { outline: none; }
+
+/* ---------------- Admin polish ---------------- */
+
+/* The account block (with Sign out) sat below the fold on an 800px-tall
+   screen, and the fixed sidebar could not scroll. The nav now takes the
+   remaining height and scrolls itself, so the account block is always shown.
+   The negative margin keeps the active item's left marker inside the clip. */
+.admin-sidebar nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-left: -6px; padding-left: 6px; }
+.admin-sidebar nav button { flex: 0 0 auto; height: 48px; }
+.admin-user { flex: 0 0 auto; }
+
+.score-badge { white-space: nowrap; }
+.status-label { display: inline-flex; align-items: center; white-space: nowrap; }
+
+/* On a laptop the two-column overview squeezed the matches table until the
+   venue column was cut off; stack it until there is room for both. */
+@media (max-width: 1440px) {
+  .overview-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Comments, Media, Sponsors and Users share one header style with the
+   Teams / Players / Content screens instead of a smaller, plainer one. */
+.module-head { align-items: center; gap: 24px; margin-bottom: 4px; }
+.module-head h2 { font-family: var(--display); font-size: 2.2rem; line-height: 1.05; }
+.module-sub { margin-top: 5px; color: #667383; font-size: .92rem; }
+@media (max-width: 720px) {
+  .module-head h2 { font-size: 1.7rem; }
+}

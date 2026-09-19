@@ -20,7 +20,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
   const handleFileProcess = (file: File) => {
     setErrorMsg('')
     if (!file.type.startsWith('image/')) {
-      setErrorMsg('Lütfen geçerli bir resim dosyası seçin (PNG, JPG, SVG, WEBP).')
+      setErrorMsg('Please choose an image file (PNG, JPG, SVG or WEBP).')
       return
     }
 
@@ -73,7 +73,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
       <div className="team-logo-picker-container span-2">
         <div className="picker-header-row">
           <label className="picker-title-label">
-            <Image size={16} /> Kulüp Logosu / Arma Seçimi
+            <Image size={16} /> Club logo
           </label>
 
           <div className="picker-mode-tabs">
@@ -82,14 +82,14 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
               className={`picker-tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
               onClick={() => setActiveTab('upload')}
             >
-              <Upload size={14} /> Dosya Yükle / Bilgisayardan Seç
+              <Upload size={14} /> Upload a file
             </button>
             <button
               type="button"
               className={`picker-tab-btn ${activeTab === 'preset' ? 'active' : ''}`}
               onClick={() => setActiveTab('preset')}
             >
-              <Sparkles size={14} /> Hazır Arma Galerisi
+              <Sparkles size={14} /> Preset crests
             </button>
           </div>
         </div>
@@ -104,25 +104,25 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
               <img src={value} alt="Selected Logo" />
             </div>
             <div className="selected-logo-info">
-              <strong>Özel Logo Seçildi</strong>
-              <span>Armanız kulüp kartları ve maç ekranlarına göre optimize edilmiştir.</span>
+              <strong>Custom logo selected</strong>
+              <span>Your crest is sized for club cards and match screens.</span>
             </div>
             <div className="selected-logo-actions">
               <button
                 type="button"
                 className="btn-trim-again"
                 onClick={() => setTrimmerImageSrc(value)}
-                title="Logoyu Yeniden Kırp / Boyutlandır"
+                title="Crop or resize the logo"
               >
-                <Crop size={14} /> Kırp / Düzenle
+                <Crop size={14} /> Crop / edit
               </button>
               <button
                 type="button"
                 className="btn-remove-logo"
                 onClick={() => onChange('')}
-                title="Logoyu Kaldır / Otomatik Monogram Kullan"
+                title="Remove the logo and use the monogram"
               >
-                <Trash2 size={14} /> Kaldır
+                <Trash2 size={14} /> Remove
               </button>
             </div>
           </div>
@@ -148,8 +148,8 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
               <div className="dropzone-icon-circle">
                 <Upload size={22} />
               </div>
-              <strong>Resim Seçin veya Buraya Sürükleyin</strong>
-              <span>PNG, JPG, SVG veya WEBP (Otomatik kırpma & hizalama katmanı açılır)</span>
+              <strong>Choose an image or drop it here</strong>
+              <span>PNG, JPG, SVG or WEBP — the crop tool opens automatically</span>
               <button
                 type="button"
                 className="button button-admin btn-browse"
@@ -158,7 +158,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
                   fileInputRef.current?.click()
                 }}
               >
-                Bilgisayardan Dosya Seç
+                Choose file
               </button>
             </div>
           </div>

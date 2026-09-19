@@ -28,6 +28,25 @@ export function seasonLabelsForIds(ids: number[] | undefined, seasons: Season[])
   })
 }
 
+/**
+ * Compact labels for badges: "Antalya 2026" rather than the full competition
+ * name, which made player rows three long pills tall. The full label goes in
+ * `full` for a tooltip.
+ */
+export function seasonBadgesForIds(
+  ids: number[] | undefined,
+  seasons: Season[],
+): { key: string; short: string; full: string }[] {
+  if (!ids || ids.length === 0) return []
+  const byId = new Map(seasons.map((season) => [season.id, season]))
+  return ids.map((id) => {
+    const season = byId.get(id)
+    if (!season) return { key: `missing-${id}`, short: `Unknown #${id}`, full: `Unknown season (#${id})` }
+    const short = season.city ? `${season.city} ${season.year}` : String(season.year)
+    return { key: String(id), short, full: seasonLabel(season) }
+  })
+}
+
 /** The season a newly added player should default to. */
 export function defaultSeasonId(seasons: Season[]): number | undefined {
   return (seasons.find((season) => season.isActive) ?? seasons[0])?.id

@@ -48,7 +48,7 @@ import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
-import { defaultSeasonId, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
+import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
   mediaRepository,
   moderationRepository,
@@ -79,6 +79,14 @@ import {
   type TournamentBracket,
   type TournamentFormat,
 } from '../types'
+
+/** Standard football abbreviations — slicing the word gave "GOA" and "FOR". */
+const POSITION_SHORT: Record<PlayerPosition, string> = {
+  goalkeeper: 'GK',
+  defender: 'DEF',
+  midfielder: 'MID',
+  forward: 'FWD',
+}
 import { BracketCanvasModal } from './BracketCanvasModal'
 import { useConfirm } from './ConfirmDialog'
 import { LeagueCanvasModal } from './LeagueCanvasModal'
@@ -452,8 +460,9 @@ export function AdminPanel({
             <button className="site-switch" onClick={onViewSite}>
               View site
             </button>
-            {/* "Add Club" only belongs on screens where a club is the subject. */}
-            {['Overview', 'Teams', 'Players'].includes(activeSection) && allowed('teams') && (
+            {/* A shortcut from the dashboard only. Teams has its own "Register New
+                Club" button, and on Players it read as the wrong action. */}
+            {activeSection === 'Overview' && allowed('teams') && (
               <button className="button button-admin" onClick={() => setModal('team')}>
                 <Plus />
                 Add Club
@@ -906,7 +915,7 @@ function Overview({
           <div className="quick-actions-grid">
             <button onClick={() => onOpenModal('season')}>
               <Trophy size={18} />
-              <span>Yeni Sezon Ekle</span>
+              <span>New season</span>
             </button>
             <button onClick={() => onOpenModal('team')}>
               <Shield size={18} />
@@ -984,13 +993,13 @@ function SeasonsManager({
       <div className="seasons-page-header">
         <div>
           <div className="admin-breadcrumb">
-            <span>Anasayfa</span>
+            <span>Admin</span>
             <i>/</i>
-            <strong>İçerik Yönetimi | GERİ DÖN</strong>
+            <strong>Seasons</strong>
           </div>
           <h2>
-            İçerik Yönetimi / Sezonlar ({filtered.length}
-            {selectedYearFilter !== 'all' ? ` / ${selectedYearFilter} Sezonu` : ''})
+            Seasons & Tournaments ({filtered.length}
+            {selectedYearFilter !== 'all' ? ` · ${selectedYearFilter}` : ''})
           </h2>
         </div>
       </div>
@@ -999,7 +1008,7 @@ function SeasonsManager({
         <div className="seasons-controls-bar">
           <div className="seasons-left-actions">
             <button className="button-yeni-ekle" onClick={onAdd}>
-              <Plus size={16} /> Yeni Ekle
+              <Plus size={16} /> New Season
             </button>
 
             <div className="season-year-dropdown-wrap">
@@ -1012,14 +1021,14 @@ function SeasonsManager({
                   setCurrentPage(1)
                 }}
                 className="season-year-select"
-                title="Sezon / Yıl Seçin"
+                title="Filter by year"
               >
-                <option value="all">Tüm Yıllar & Kupalar ({seasons.length})</option>
+                <option value="all">All years ({seasons.length})</option>
                 {availableYears.map((yr) => {
                   const count = seasons.filter((s) => s.year === yr).length
                   return (
                     <option key={yr} value={yr}>
-                      {yr} Season ({count} Kupa)
+                      {yr} ({count} {count === 1 ? 'competition' : 'competitions'})
                     </option>
                   )
                 })}
@@ -1035,7 +1044,7 @@ function SeasonsManager({
 
           <div className="seasons-filter-right">
             <div className="gosterim-group">
-              <label>Gösterim:</label>
+              <label>Show:</label>
               <select
                 value={pageSize}
                 onChange={(e) => {
@@ -1051,7 +1060,7 @@ function SeasonsManager({
             </div>
 
             <div className="arama-group">
-              <label>Arama:</label>
+              <label>Search:</label>
               <input
                 type="text"
                 value={searchTerm}
@@ -1059,7 +1068,7 @@ function SeasonsManager({
                   setSearchTerm(e.target.value)
                   setCurrentPage(1)
                 }}
-                placeholder="Sezon veya şehir ara..."
+                placeholder="Search seasons or cities…"
               />
             </div>
           </div>
@@ -1072,11 +1081,11 @@ function SeasonsManager({
                 <th style={{ width: '40px' }}>
                   <span className="th-sort-icon">▼</span>
                 </th>
-                <th>BAŞLIK</th>
-                <th>ŞEHİR</th>
-                <th>YIL</th>
-                <th>DURUM</th>
-                <th style={{ width: '150px', textAlign: 'center' }}>SEÇENEKLER</th>
+                <th>Title</th>
+                <th>City</th>
+                <th>Year</th>
+                <th>Status</th>
+                <th style={{ width: '150px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1096,9 +1105,9 @@ function SeasonsManager({
                   </td>
                   <td>
                     {season.isActive ? (
-                      <span className="season-status-pill active">🟢 Aktif</span>
+                      <span className="season-status-pill active">Active</span>
                     ) : (
-                      <span className="season-status-pill archived">⚪ Arşiv</span>
+                      <span className="season-status-pill archived">Archived</span>
                     )}
                   </td>
                   <td>
@@ -1107,7 +1116,7 @@ function SeasonsManager({
                         <button
                           className="btn-season-action group-league"
                           onClick={() => onOpenGroupLeague(season)}
-                          title="Grup Tablolarını (Group League Canvas) Aç / Düzenle"
+                          title="Open group tables"
                         >
                           <Grid size={15} />
                         </button>
@@ -1115,7 +1124,7 @@ function SeasonsManager({
                         <button
                           className="btn-season-action league"
                           onClick={() => onOpenLeague(season)}
-                          title="Lig Tablosunu (Single-File Canvas) Aç / Düzenle"
+                          title="Open league table"
                         >
                           <List size={15} />
                         </button>
@@ -1123,7 +1132,7 @@ function SeasonsManager({
                         <button
                           className="btn-season-action bracket"
                           onClick={() => onOpenBracket(season)}
-                          title="Eleme Ağacını (Bracket Canvas) Aç / Düzenle"
+                          title="Open knockout bracket"
                         >
                           <Trophy size={15} />
                         </button>
@@ -1131,14 +1140,14 @@ function SeasonsManager({
                       <button
                         className="btn-season-action settings"
                         onClick={() => onEdit(season)}
-                        title="Sezonu Düzenle"
+                        title="Edit season"
                       >
                         <Settings size={15} />
                       </button>
                       <button
                         className="btn-season-action delete"
                         onClick={() => void onDelete(season.id)}
-                        title="Sezonu Sil"
+                        title="Delete season"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -1149,7 +1158,7 @@ function SeasonsManager({
               {paginated.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: '#8c9bad' }}>
-                    Kayıt bulunamadı. "Yeni Ekle" butonuna tıklayarak ilk sezonu ekleyebilirsiniz.
+                    No seasons yet. Use "New Season" to add the first one.
                   </td>
                 </tr>
               )}
@@ -1159,15 +1168,15 @@ function SeasonsManager({
 
         <div className="seasons-table-footer">
           <span>
-            Gösterilen Kayıt: {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
-            {Math.min(currentPage * pageSize, filtered.length)} / Toplam Kayıt: {filtered.length}
+            Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+            {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
           </span>
           <div className="seasons-pagination-btns">
             <button
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             >
-              ← Geri
+              ← Previous
             </button>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
               <button
@@ -1182,7 +1191,7 @@ function SeasonsManager({
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             >
-              İleri →
+              Next →
             </button>
           </div>
         </div>
@@ -1191,7 +1200,7 @@ function SeasonsManager({
   )
 }
 
-// SEASONS MODAL (Yeni Ekle / Sezon Düzenle)
+// SEASONS MODAL (new / edit season)
 function SeasonModal({
   initial,
   teams,
@@ -1244,7 +1253,7 @@ function SeasonModal({
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!name.trim()) {
-      setSaveError('Lütfen sezon adını girin.')
+      setSaveError('Please enter a season name.')
       return
     }
     setSaving(true)
@@ -1273,7 +1282,7 @@ function SeasonModal({
       })
       onClose()
     } catch (reason) {
-      setSaveError(reason instanceof Error ? reason.message : 'Sezon kaydedilemedi.')
+      setSaveError(reason instanceof Error ? reason.message : 'The season could not be saved.')
     } finally {
       setSaving(false)
     }
@@ -1284,10 +1293,10 @@ function SeasonModal({
 
   return (
     <>
-      <Modal title={initial ? `Edit Season: ${initial.fullName}` : 'Yeni Ekle'} onClose={onClose}>
+      <Modal title={initial ? `Edit Season: ${initial.fullName}` : 'New Season'} onClose={onClose}>
         <form className="admin-form" onSubmit={submit}>
           <label>
-            Şehir *
+            City *
             <select value={city} onChange={(e) => setCity(e.target.value)}>
               {HOST_CITIES.map((c) => (
                 <option key={c} value={c}>
@@ -1298,7 +1307,7 @@ function SeasonModal({
           </label>
 
           <label>
-            Yıl *
+            Year *
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
               {yearsList.map((y) => (
                 <option key={y} value={y}>
@@ -1309,17 +1318,17 @@ function SeasonModal({
           </label>
 
           <label className="span-2">
-            Sezon Adı *
+            Season name *
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. INTERNATIONAL CORPORATE CUP Sezonu"
+              placeholder="e.g. International Corporate Cup"
               required
             />
           </label>
 
           <label className={seasonType === 'league' ? 'span-2' : ''}>
-            Sezon Formatı / Tipi *
+            Format *
             <select
               value={seasonType}
               onChange={(e) => {
@@ -1335,29 +1344,29 @@ function SeasonModal({
                 }
               }}
             >
-              <option value="tournament">🏆 Tournament (Knockout Bracket / Eleme Ağacı)</option>
-              <option value="league">⚽ League (Single Table / Tek Lig Formatı)</option>
-              <option value="group_league">🗂️ Group League (Çoklu Grup Formatı)</option>
+              <option value="tournament">🏆 Tournament (knockout bracket)</option>
+              <option value="league">⚽ League (single table)</option>
+              <option value="group_league">🗂️ Group league (multiple groups)</option>
             </select>
           </label>
 
           {seasonType === 'tournament' && (
             <label>
-              Takım Sayısı *
+              Number of teams *
               <select
                 value={teamCount}
                 onChange={(e) => handleTournamentTeamCountChange(Number(e.target.value))}
               >
-                <option value={4}>4 Takım (Yarı Final ➔ Final)</option>
-                <option value={8}>8 Takım (Çeyrek Final ➔ Final)</option>
-                <option value={16}>16 Takım (Son 16 ➔ Final)</option>
+                <option value={4}>4 teams (semi-finals → final)</option>
+                <option value={8}>8 teams (quarter-finals → final)</option>
+                <option value={16}>16 teams (round of 16 → final)</option>
               </select>
             </label>
           )}
 
           {seasonType === 'group_league' && (
             <label>
-              Grup Sayısı *
+              Number of groups *
               <select
                 value={groupCount}
                 onChange={(e) => {
@@ -1368,7 +1377,7 @@ function SeasonModal({
               >
                 {groupCountOptions.map((c) => (
                   <option key={c} value={c}>
-                    {c} Gruplu ({c === 2 ? 'Grup A, B' : c === 4 ? 'Grup A, B, C, D' : `${c} Grup`})
+                    {c} groups ({c === 2 ? 'A, B' : c === 4 ? 'A, B, C, D' : `${c} groups`})
                   </option>
                 ))}
               </select>
@@ -1380,11 +1389,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>Eleme Ağacı & Eşleşmeler</strong>
+                  <strong>Knockout bracket</strong>
                   <span>
                     {bracket
-                      ? `${teamCount} Takımlı Ağaç Yapılandırıldı (Kura & Eşleşmeleri Düzenle)`
-                      : `${teamCount} Takımlı Boş Eleme Ağacı`}
+                      ? `${teamCount}-team bracket set up (edit the draw and pairings)`
+                      : `Empty ${teamCount}-team bracket`}
                   </span>
                 </div>
               </div>
@@ -1393,7 +1402,7 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenBracketBuilder(true)}
               >
-                <Trophy size={15} /> Eleme Ağacını Aç / Eşleştir
+                <Trophy size={15} /> Open bracket
               </button>
             </div>
           )}
@@ -1403,11 +1412,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>Lig Tablosu & Katılımcı Takımlar</strong>
+                  <strong>League table</strong>
                   <span>
                     {league && league.slots.length > 0
-                      ? `${league.slots.length} Takım Tabloya Eklendi (Sıralamayı ve Takımları Düzenle)`
-                      : 'Dinamik Lig Tablosu (Sürükleyip Takım Ekleyin)'}
+                      ? `${league.slots.length} teams in the table (edit order and teams)`
+                      : 'Empty league table (drag clubs in)'}
                   </span>
                 </div>
               </div>
@@ -1416,7 +1425,7 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenLeagueBuilder(true)}
               >
-                ⚽ Lig Tablosunu Aç / Takımları Ekle
+                ⚽ Open league table
               </button>
             </div>
           )}
@@ -1426,11 +1435,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>Çoklu Grup Tabloları ({groupCount} Grup)</strong>
+                  <strong>Group tables ({groupCount} groups)</strong>
                   <span>
                     {groupLeague && groupLeague.groups.some((g) => g.slots.length > 0)
-                      ? `${groupLeague.groups.reduce((acc, g) => acc + g.slots.length, 0)} Takım Gruplara Dağıtıldı`
-                      : `${groupCount} Gruplu Boş Tablo (Sürükleyip Takımları Dağıtın)`}
+                      ? `${groupLeague.groups.reduce((acc, g) => acc + g.slots.length, 0)} teams assigned to groups`
+                      : `${groupCount} empty groups (drag clubs in)`}
                   </span>
                 </div>
               </div>
@@ -1439,7 +1448,7 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenGroupLeagueBuilder(true)}
               >
-                🗂️ Grup Tablolarını Aç / Takımları Dağıt
+                🗂️ Open group tables
               </button>
             </div>
           )}
@@ -1450,12 +1459,12 @@ function SeasonModal({
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
             />
-            <span>Bu sezonu güncel/aktif sezon olarak işaretle</span>
+            <span>Mark as the current season</span>
           </label>
 
           {saveError ? <div className="form-error span-2">{saveError}</div> : null}
 
-          <FormActions onClose={onClose} label={initial ? 'Save Changes' : 'Ekle'} saving={saving} />
+          <FormActions onClose={onClose} label={initial ? 'Save Changes' : 'Add season'} saving={saving} />
         </form>
       </Modal>
 
@@ -1474,7 +1483,7 @@ function SeasonModal({
 
       {openLeagueBuilder && (
         <LeagueCanvasModal
-          seasonTitle={fullName || 'Lig'}
+          seasonTitle={fullName || 'League'}
           teams={teams}
           initialLeague={league ?? { teamCount: 0, slots: [] }}
           onClose={() => setOpenLeagueBuilder(false)}
@@ -1487,7 +1496,7 @@ function SeasonModal({
 
       {openGroupLeagueBuilder && (
         <GroupLeagueCanvasModal
-          seasonTitle={fullName || 'Grup Ligi'}
+          seasonTitle={fullName || 'Group league'}
           teams={teams}
           initialGroupLeague={groupLeague ?? generateEmptyGroupLeague(groupCount)}
           initialGroupCount={groupCount}
@@ -1682,9 +1691,9 @@ function TeamsManager({
                             className="row-action"
                             style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
                             onClick={() => onOpenSquadCanvas(team)}
-                            title="Görsel Saha ve Kadro Tuvali (Tactical Formation & Pitch Canvas)"
+                            title="Formation & pitch canvas"
                           >
-                            <Sparkles size={14} /> <span className="row-action-label">Saha Tuvali</span>
+                            <Sparkles size={14} /> <span className="row-action-label">Pitch</span>
                           </button>
                         )}
                         <button
@@ -1788,9 +1797,9 @@ function TeamsManager({
                         className="button button-secondary"
                         style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
                         onClick={() => onOpenSquadCanvas(team)}
-                        title="Görsel Saha ve Kadro Tuvali"
+                        title="Formation & pitch canvas"
                       >
-                        <Sparkles size={14} /> Saha Tuvali
+                        <Sparkles size={14} /> Pitch
                       </button>
                     )}
                     <button className="button button-secondary" onClick={() => onManageSquad(team)}>
@@ -1871,7 +1880,7 @@ function PlayersManager({
           <span>Team:</span>
           <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="All">All Teams</option>
-            <option value="Free Agent">🚫 Serbest / Kulüpsüz Oyuncular</option>
+            <option value="Free Agent">Free agents</option>
             {teams.map((t) => (
               <option key={t.id} value={t.name}>
                 {t.name}
@@ -1923,18 +1932,18 @@ function PlayersManager({
                       <span>{player.teamName}</span>
                     </span>
                   ) : (
-                    <span className="free-agent-badge">🚫 Serbest / Kulüpsüz</span>
+                    <span className="free-agent-badge">Free agent</span>
                   )}
                 </td>
                 <td>
-                  <span className={`position-tag ${player.position}`}>
-                    {player.position.slice(0, 3).toUpperCase()}
-                  </span>
+                  <span className={`position-tag ${player.position}`}>{POSITION_SHORT[player.position]}</span>
                 </td>
                 <td>
                   <div className="season-tags-list">
-                    {seasonLabelsForIds(player.activeSeasonIds, seasons).map((label) => (
-                      <span key={label} className="season-pill">{label}</span>
+                    {seasonBadgesForIds(player.activeSeasonIds, seasons).map((badge) => (
+                      <span key={badge.key} className="season-pill" title={badge.full}>
+                        {badge.short}
+                      </span>
                     ))}
                   </div>
                 </td>
@@ -2096,8 +2105,10 @@ function ContentManager({
                   <span className="category-pill">{story.category?.replace('_', ' ') ?? 'news'}</span>
                 </td>
                 <td>
-                  <span className={`status-dot ${story.status.toLowerCase()}`} />
-                  {story.status}
+                  <span className="status-label">
+                    <span className={`status-dot ${story.status.toLowerCase()}`} />
+                    {story.status}
+                  </span>
                 </td>
                 <td>{story.publishedAt ?? '—'}</td>
                 <td>
@@ -2608,7 +2619,7 @@ function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seas
             {media.length} asset{media.length === 1 ? '' : 's'} · published items appear on the public site
           </p>
         </div>
-        <button className="primary-button" onClick={() => setEditing(emptyMedia())}>
+        <button className="button button-admin" onClick={() => setEditing(emptyMedia())}>
           <Plus size={16} /> Add asset
         </button>
       </div>
@@ -2838,7 +2849,7 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
           </p>
         </div>
         <button
-          className="primary-button"
+          className="button button-admin"
           onClick={() => setEditing(emptySponsor(sponsors.length))}
         >
           <Plus size={16} /> Add sponsor
@@ -3641,7 +3652,7 @@ function TeamModal({
           {tab === 'tournament' && (
             <>
               <label className="span-2">
-                Turnuva / Sezon (Kayıtlı Sezon Seçin) *
+                Season *
                 <select
                   name="seasonId"
                   value={selectedSeasonId}
@@ -3651,11 +3662,11 @@ function TeamModal({
                     <option key={s.id} value={s.id}>
                       {s.year} - {s.fullName || s.name || s.city} (
                       {s.seasonType === 'tournament'
-                        ? '🏆 Eleme Ağacı'
+                        ? '🏆 Knockout'
                         : s.seasonType === 'league'
-                        ? '📋 Lig Sıralaması'
-                        : '👥 Çoklu Grup'}
-                      {s.isActive ? ' • Aktif' : ''})
+                        ? '📋 League'
+                        : '👥 Groups'}
+                      {s.isActive ? ' • Active' : ''})
                     </option>
                   ))}
                 </select>
@@ -3669,8 +3680,8 @@ function TeamModal({
                 />
                 <span>
                   {currentSelectedSeason
-                    ? `${currentSelectedSeason.year} (${currentSelectedSeason.name || currentSelectedSeason.city}) Sezonu İçin Aktif Olarak İşaretle`
-                    : 'Aktif Sezon Olarak İşaretle'}
+                    ? `Active in ${currentSelectedSeason.year} (${currentSelectedSeason.name || currentSelectedSeason.city})`
+                    : 'Active this season'}
                 </span>
               </label>
             </>
@@ -3690,7 +3701,7 @@ function TeamModal({
                       onOpenSquadCanvas(initial)
                     }}
                   >
-                    <Sparkles size={14} /> 🎨 Görsel Saha Tuvali (Interactive Pitch)
+                    <Sparkles size={14} /> Formation & pitch canvas
                   </button>
                 )}
                 <button
@@ -3698,24 +3709,24 @@ function TeamModal({
                   className={`mode-btn ${squadAddMode === 'pool' ? 'active' : ''}`}
                   onClick={() => setSquadAddMode('pool')}
                 >
-                  👥 Havuzdan Mevcut Oyuncu Ekle ({availablePoolPlayers.length})
+                  👥 Add an existing player ({availablePoolPlayers.length})
                 </button>
                 <button
                   type="button"
                   className={`mode-btn ${squadAddMode === 'new' ? 'active' : ''}`}
                   onClick={() => setSquadAddMode('new')}
                 >
-                  ➕ Sıfırdan Yeni Oyuncu Oluştur
+                  ➕ Create a new player
                 </button>
               </div>
 
               {squadAddMode === 'pool' ? (
                 <div className="inline-add-player-box">
-                  <h4>Mevcut Oyuncu Havuzundan {initial.name} Kadrosuna Aktar</h4>
+                  <h4>Move an existing player to {initial.name}</h4>
                   <div className="inline-player-fields">
                     <input
                       type="text"
-                      placeholder="Oyuncu ara (isim, eski takım, mevki)..."
+                      placeholder="Search players (name, club, position)…"
                       value={poolPlayerSearch}
                       onChange={(e) => setPoolPlayerSearch(e.target.value)}
                       style={{ flex: 1, minWidth: '180px' }}
@@ -3727,12 +3738,12 @@ function TeamModal({
                     >
                       <option value="">
                         {filteredPoolPlayers.length === 0
-                          ? 'Havuzda eklenebilir uygun oyuncu bulunamadı'
-                          : `-- Kadroya Eklenecek Oyuncuyu Seçin (${filteredPoolPlayers.length}) --`}
+                          ? 'No available players found'
+                          : `-- Choose a player to add (${filteredPoolPlayers.length}) --`}
                       </option>
                       {filteredPoolPlayers.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.fullName} ({p.position.toUpperCase()}) · Şu anki takım: {p.teamName || 'Serbest'}
+                          {p.fullName} ({p.position.toUpperCase()}) · Current club: {p.teamName || 'Free agent'}
                         </option>
                       ))}
                     </select>
@@ -3742,17 +3753,17 @@ function TeamModal({
                       onClick={handleAssignPoolPlayer}
                       disabled={assigningPoolPlayer || !selectedPoolPlayerId}
                     >
-                      {assigningPoolPlayer ? 'Ekleniyor…' : '+ Kadroya Dahil Et'}
+                      {assigningPoolPlayer ? 'Adding…' : '+ Add to squad'}
                     </button>
                   </div>
                   {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
                 </div>
               ) : (
                 <div className="inline-add-player-box">
-                  <h4>{initial.name} İçin Yeni Oyuncu Kaydet</h4>
+                  <h4>Register a new player for {initial.name}</h4>
                   <div className="inline-player-fields">
                     <input
-                      placeholder="Oyuncu Ad Soyad *"
+                      placeholder="Player full name *"
                       value={newPlayerName}
                       onChange={(e) => setNewPlayerName(e.target.value)}
                     />
@@ -3790,7 +3801,7 @@ function TeamModal({
                       onClick={handleInlineAddPlayer}
                       disabled={addingPlayer || !newPlayerName.trim()}
                     >
-                      {addingPlayer ? 'Ekleniyor…' : '+ Kadroya Ekle'}
+                      {addingPlayer ? 'Adding…' : '+ Add to squad'}
                     </button>
                   </div>
                   {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
@@ -3839,7 +3850,7 @@ function TeamModal({
                                     })
                                   }
                                 }}
-                                title="Kadrodan Çıkar (Havuzda Bırak)"
+                                title="Remove from squad (keeps the player in the pool)"
                               >
                                 <UserMinus size={14} />
                               </button>
@@ -4019,7 +4030,7 @@ function QuickSquadModal({
                 onOpenSquadCanvas(team)
               }}
             >
-              <Sparkles size={14} /> 🎨 Görsel Saha Tuvali (Interactive Pitch)
+              <Sparkles size={14} /> Formation & pitch canvas
             </button>
           )}
           <button
@@ -4027,24 +4038,24 @@ function QuickSquadModal({
             className={`mode-btn ${squadMode === 'pool' ? 'active' : ''}`}
             onClick={() => setSquadMode('pool')}
           >
-            👥 Havuzdan Mevcut Oyuncu Ekle ({availablePoolPlayers.length})
+            👥 Add an existing player ({availablePoolPlayers.length})
           </button>
           <button
             type="button"
             className={`mode-btn ${squadMode === 'new' ? 'active' : ''}`}
             onClick={() => setSquadMode('new')}
           >
-            ➕ Sıfırdan Yeni Oyuncu Oluştur
+            ➕ Create a new player
           </button>
         </div>
 
         {squadMode === 'pool' ? (
           <div className="inline-add-player-box">
-            <h4>Mevcut Oyuncu Havuzundan {team.name} Kadrosuna Aktar</h4>
+            <h4>Move an existing player to {team.name}</h4>
             <div className="inline-player-fields">
               <input
                 type="text"
-                placeholder="Oyuncu ara (isim, eski takım, mevki)..."
+                placeholder="Search players (name, club, position)…"
                 value={poolSearch}
                 onChange={(e) => setPoolSearch(e.target.value)}
                 style={{ flex: 1, minWidth: '180px' }}
@@ -4056,12 +4067,12 @@ function QuickSquadModal({
               >
                 <option value="">
                   {filteredPoolPlayers.length === 0
-                    ? 'Havuzda uygun oyuncu bulunamadı'
-                    : `-- Kadroya Eklenecek Oyuncuyu Seçin (${filteredPoolPlayers.length}) --`}
+                    ? 'No available players found'
+                    : `-- Choose a player to add (${filteredPoolPlayers.length}) --`}
                 </option>
                 {filteredPoolPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.fullName} ({p.position.toUpperCase()}) · Şu anki takım: {p.teamName || 'Serbest'}
+                    {p.fullName} ({p.position.toUpperCase()}) · Current club: {p.teamName || 'Free agent'}
                   </option>
                 ))}
               </select>
@@ -4071,14 +4082,14 @@ function QuickSquadModal({
                 onClick={handleAssignPool}
                 disabled={assigning || !selectedPoolId}
               >
-                {assigning ? 'Ekleniyor…' : '+ Kadroya Dahil Et'}
+                {assigning ? 'Adding…' : '+ Add to squad'}
               </button>
             </div>
             {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
           </div>
         ) : (
           <div className="inline-add-player-box">
-            <h4>{team.name} İçin Yeni Oyuncu Kaydet</h4>
+            <h4>Register a new player for {team.name}</h4>
             <div className="inline-player-fields">
               <input
                 placeholder="Player Full Name *"
@@ -4151,8 +4162,10 @@ function QuickSquadModal({
                   </td>
                   <td>
                     <div className="season-tags-list">
-                      {seasonLabelsForIds(p.activeSeasonIds, seasons).map((label) => (
-                        <span key={label} className="season-pill">{label}</span>
+                      {seasonBadgesForIds(p.activeSeasonIds, seasons).map((badge) => (
+                        <span key={badge.key} className="season-pill" title={badge.full}>
+                          {badge.short}
+                        </span>
                       ))}
                     </div>
                   </td>
@@ -4168,9 +4181,9 @@ function QuickSquadModal({
                           })
                         }
                       }}
-                      title="Kadrodan Çıkar (Havuzda Bırak)"
+                      title="Remove from squad (keeps the player in the pool)"
                     >
-                      <UserMinus size={14} /> Kadrodan Çıkar
+                      <UserMinus size={14} /> Remove
                     </button>
                   </td>
                 </tr>
@@ -4683,7 +4696,7 @@ function PlayerForm({
         <label>
           Assigned Club / Team
           <select name="teamId" defaultValue={initial?.teamId ? String(initial.teamId) : ''}>
-            <option value="">🚫 Kulüpsüz / Serbest Oyuncu (No Club / Free Agent)</option>
+            <option value="">No club (free agent)</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({getCountry(t.countryCode).flag})

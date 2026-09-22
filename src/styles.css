@@ -191,8 +191,8 @@ table { border-collapse: collapse; width: 100%; }
 .admin-panel { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #d5dbe0; border-radius: 7px; }
 .admin-panel h2 { margin: 0; padding: 24px; border-bottom: 1px solid #d5dbe0; font-size: 1.2rem; }
 .table-scroll { overflow-x: auto; }
-.admin-table { min-width: 690px; }
-.admin-table th, .admin-table td { height: 76px; padding: 0 18px; text-align: left; border-bottom: 1px solid #d5dbe0; white-space: nowrap; font-size: .85rem; }
+.admin-table { min-width: 690px; font-variant-numeric: tabular-nums; }
+.admin-table th, .admin-table td { height: 76px; padding: 0 18px; text-align: left; border-bottom: 1px solid #d5dbe0; white-space: nowrap; font-size: .85rem; font-variant-numeric: tabular-nums; }
 .admin-table th { height: 60px; color: #596677; font-size: .68rem; letter-spacing: .04em; }
 .admin-table tr:last-child td { border-bottom: 0; }
 .admin-table tbody tr:hover { background: #f8faf9; }
@@ -2778,7 +2778,15 @@ table { border-collapse: collapse; width: 100%; }
   border-radius: 6px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.16s ease;
+}
+
+.quick-canvas-btn:hover {
+  transform: translateY(-1px);
+}
+
+.quick-canvas-btn:active {
+  transform: scale(0.96);
 }
 
 .quick-canvas-btn.primary {
@@ -3131,14 +3139,18 @@ table { border-collapse: collapse; width: 100%; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.2s ease;
   z-index: 5;
+}
+
+.pitch-slot-node:active {
+  transform: translate(-50%, -50%) scale(0.96);
 }
 
 .pitch-slot-node.empty {
   width: 56px;
   height: 56px;
-  border: 2px dashed rgba(255,255,255,0.45);
+  border: 2px dashed rgba(255, 255, 255, 0.45);
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(4px);
@@ -3147,8 +3159,9 @@ table { border-collapse: collapse; width: 100%; }
 .pitch-slot-node.empty:hover,
 .pitch-slot-node.drag-over {
   border-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.3);
-  transform: translate(-50%, -50%) scale(1.1);
+  background: rgba(56, 189, 248, 0.35);
+  transform: translate(-50%, -50%) scale(1.12);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
 }
 
 .empty-pitch-slot {

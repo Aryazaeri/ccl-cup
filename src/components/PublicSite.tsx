@@ -389,7 +389,14 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       </button>
       <FlagRippleDefs />
       <section className="pg-hero" id="home">
-        <img className="pg-hero-photo" src="/assets/ccl-hero.png" alt="" />
+        <img
+          className="pg-hero-photo"
+          src="/assets/ccl-hero.png"
+          alt="A floodlit CCL Cup football match in progress"
+          width="1440"
+          height="800"
+          fetchPriority="high"
+        />
         <div className="pg-hero-shade" />
         <header className="public-header content-width">
           <button className="brand-button" onClick={() => scrollTo('home')}>
@@ -700,7 +707,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                           {player?.photoUrl ? (
                             <>
                               <FlagBackdrop country={getCountry(player.nationality || team?.countryCode)} />
-                              <img className="cutout-photo" src={player.photoUrl} alt="" loading="lazy" />
+                              <img className="cutout-photo" src={player.photoUrl} alt={line.playerName} loading="lazy" />
                             </>
                           ) : (
                             <TeamMark name={line.teamName} color={team?.color} secondaryColor={team?.secondaryColor} logoUrl={team?.logoUrl} size="lg" />
@@ -755,7 +762,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           ) : (
             <div className="pg-news">
               <button className="pg-lead-story" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
-                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt="" />
+                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt={leadStory.title} />
                 <span className="pg-lead-copy">
                   <small>
                     {storyCategoryLabel(leadStory.category)}
@@ -826,7 +833,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 const body = (
                   <>
                     {asset.thumbnailUrl ? (
-                      <img className="media-thumb" src={asset.thumbnailUrl} alt="" loading="lazy" />
+                      <img className="media-thumb" src={asset.thumbnailUrl} alt={asset.title || 'Match highlights'} loading="lazy" />
                     ) : null}
                     {asset.kind === 'video' || asset.kind === 'highlight' || asset.kind === 'press_conference' ? (
                       <span className="media-play">

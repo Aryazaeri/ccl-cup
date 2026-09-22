@@ -427,8 +427,9 @@ export function SquadCanvasModal({
               className="quick-canvas-btn primary"
               onClick={handleAutoFillFromPool}
               title="Auto-fill empty formation slots with best available players from pool"
+              aria-label="Auto-fill formation from player pool"
             >
-              <Sparkles size={14} /> Auto-Fill
+              <Sparkles size={14} aria-hidden="true" /> Auto-Fill
             </button>
 
             <button
@@ -436,8 +437,9 @@ export function SquadCanvasModal({
               className="quick-canvas-btn danger"
               onClick={handleClearSquad}
               title="Release all players back to pool"
+              aria-label="Clear squad and return players to pool"
             >
-              <RotateCcw size={14} /> Clear
+              <RotateCcw size={14} aria-hidden="true" /> Clear
             </button>
 
             <button
@@ -445,8 +447,9 @@ export function SquadCanvasModal({
               className="quick-canvas-btn icon-only"
               onClick={() => setIsFullScreen(!isFullScreen)}
               title={isFullScreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              aria-label={isFullScreen ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
             >
-              {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              {isFullScreen ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
             </button>
           </div>
         </div>
@@ -464,16 +467,22 @@ export function SquadCanvasModal({
             </div>
 
             <div className="pool-search-box">
-              <Search size={14} />
+              <Search size={14} aria-hidden="true" />
               <input
                 type="text"
-                placeholder="Search squad by name or position..."
+                placeholder="Search squad by name or position…"
+                aria-label="Search squad by name or position"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
-                <button type="button" onClick={() => setSearchTerm('')} className="clear-search-btn">
-                  <X size={12} />
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="clear-search-btn"
+                  aria-label="Clear search text"
+                >
+                  <X size={12} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -530,12 +539,13 @@ export function SquadCanvasModal({
                           type="button"
                           className="quick-bench-btn"
                           title="Add directly to substitutes bench"
+                          aria-label={`Add ${p.fullName} to bench`}
                           onClick={(e) => {
                             e.stopPropagation()
                             handleAddDirectToBench(p)
                           }}
                         >
-                          <Plus size={14} /> Bench
+                          <Plus size={14} aria-hidden="true" /> Bench
                         </button>
                       </div>
                     </div>
@@ -552,12 +562,12 @@ export function SquadCanvasModal({
                 {/* FOOTBALL STADIUM PITCH */}
                 <div className="tactical-pitch-field">
                   {/* FIELD LINE MARKINGS */}
-                  <div className="pitch-center-circle" />
-                  <div className="pitch-halfway-line" />
-                  <div className="pitch-penalty-area top" />
-                  <div className="pitch-goal-area top" />
-                  <div className="pitch-penalty-area bottom" />
-                  <div className="pitch-goal-area bottom" />
+                  <div className="pitch-center-circle" aria-hidden="true" />
+                  <div className="pitch-halfway-line" aria-hidden="true" />
+                  <div className="pitch-penalty-area top" aria-hidden="true" />
+                  <div className="pitch-goal-area top" aria-hidden="true" />
+                  <div className="pitch-penalty-area bottom" aria-hidden="true" />
+                  <div className="pitch-goal-area bottom" aria-hidden="true" />
 
                   {/* FORMATION SLOTS */}
                   {activeSlots.map((slot) => {
@@ -594,12 +604,13 @@ export function SquadCanvasModal({
                               type="button"
                               className="remove-from-pitch-btn"
                               title="Move to bench"
+                              aria-label={`Remove ${assignedPlayer.fullName} from position ${slot.roleName}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleRemoveFromSlot(slot.id)
                               }}
                             >
-                              <X size={12} />
+                              <X size={12} aria-hidden="true" />
                             </button>
                           </div>
                         ) : (

@@ -11,3 +11,5 @@ ROADMAP_NOTES.md
 scripts/
 
 .claude/
+supabase/.temp/
+SESSION_LOG_*.md

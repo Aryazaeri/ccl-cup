@@ -1078,14 +1078,14 @@ function SeasonsManager({
           <table className="seasons-table">
             <thead>
               <tr>
-                <th style={{ width: '40px' }}>
+                <th scope="col" style={{ width: '40px' }} aria-label="Sort">
                   <span className="th-sort-icon">▼</span>
                 </th>
-                <th>Title</th>
-                <th>City</th>
-                <th>Year</th>
-                <th>Status</th>
-                <th style={{ width: '150px', textAlign: 'center' }}>Actions</th>
+                <th scope="col">Title</th>
+                <th scope="col">City</th>
+                <th scope="col">Year</th>
+                <th scope="col">Status</th>
+                <th scope="col" style={{ width: '150px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1097,7 +1097,7 @@ function SeasonsManager({
                   </td>
                   <td>
                     <span className="season-city-badge">
-                      <MapPin size={13} /> {season.city}
+                      <MapPin size={13} aria-hidden="true" /> {season.city}
                     </span>
                   </td>
                   <td>
@@ -1117,39 +1117,44 @@ function SeasonsManager({
                           className="btn-season-action group-league"
                           onClick={() => onOpenGroupLeague(season)}
                           title="Open group tables"
+                          aria-label={`Open group tables for ${season.fullName}`}
                         >
-                          <Grid size={15} />
+                          <Grid size={15} aria-hidden="true" />
                         </button>
                       ) : season.seasonType === 'league' ? (
                         <button
                           className="btn-season-action league"
                           onClick={() => onOpenLeague(season)}
                           title="Open league table"
+                          aria-label={`Open league table for ${season.fullName}`}
                         >
-                          <List size={15} />
+                          <List size={15} aria-hidden="true" />
                         </button>
                       ) : (
                         <button
                           className="btn-season-action bracket"
                           onClick={() => onOpenBracket(season)}
                           title="Open knockout bracket"
+                          aria-label={`Open knockout bracket for ${season.fullName}`}
                         >
-                          <Trophy size={15} />
+                          <Trophy size={15} aria-hidden="true" />
                         </button>
                       )}
                       <button
                         className="btn-season-action settings"
                         onClick={() => onEdit(season)}
                         title="Edit season"
+                        aria-label={`Edit season ${season.fullName}`}
                       >
-                        <Settings size={15} />
+                        <Settings size={15} aria-hidden="true" />
                       </button>
                       <button
                         className="btn-season-action delete"
                         onClick={() => void onDelete(season.id)}
                         title="Delete season"
+                        aria-label={`Delete season ${season.fullName}`}
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={15} aria-hidden="true" />
                       </button>
                     </div>
                   </td>
@@ -1616,13 +1621,13 @@ function TeamsManager({
           <table className="admin-table teams-table">
             <thead>
               <tr>
-                <th>CLUB & CREST</th>
-                <th>COUNTRY</th>
-                <th>TOURNAMENT & GROUP</th>
-                <th>MANAGER / COACH</th>
-                <th>SQUAD STATUS</th>
-                <th>STANDINGS</th>
-                <th>ACTIONS</th>
+                <th scope="col">CLUB & CREST</th>
+                <th scope="col">COUNTRY</th>
+                <th scope="col">TOURNAMENT & GROUP</th>
+                <th scope="col">MANAGER / COACH</th>
+                <th scope="col">SQUAD STATUS</th>
+                <th scope="col">STANDINGS</th>
+                <th scope="col">ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -1669,11 +1674,11 @@ function TeamsManager({
                       <div className="squad-indicator">
                         {isComplete ? (
                           <span className="squad-badge complete">
-                            <CheckCircle2 size={13} /> {squad.length} Players (Ready)
+                            <CheckCircle2 size={13} aria-hidden="true" /> {squad.length} Players (Ready)
                           </span>
                         ) : (
                           <span className="squad-badge incomplete" title="Minimum 5 squad members required for matchday">
-                            <AlertCircle size={13} /> {squad.length}/5 (Needs {5 - squad.length} more)
+                            <AlertCircle size={13} aria-hidden="true" /> {squad.length}/5 (Needs {5 - squad.length} more)
                           </span>
                         )}
                       </div>
@@ -1692,27 +1697,34 @@ function TeamsManager({
                             style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
                             onClick={() => onOpenSquadCanvas(team)}
                             title="Formation & pitch canvas"
+                            aria-label={`Formation and pitch canvas for ${team.name}`}
                           >
-                            <Sparkles size={14} /> <span className="row-action-label">Pitch</span>
+                            <Sparkles size={14} aria-hidden="true" /> <span className="row-action-label">Pitch</span>
                           </button>
                         )}
                         <button
                           className="row-action secondary"
                           onClick={() => onManageSquad(team)}
                           title="Manage Squad Roster"
+                          aria-label={`Manage squad roster for ${team.name}`}
                         >
-                          <Users size={14} /> <span className="row-action-label">Squad</span> ({squad.length})
+                          <Users size={14} aria-hidden="true" /> <span className="row-action-label">Squad</span> ({squad.length})
                         </button>
                         <button
                           className="row-action"
                           onClick={() => onEdit(team)}
                           title="Edit Club Details"
-                          aria-label="Edit club details"
+                          aria-label={`Edit ${team.name} details`}
                         >
-                          <Edit2 size={14} /> <span className="row-action-label">Edit</span>
+                          <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">Edit</span>
                         </button>
-                        <button className="row-action danger" onClick={() => void onDelete(team.id)} title="Delete Club">
-                          <Trash2 size={14} />
+                        <button
+                          className="row-action danger"
+                          onClick={() => void onDelete(team.id)}
+                          title="Delete Club"
+                          aria-label={`Delete club ${team.name}`}
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
                         </button>
                       </div>
                     </td>
@@ -1904,25 +1916,25 @@ function PlayersManager({
         <table className="admin-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>PLAYER</th>
-              <th>TEAM</th>
-              <th>POSITION</th>
-              <th>PLAYED SEASONS</th>
-              <th>STATS</th>
-              <th>ACTIONS</th>
+              <th scope="col">#</th>
+              <th scope="col">PLAYER</th>
+              <th scope="col">TEAM</th>
+              <th scope="col">POSITION</th>
+              <th scope="col">PLAYED SEASONS</th>
+              <th scope="col">STATS</th>
+              <th scope="col">ACTIONS</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((player) => (
               <tr key={player.id}>
                 <td>
-                  <span className="shirt-badge">{player.shirtNumber ?? '-'}</span>
+                  <span className="shirt-badge">{player.shirtNumber ?? '—'}</span>
                 </td>
                 <td>
                   <div className="player-cell">
                     <strong>{player.fullName}</strong>
-                    {player.isCaptain && <span className="captain-badge" title="Team Captain">C</span>}
+                    {player.isCaptain && <span className="captain-badge" title="Team Captain" aria-label="Team Captain">C</span>}
                   </div>
                 </td>
                 <td>
@@ -1958,12 +1970,17 @@ function PlayersManager({
                       className="row-action"
                       onClick={() => onEdit(player)}
                       title="Edit player"
-                      aria-label="Edit player"
+                      aria-label={`Edit player ${player.fullName}`}
                     >
-                      <Edit2 size={14} /> <span className="row-action-label">Edit</span>
+                      <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">Edit</span>
                     </button>
-                    <button className="row-action danger" onClick={() => void onDelete(player.id)}>
-                      <Trash2 size={14} />
+                    <button
+                      className="row-action danger"
+                      onClick={() => void onDelete(player.id)}
+                      title="Delete player"
+                      aria-label={`Delete player ${player.fullName}`}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
                     </button>
                   </div>
                 </td>

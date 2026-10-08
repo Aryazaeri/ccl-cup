@@ -369,6 +369,8 @@ async function loadRemote(): Promise<TournamentData> {
       matchStatus: (m.match_status as Match['matchStatus']) || 'scheduled',
       homeScore: m.home_score != null ? Number(m.home_score) : undefined,
       awayScore: m.away_score != null ? Number(m.away_score) : undefined,
+      homePenalties: m.home_penalties != null ? Number(m.home_penalties) : undefined,
+      awayPenalties: m.away_penalties != null ? Number(m.away_penalties) : undefined,
       // Draft fixtures must stay off the public site, so the database's
       // publication_status drives this rather than a hardcoded value.
       seasonId: m.season_id != null ? Number(m.season_id) : undefined,
@@ -692,6 +694,8 @@ export const tournamentRepository = {
       publication_status: match.status === 'Scheduled' ? 'published' : 'draft',
       home_score: match.homeScore ?? null,
       away_score: match.awayScore ?? null,
+      home_penalties: match.homePenalties ?? null,
+      away_penalties: match.awayPenalties ?? null,
       referee_name: match.referee ?? null,
       stream_url: match.streamUrl ?? null,
     })
@@ -729,6 +733,8 @@ export const tournamentRepository = {
         publication_status: match.status === 'Scheduled' ? 'published' : 'draft',
         home_score: match.homeScore ?? null,
         away_score: match.awayScore ?? null,
+        home_penalties: match.homePenalties ?? null,
+        away_penalties: match.awayPenalties ?? null,
         referee_name: match.referee ?? null,
         stream_url: match.streamUrl ?? null,
       })

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flagImageUrl, getCountry } from '../lib/countries'
-import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers } from '../lib/standingsUtils'
+import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers, shootoutLine } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
@@ -352,6 +352,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     const homeTeam = teamLookup.get(match.home)
     const awayTeam = teamLookup.get(match.away)
     const played = match.homeScore != null && match.awayScore != null
+    const shootout = shootoutLine(match)
+    const homeFlag = homeTeam ? getCountry(homeTeam.countryCode) : null
+    const awayFlag = awayTeam ? getCountry(awayTeam.countryCode) : null
     return (
       <li key={match.id}>
         <button className="pg-fixture" onClick={() => openDetail({ kind: 'match', id: match.id })}>
@@ -359,14 +362,17 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <span className="pg-fixture-team">
             <TeamMark name={match.home} color={homeTeam?.color} secondaryColor={homeTeam?.secondaryColor} logoUrl={homeTeam?.logoUrl} size="sm" />
             <strong>{match.home}</strong>
+            {homeFlag ? <span className="pg-flag" title={homeFlag.name}>{homeFlag.flag}</span> : null}
           </span>
           <b className={played ? 'pg-fixture-score' : 'pg-fixture-time'}>
             {played ? `${match.homeScore}–${match.awayScore}` : match.time}
           </b>
           <span className="pg-fixture-team is-away">
+            {awayFlag ? <span className="pg-flag" title={awayFlag.name}>{awayFlag.flag}</span> : null}
             <strong>{match.away}</strong>
             <TeamMark name={match.away} color={awayTeam?.color} secondaryColor={awayTeam?.secondaryColor} logoUrl={awayTeam?.logoUrl} size="sm" />
           </span>
+          {shootout ? <small className="pg-shootout">{shootout}</small> : null}
           <small>{match.matchStatus === 'live' ? 'Live now' : match.venue}</small>
         </button>
       </li>
@@ -483,6 +489,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 <span>
                   {latestResult.date}, {latestResult.stage}
                 </span>
+                {shootoutLine(latestResult) ? <span className="pg-scoreboard-shootout">{shootoutLine(latestResult)}</span> : null}
               </span>
               <span className="pg-scoreboard-row">
                 <span className="pg-scoreboard-team">
@@ -1438,10 +1445,10 @@ function PlayerDetailModal({
   )
 
   return (
-    <Modal title={player.fullName} onClose={onClose}>
+    <Modal title="Player Profile" className="modal-player-detail" onClose={onClose}>
       <div className="player-detail">
         <div className="player-detail-head">
-          {team ? <PlayerCutoutCard player={player} team={team} /> : null}
+          {team ? <PlayerCutoutCard player={player} team={team} hideCaption /> : null}
           <div className="player-detail-meta">
             <h3>{player.fullName}</h3>
             <p className="player-detail-club">
@@ -1484,6 +1491,9 @@ function MatchDetailsModal({
 }) {
   const homeTeam = teams.find((t) => t.name === match.home)
   const awayTeam = teams.find((t) => t.name === match.away)
+  const homeCountry = getCountry(homeTeam?.countryCode)
+  const awayCountry = getCountry(awayTeam?.countryCode)
+  const shootout = shootoutLine(match)
 
   const homeSquad = players.filter((p) => p.teamName === match.home || (homeTeam && p.teamId === homeTeam.id))
   const awaySquad = players.filter((p) => p.teamName === match.away || (awayTeam && p.teamId === awayTeam.id))
@@ -1492,7 +1502,7 @@ function MatchDetailsModal({
   const events = match.events ?? []
 
   return (
-    <Modal title="Match Center" onClose={onClose}>
+    <Modal title="Match Center" className="modal-match-details" onClose={onClose}>
       <div className="public-match-modal">
         {/* Match Hero Scoreboard */}
         <div className="match-hero-card">
@@ -1506,6 +1516,7 @@ function MatchDetailsModal({
               size="lg"
             />
             <h3>{match.home}</h3>
+            <span className="modal-team-country">{homeCountry.flag} {homeCountry.name}</span>
           </div>
 
           <div className="match-score-center">
@@ -1518,6 +1529,7 @@ function MatchDetailsModal({
             ) : (
               <div className="match-time-large">{match.time}</div>
             )}
+            {shootout ? <span className="modal-penalties-banner">{shootout}</span> : null}
             <span className={`status-pill ${match.matchStatus}`}>
               {match.matchStatus.toUpperCase()}
             </span>
@@ -1544,6 +1556,7 @@ function MatchDetailsModal({
               size="lg"
             />
             <h3>{match.away}</h3>
+            <span className="modal-team-country">{awayCountry.flag} {awayCountry.name}</span>
           </div>
         </div>
 
@@ -1552,8 +1565,8 @@ function MatchDetailsModal({
           <span>
             <CalendarDays size={16} /> {match.date} · {match.time}
           </span>
-          <span>
-            <MapPin size={16} /> {match.venue}
+          <span className="modal-pitch-badge">
+            <MapPin size={16} /> <b>{match.venue}</b>
           </span>
           <span>
             <Shield size={16} /> {match.stage}
@@ -1635,7 +1648,7 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
   const paragraphs = story.body ? story.body.split('\n\n') : [story.summary ?? '']
 
   return (
-    <Modal title={story.title} onClose={onClose}>
+    <Modal title="Tournament Story" className="modal-story-reader" onClose={onClose}>
       <article className="story-reader">
         {story.coverImageUrl && (
           <div className="reader-cover">
@@ -1726,7 +1739,15 @@ function FlagBackdrop({ country }: { country: ReturnType<typeof getCountry> }) {
   )
 }
 
-function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
+function PlayerCutoutCard({
+  player,
+  team,
+  hideCaption = false,
+}: {
+  player: Player
+  team: Team
+  hideCaption?: boolean
+}) {
   const country = getCountry(player.nationality || team.countryCode)
   const initials = player.fullName
     .split(/\s+/)
@@ -1737,7 +1758,10 @@ function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
     .toUpperCase()
 
   return (
-    <figure className="player-cutout" style={{ ['--club-color' as string]: team.color }}>
+    <figure
+      className={`player-cutout ${hideCaption ? 'no-caption' : ''}`.trim()}
+      style={{ ['--club-color' as string]: team.color }}
+    >
       <div className="cutout-stage">
         <FlagBackdrop country={country} />
 
@@ -1753,12 +1777,14 @@ function PlayerCutoutCard({ player, team }: { player: Player; team: Team }) {
         {player.isCaptain ? <span className="cutout-captain" title="Captain">C</span> : null}
       </div>
 
-      <figcaption>
-        <strong>{player.fullName}</strong>
-        <span>
-          {country.flag} {player.position.slice(0, 3).toUpperCase()}
-        </span>
-      </figcaption>
+      {!hideCaption && (
+        <figcaption>
+          <strong>{player.fullName}</strong>
+          <span>
+            {country.flag} {player.position.slice(0, 3).toUpperCase()}
+          </span>
+        </figcaption>
+      )}
     </figure>
   )
 }
@@ -1779,7 +1805,7 @@ function TeamRosterModal({
   const country = getCountry(team.countryCode)
 
   return (
-    <Modal title={`${team.name} Club & Squad Profile`} onClose={onClose}>
+    <Modal title="Club & Squad Profile" className="modal-team-roster" onClose={onClose}>
       <div className="team-roster-modal">
         <div className="roster-header">
           <TeamMark

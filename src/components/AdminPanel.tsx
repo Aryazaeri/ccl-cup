@@ -3223,6 +3223,9 @@ function MatchTable({
                     {hasScore ? (
                       <span className="score-badge">
                         {match.homeScore} - {match.awayScore}
+                        {match.homePenalties != null && match.awayPenalties != null && (
+                          <small className="admin-pen-tag"> ({match.homePenalties}–{match.awayPenalties}p)</small>
+                        )}
                       </span>
                     ) : (
                       <span className="score-badge empty">vs</span>
@@ -4378,6 +4381,10 @@ function MatchScoreModal({
     const data = new FormData(event.currentTarget)
     const homeScoreVal = data.get('homeScore')
     const awayScoreVal = data.get('awayScore')
+    const homePenVal = data.get('homePenalties')
+    const awayPenVal = data.get('awayPenalties')
+    // A shootout needs both sides; a half-filled pair is treated as none.
+    const hasShootout = !!homePenVal && !!awayPenVal
 
     try {
       await onSave({
@@ -4391,6 +4398,8 @@ function MatchScoreModal({
         matchStatus: String(data.get('matchStatus')) as MatchStatus,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
+        homePenalties: hasShootout ? Number(homePenVal) : undefined,
+        awayPenalties: hasShootout ? Number(awayPenVal) : undefined,
         status: String(data.get('status')) as Match['status'],
       })
       onClose()
@@ -4429,6 +4438,29 @@ function MatchScoreModal({
             />
             <strong>{match.away}</strong>
             <TeamMark name={match.away} />
+          </div>
+        </div>
+
+        <div className="penalties-keeper-row span-2">
+          <small className="penalties-label">Penalty shootout (only for knockout matches level after full time)</small>
+          <div className="penalties-inputs">
+            <input
+              type="number"
+              name="homePenalties"
+              defaultValue={match.homePenalties ?? ''}
+              placeholder="Home"
+              min={0}
+              className="score-input pen-score-input"
+            />
+            <span className="pen-sep">–</span>
+            <input
+              type="number"
+              name="awayPenalties"
+              defaultValue={match.awayPenalties ?? ''}
+              placeholder="Away"
+              min={0}
+              className="score-input pen-score-input"
+            />
           </div>
         </div>
 

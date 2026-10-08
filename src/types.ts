@@ -231,6 +231,9 @@ export type Match = {
   referee?: string
   homeScore?: number
   awayScore?: number
+  /** Shootout score when a knockout match is decided on penalties (e.g. 4-3). */
+  homePenalties?: number
+  awayPenalties?: number
   /** The season this fixture belongs to. Stored, not inferred from its clubs. */
   seasonId?: number
   matchStatus: MatchStatus

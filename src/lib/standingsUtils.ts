@@ -551,3 +551,12 @@ export function withDerivedTeamTotals(teams: Team[], matches: Match[]): Team[] {
     return { ...team, played: row.played, goalDifference: row.goalDifference, points: row.points }
   })
 }
+
+/** "Northside won 5–4 on penalties", or null when there was no shootout. */
+export function shootoutLine(match: Match): string | null {
+  const { homePenalties: home, awayPenalties: away } = match
+  if (home == null || away == null || home === away) return null
+  return home > away
+    ? `${match.home} won ${home}–${away} on penalties`
+    : `${match.away} won ${away}–${home} on penalties`
+}

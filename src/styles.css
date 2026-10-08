@@ -4705,7 +4705,7 @@ main:focus,
   letter-spacing: 0.03em;
 }
 .modal-pitch-badge {
-  color: #0284c7 !important;
+  color: inherit;
   font-weight: 600;
 }
 
@@ -4861,3 +4861,64 @@ main:focus,
 
 
 
+
+/* ---------------- Public popups in the matchday programme look ----------------
+   The modals render inside .public-site.programme, so these overrides reach the
+   public popups only; the admin panel keeps its own modal styling. */
+
+.programme .modal-backdrop { background: rgba(10, 58, 40, .72); }
+.programme .modal { border-radius: 14px; background: #fff; color: var(--ink); box-shadow: 0 28px 70px rgba(10, 30, 22, .38); }
+.programme .modal-head { background: #fff; border-bottom: 1px solid var(--rule); }
+.programme .modal-head h2 { color: var(--ink); font-family: var(--display); font-size: 1.55rem; font-weight: 800; letter-spacing: 0; }
+.programme .modal-head button:hover { background: var(--chalk); color: var(--ink); }
+
+/* Match */
+.programme .match-hero-card { border-radius: var(--radius); background: var(--ink); box-shadow: none; }
+.programme .match-hero-card h3 { font-family: var(--display); font-weight: 800; }
+.programme .match-hero-card .team-mark { color: var(--chalk); }
+.programme .big-score { gap: 8px; color: var(--lamp); font-weight: 900; font-variant-numeric: tabular-nums; }
+.programme .big-score > span { min-width: 1.1em; padding: 2px .16em 0; border-radius: 8px; background: #0b1426; text-align: center; }
+.programme .big-score i { color: rgba(243, 245, 241, .5); }
+.programme .status-pill { border-radius: 6px; background: rgba(243, 245, 241, .12); color: var(--chalk); letter-spacing: 0; font-weight: 700; }
+.programme .status-pill.completed { background: rgba(255, 210, 63, .16); color: var(--lamp); }
+.programme .status-pill.live { background: var(--card-red); color: #fff; }
+.programme .modal-penalties-banner { border: 0; border-radius: 6px; background: var(--lamp); color: var(--ink); font-weight: 700; letter-spacing: 0; }
+.programme .match-info-strip { flex-wrap: wrap; border-color: var(--rule); border-radius: var(--radius); background: var(--chalk); color: var(--ink); }
+.programme .match-info-strip svg { color: var(--turf); }
+.programme .match-timeline-section h4,
+.programme .squad-column h5 { color: var(--ink); font-family: var(--display); font-size: 1.3rem; font-weight: 800; }
+.programme .public-event-row { border-color: var(--rule); border-radius: 8px; background: #fff; }
+.programme .event-min { color: var(--turf); font-variant-numeric: tabular-nums; }
+.programme .player-row-simple { border-bottom-color: #eaeee8; }
+.programme .player-row-simple .num { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Shared tags: one neutral treatment instead of a colour per position */
+.programme .pos-badge,
+.programme .position-tag,
+.programme .position-tag.goalkeeper,
+.programme .position-tag.defender,
+.programme .position-tag.midfielder,
+.programme .position-tag.forward { border-radius: 5px; background: var(--chalk); color: var(--ink); }
+.programme .season-pill { border-radius: 5px; background: var(--chalk); color: var(--ink); font-family: var(--body); }
+.programme .shirt-badge { border-radius: 6px; background: var(--ink); color: var(--lamp); font-family: var(--display); }
+.programme .captain-badge { background: var(--lamp); color: var(--ink); }
+
+/* Player */
+.programme .player-detail-meta h3 { color: var(--ink); font-family: var(--display); font-weight: 800; }
+.programme .player-stat-grid { border-color: var(--rule); border-radius: var(--radius); background: var(--rule); }
+.programme .player-stat-grid b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.programme .player-stat-grid span { color: var(--muted); letter-spacing: 0; text-transform: none; }
+
+/* Story */
+.programme .reader-category { border-radius: 5px; background: var(--turf); color: var(--chalk); letter-spacing: 0; font-weight: 700; }
+.programme .reader-title { color: var(--ink); font-family: var(--display); font-weight: 800; line-height: 1.02; }
+.programme .reader-body { color: #2f3b35; font-size: 1.02rem; line-height: 1.7; }
+.programme .reader-body p { max-width: 68ch; }
+
+/* Club */
+.programme .roster-header h3 { color: var(--ink); font-weight: 800; }
+.programme .roster-header span { color: var(--muted); }
+.programme .roster-table-wrap { border-color: var(--rule); border-radius: var(--radius); }
+.programme .reader-lead { border-left-color: var(--turf); color: var(--ink); }
+.programme .reader-body p { margin: 0; }
+.programme .roster-table-wrap th { color: var(--muted); letter-spacing: 0; text-transform: none; }

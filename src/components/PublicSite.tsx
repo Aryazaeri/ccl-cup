@@ -127,6 +127,13 @@ const STORY_CATEGORY_LABELS: Record<string, string> = {
   panorama: 'Feature',
 }
 
+const MATCH_STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Scheduled',
+  live: 'Live',
+  completed: 'Full time',
+  postponed: 'Postponed',
+}
+
 function storyCategoryLabel(category?: string): string {
   return (category && STORY_CATEGORY_LABELS[category]) || 'Story'
 }
@@ -1445,7 +1452,7 @@ function PlayerDetailModal({
   )
 
   return (
-    <Modal title="Player Profile" className="modal-player-detail" onClose={onClose}>
+    <Modal title="Player profile" className="modal-player-detail" onClose={onClose}>
       <div className="player-detail">
         <div className="player-detail-head">
           {team ? <PlayerCutoutCard player={player} team={team} hideCaption /> : null}
@@ -1502,7 +1509,7 @@ function MatchDetailsModal({
   const events = match.events ?? []
 
   return (
-    <Modal title="Match Center" className="modal-match-details" onClose={onClose}>
+    <Modal title="Match details" className="modal-match-details" onClose={onClose}>
       <div className="public-match-modal">
         {/* Match Hero Scoreboard */}
         <div className="match-hero-card">
@@ -1531,7 +1538,7 @@ function MatchDetailsModal({
             )}
             {shootout ? <span className="modal-penalties-banner">{shootout}</span> : null}
             <span className={`status-pill ${match.matchStatus}`}>
-              {match.matchStatus.toUpperCase()}
+              {MATCH_STATUS_LABELS[match.matchStatus] ?? match.matchStatus}
             </span>
             {match.streamUrl ? (
               <a
@@ -1580,7 +1587,7 @@ function MatchDetailsModal({
 
         {/* Timeline Events Section */}
         <div className="match-timeline-section">
-          <h4>Match Timeline Events</h4>
+          <h4>Match events</h4>
           {events.length === 0 ? (
             <p className="no-events-text">No timeline events logged for this match fixture.</p>
           ) : (
@@ -1617,7 +1624,7 @@ function MatchDetailsModal({
         {(homeSquad.length > 0 || awaySquad.length > 0) && (
           <div className="match-lineups-grid">
             <div className="squad-column">
-              <h5>{match.home} Squad</h5>
+              <h5>{match.home} squad</h5>
               {homeSquad.map((p) => (
                 <div key={p.id} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
@@ -1628,7 +1635,7 @@ function MatchDetailsModal({
             </div>
 
             <div className="squad-column">
-              <h5>{match.away} Squad</h5>
+              <h5>{match.away} squad</h5>
               {awaySquad.map((p) => (
                 <div key={p.id} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
@@ -1648,7 +1655,7 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
   const paragraphs = story.body ? story.body.split('\n\n') : [story.summary ?? '']
 
   return (
-    <Modal title="Tournament Story" className="modal-story-reader" onClose={onClose}>
+    <Modal title="News" className="modal-story-reader" onClose={onClose}>
       <article className="story-reader">
         {story.coverImageUrl && (
           <div className="reader-cover">
@@ -1657,7 +1664,7 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
         )}
         <div className="reader-meta">
           <span className="reader-category">
-            {story.category?.replace('_', ' ').toUpperCase() ?? 'NEWS'}
+            {storyCategoryLabel(story.category)}
           </span>
           <time>{story.publishedAt ?? '15 AUG 2026'}</time>
         </div>
@@ -1805,7 +1812,7 @@ function TeamRosterModal({
   const country = getCountry(team.countryCode)
 
   return (
-    <Modal title="Club & Squad Profile" className="modal-team-roster" onClose={onClose}>
+    <Modal title="Club and squad" className="modal-team-roster" onClose={onClose}>
       <div className="team-roster-modal">
         <div className="roster-header">
           <TeamMark

@@ -127,6 +127,10 @@ const STORY_CATEGORY_LABELS: Record<string, string> = {
   panorama: 'Feature',
 }
 
+// Design comparison on the redesign/vibes branch: ?vibe=sport|zine|night|terrace
+// switches the whole public site to that theme (src/vibes/*.css).
+const VIBE = new URLSearchParams(window.location.search).get('vibe') ?? undefined
+
 const MATCH_STATUS_LABELS: Record<string, string> = {
   scheduled: 'Scheduled',
   live: 'Live',
@@ -387,7 +391,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }
 
   return (
-    <div className="public-site programme">
+    <div className="public-site programme" data-vibe={VIBE}>
       {/* A button, not an #anchor: the hash is the router here, so a
           "#main" link would be read as a route rather than a jump. */}
       <button

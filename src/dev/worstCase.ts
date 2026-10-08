@@ -137,4 +137,21 @@ export function mountToggle() {
     bar.append(link)
   }
   document.body.append(bar)
+
+  // Second row: switch between the redesign vibes.
+  const currentVibe = new URLSearchParams(location.search).get('vibe') ?? 'programme'
+  const vibes = bar.cloneNode(false) as HTMLElement
+  vibes.setAttribute('aria-label', 'Design vibe')
+  vibes.style.bottom = '52px'
+  for (const [key, label] of [['programme', 'Current'], ['sport', 'Sports app'], ['zine', 'Fanzine'], ['night', 'Night match'], ['terrace', 'Terrace print']]) {
+    const link = document.createElement('a')
+    const url = new URL(location.href)
+    if (key === 'programme') url.searchParams.delete('vibe')
+    else url.searchParams.set('vibe', key)
+    link.href = url.toString()
+    link.textContent = label
+    link.style.cssText = `padding:5px 12px;border-radius:999px;color:#171717;text-decoration:none;${key === currentVibe ? 'background:#fff' : ''}`
+    vibes.append(link)
+  }
+  document.body.append(vibes)
 }

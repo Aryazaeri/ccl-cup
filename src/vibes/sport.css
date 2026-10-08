@@ -49,7 +49,7 @@
     left: auto;
     bottom: 40px;
     width: min(38%, 500px);
-    height: auto;
+    height: calc(100% - 144px);
     border-radius: 28px;
     object-position: 60% 50%;
     box-shadow: var(--shadow);

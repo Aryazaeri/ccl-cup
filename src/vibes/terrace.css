@@ -1,1 +1,290 @@
-/* terrace vibe — filled in below */
+/* ==================================================================
+   Vibe: Terrace print — vintage 70s/80s match programme and ticket.
+   Guided by design-taste-frontend (overhaul redesign; Cobalt + paper
+   palette instead of the default beige/brass; slab serif justified by
+   the vintage brief), frontend-design and redesign-existing-projects.
+   Aged newsprint, navy ink, cobalt as the only accent, ticket-stub
+   fixtures with perforations, a rubber-stamp result, collector cards,
+   halftone and grain. ?vibe=terrace
+   ================================================================== */
+
+.public-site[data-vibe='terrace'] {
+  --paper: #f1e9d6;
+  --paper-2: #e9dfc6;
+  --ink: #1d2433;
+  --cobalt: #1f3fa8;
+  --turf: #1f3fa8;
+  --turf-deep: #17307f;
+  --chalk: #f1e9d6;
+  --lamp: #1f3fa8;
+  --card-red: #b4322c;
+  --rule: rgba(29, 36, 51, 0.28);
+  --muted: #5b5f68;
+  --radius: 6px;
+  --display: 'Alfa Slab One', 'Rockwell', serif;
+  --body: 'Libre Franklin', system-ui, sans-serif;
+  --halftone: radial-gradient(circle at 1px 1px, rgba(31, 63, 168, 0.32) 1.1px, transparent 1.7px) 0 0 / 6px 6px;
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+
+  &::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.12;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  & .team-mark { color: var(--ink); }
+
+  /* ---------- Header: programme masthead ---------- */
+  & .public-header { border-bottom: 3px double var(--ink); }
+  & .brand { font-family: var(--display); font-size: 1.7rem; font-weight: 400; letter-spacing: 0.01em; color: var(--cobalt); }
+  & .brand-button, & .public-nav button, & .menu-button { color: var(--ink); }
+  & .public-nav button { font-weight: 700; font-size: 0.86rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  & .public-nav button::after { height: 3px; background: var(--cobalt); }
+  & .search-button, & .season-button { border: 2px solid var(--ink); border-radius: var(--radius); background: transparent; color: var(--ink); font-weight: 700; }
+  & .season-menu { border: 2px solid var(--ink); border-radius: var(--radius); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); }
+  & .season-menu button { color: var(--ink); }
+  & .season-menu button small { color: var(--muted); }
+  & .season-menu button.is-selected { background: var(--cobalt); color: var(--paper); }
+
+  /* ---------- Hero: poster with a duotone photo ---------- */
+  & .pg-hero { background: var(--paper); color: var(--ink); border-bottom: 3px double var(--ink); }
+  & .pg-hero-photo {
+    top: 96px;
+    left: auto;
+    right: max(32px, calc((100% - 1240px) / 2));
+    bottom: 48px;
+    width: min(40%, 520px);
+    height: calc(100% - 144px);
+    border: 3px solid var(--ink);
+    border-radius: var(--radius);
+    filter: grayscale(1) contrast(1.2) brightness(1.08);
+    mix-blend-mode: multiply;
+    transform: rotate(1.5deg);
+    box-shadow: 8px 8px 0 var(--cobalt);
+  }
+  & .pg-hero-shade {
+    top: 96px;
+    left: auto;
+    right: max(32px, calc((100% - 1240px) / 2));
+    bottom: 48px;
+    width: min(40%, 520px);
+    border-radius: var(--radius);
+    background: var(--halftone), rgba(31, 63, 168, 0.35);
+    mix-blend-mode: screen;
+    transform: rotate(1.5deg);
+    pointer-events: none;
+  }
+  & .pg-hero-body { padding: 48px 0 72px; }
+  & .pg-hero-body > * { max-width: min(54%, 660px); }
+  & .pg-hero-title, & .pg-hero-title.is-large {
+    margin-bottom: 24px;
+    color: var(--ink);
+    font-family: var(--display);
+    font-size: clamp(2.8rem, 6.2vw, 5.6rem);
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: 0;
+  }
+  & .pg-hero-lede { color: var(--ink); }
+
+  /* Scoreboard as a printed result card with a rubber stamp */
+  & .pg-scoreboard {
+    position: relative;
+    padding: 20px 24px 24px;
+    border: 3px solid var(--ink);
+    border-radius: var(--radius);
+    background: #fbf6ea;
+    color: var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  /* The stamp says Full time / Live, so the plain status word is hidden; date and stage stay. */
+  & .pg-scoreboard-status { color: var(--muted); font-weight: 600; font-size: 0; }
+  & .pg-scoreboard-status > span { font-size: 0.9rem; }
+  & .pg-scoreboard-status > .pg-live { display: none; }
+  & .pg-scoreboard-status > span:last-child { color: var(--muted); font-weight: 500; }
+  & .pg-scoreboard::after {
+    content: 'Full time';
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    padding: 4px 12px;
+    border: 3px double var(--card-red);
+    border-radius: 4px;
+    color: var(--card-red);
+    font-family: var(--display);
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transform: rotate(-8deg);
+    opacity: 0.85;
+  }
+  & .pg-scoreboard:has(.pg-live)::after { content: 'Live'; }
+  & .pg-scoreboard-shootout { color: var(--cobalt); font-weight: 700; }
+  & .pg-scoreboard-team strong { font-family: var(--display); font-size: clamp(1.15rem, 2vw, 1.55rem); font-weight: 400; letter-spacing: 0.01em; }
+  & .pg-scoreboard-score { gap: 10px; align-items: center; }
+  & .pg-scoreboard-score b { min-width: 1.1em; padding: 4px 0.12em 0; border-radius: 4px; background: var(--cobalt); color: var(--paper); font-family: var(--display); font-size: clamp(3rem, 6vw, 4.6rem); font-weight: 400; }
+
+  & .pg-next { margin-top: 24px; padding: 12px 16px; border: 2px dashed var(--ink); border-radius: var(--radius); color: var(--ink); }
+  & .pg-next-label { color: var(--cobalt); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; }
+  & .pg-next strong { font-family: var(--display); font-weight: 400; font-size: 1.2rem; }
+  & .pg-next > span:last-child { color: var(--muted); }
+
+  & .pg-button { min-height: 48px; border: 2px solid var(--ink); border-radius: var(--radius); background: var(--cobalt); color: var(--paper); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; box-shadow: 3px 3px 0 var(--ink); }
+  & .pg-button.is-ghost { background: transparent; color: var(--ink); }
+
+  /* ---------- Sections ---------- */
+  & .pg-heading { font-family: var(--display); font-size: clamp(2.4rem, 4.6vw, 3.8rem); font-weight: 400; letter-spacing: 0; line-height: 1; }
+  & .pg-heading::after { content: ''; display: block; width: 72px; height: 6px; margin-top: 14px; background: var(--cobalt); }
+  & .pg-subheading { color: var(--cobalt); font-weight: 800; font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* Fixtures as ticket stubs: dashed perforation and punched notches */
+  & .pg-fixture {
+    position: relative;
+    border: 2px solid var(--ink);
+    border-radius: var(--radius);
+    background: #fbf6ea;
+    grid-template-columns: 70px minmax(0, 1fr) auto minmax(0, 1fr);
+    -webkit-mask: radial-gradient(circle 9px at 70px 0, transparent 98%, #000) top / 100% 51% no-repeat, radial-gradient(circle 9px at 70px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+    mask: radial-gradient(circle 9px at 70px 0, transparent 98%, #000) top / 100% 51% no-repeat, radial-gradient(circle 9px at 70px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+  }
+  & .pg-fixture::before { content: ''; position: absolute; top: 10px; bottom: 10px; left: 69px; border-left: 2px dashed var(--rule); }
+  & .pg-fixture time { color: var(--cobalt); font-weight: 800; text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.04em; }
+  & .pg-fixture-team strong { font-weight: 700; }
+  & .pg-fixture-score { font-family: var(--display); font-size: 1.5rem; font-weight: 400; }
+  & .pg-fixture-time { color: var(--cobalt); font-weight: 800; }
+  & .pg-fixture .pg-shootout { color: var(--cobalt); }
+
+  & .pg-tabs { border: 2px solid var(--ink); border-radius: var(--radius); background: transparent; padding: 3px; }
+  & .pg-tabs button { border-radius: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.8rem; }
+  & .pg-tabs button.is-selected { background: var(--cobalt); color: var(--paper); }
+
+  & .pg-table-card { border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; box-shadow: 6px 6px 0 var(--ink); }
+  & .pg-table th { border-bottom: 2px solid var(--ink); color: var(--ink); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; }
+  & .pg-table td { border-bottom: 1px dashed var(--rule); }
+  & .pg-table tbody tr:nth-child(odd) { background: rgba(31, 63, 168, 0.04); }
+  & .pg-table .pg-points { color: var(--cobalt); font-family: var(--display); font-size: 1.35rem; font-weight: 400; }
+  & .pg-form-pip { border-radius: 50%; }
+  & .pg-form-pip.is-w { background: var(--cobalt); }
+  & .pg-form-pip.is-d { background: #9a9688; }
+  & .pg-table-note { border-top: 2px solid var(--ink); }
+
+  /* Top scorers: collector cards, a little crooked like they were stuck in by hand */
+  & .pg-band { background: var(--paper-2); color: var(--ink); border-top: 3px double var(--ink); border-bottom: 3px double var(--ink); }
+  & .pg-band .pg-empty { color: var(--muted); }
+  & .pg-stickers { gap: 26px; }
+  & .pg-sticker { padding: 8px 8px 16px; border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; color: var(--ink); box-shadow: 5px 5px 0 var(--ink); }
+  & .pg-stickers > li:nth-child(3n + 1) .pg-sticker { transform: rotate(-1.6deg); }
+  & .pg-stickers > li:nth-child(3n + 2) .pg-sticker { transform: rotate(1.1deg); }
+  & .pg-stickers > li:nth-child(3n) .pg-sticker { transform: rotate(-0.6deg); }
+  & .pg-sticker-kit { border: 2px solid var(--ink); border-radius: 4px; background: var(--halftone), linear-gradient(160deg, var(--kit) 0 62%, var(--kit-2) 62% 70%, var(--kit) 70%); }
+  & .pg-sticker-kit .team-mark-wrapper { background: #fbf6ea; border: 2px solid var(--ink); box-shadow: none; }
+  & .pg-sticker-rank { top: -2px; left: -2px; min-width: 34px; padding: 3px 8px; border-radius: 0 0 6px 0; background: var(--ink); color: var(--paper); font-family: var(--display); font-weight: 400; }
+  & .pg-sticker strong { font-family: var(--display); font-size: 1.25rem; font-weight: 400; }
+  & .pg-sticker small { color: var(--muted); }
+  & .pg-sticker-goals b { color: var(--cobalt); font-family: var(--display); font-weight: 400; }
+  & .pg-assists { border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; box-shadow: 5px 5px 0 var(--ink); }
+  & .pg-assists .pg-subheading { color: var(--cobalt); }
+  & .pg-assists li { border-bottom: 1px dashed var(--rule); }
+  & .pg-assists li small { color: var(--muted); }
+  & .pg-assists li b { color: var(--cobalt); font-family: var(--display); font-weight: 400; }
+
+  /* News: programme article */
+  & .pg-lead-story { border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; box-shadow: 6px 6px 0 var(--ink); }
+  & .pg-lead-story img { filter: grayscale(1) contrast(1.15) sepia(0.25); border-right: 2px solid var(--ink); }
+  & .pg-lead-copy small, & .pg-story-list small { color: var(--cobalt); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.74rem; }
+  & .pg-lead-copy strong { font-family: var(--display); font-size: clamp(1.7rem, 2.6vw, 2.4rem); font-weight: 400; line-height: 1.05; }
+  & .pg-lead-copy > span { color: var(--ink); }
+  & .pg-lead-copy em { color: var(--cobalt); font-weight: 800; }
+  & .pg-story-list { border-top: 3px double var(--ink); }
+  & .pg-story-list button { border-bottom: 1px dashed var(--rule); }
+  & .pg-story-list strong { font-family: var(--display); font-weight: 400; font-size: 1.15rem; }
+
+  & .pg-club { border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; box-shadow: 4px 4px 0 var(--ink); border-top: 8px solid var(--kit); }
+  & .pg-club strong { font-family: var(--display); font-weight: 400; font-size: 1.1rem; }
+
+  & .pg-about { background: var(--ink); color: var(--paper); }
+  & .pg-about p { color: rgba(241, 233, 214, 0.8); }
+  & .pg-about .pg-about-lead { color: var(--paper); font-family: var(--display); font-size: 1.5rem; font-weight: 400; line-height: 1.25; }
+  & .pg-about .pg-heading::after { background: var(--paper); }
+  & .pg-about-facts { border: 2px dashed rgba(241, 233, 214, 0.5); border-radius: var(--radius); background: transparent; }
+  & .pg-about-facts .pg-subheading { color: var(--paper); }
+  & .pg-about-facts ul, & .pg-about-facts strong { color: var(--paper); }
+
+  & .comments-section .section-title-row h2 { font-family: var(--display); font-weight: 400; }
+  & .comment-form { border: 2px solid var(--ink); border-radius: var(--radius); background: #fbf6ea; box-shadow: 5px 5px 0 var(--ink); }
+  & .comment-form input, & .comment-form textarea { border: 2px solid var(--ink); border-radius: 4px; background: var(--paper); }
+  & .comment-form .button-primary { border: 2px solid var(--ink); border-radius: var(--radius); background: var(--cobalt); color: var(--paper); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  & .public-footer { background: var(--cobalt); color: var(--paper); border-top: 3px double var(--ink); }
+  & .public-footer nav button { color: var(--paper); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.8rem; }
+  & .public-footer small { color: rgba(241, 233, 214, 0.8); }
+
+  /* ---------- Popups: programme insert ---------- */
+  & .modal-backdrop { background: rgba(29, 36, 51, 0.6); }
+  & .modal { border: 3px solid var(--ink); border-radius: 8px; background: #fbf6ea; color: var(--ink); box-shadow: 10px 10px 0 var(--cobalt); }
+  & .modal-head { border-bottom: 3px double var(--ink); background: #fbf6ea; }
+  & .modal-head h2 { color: var(--ink); font-family: var(--display); font-weight: 400; }
+  & .match-hero-card { border: 2px solid var(--ink); border-radius: var(--radius); background: var(--cobalt); color: var(--paper); }
+  & .match-hero-card h3 { font-family: var(--display); font-weight: 400; }
+  & .match-hero-card .team-mark { color: var(--paper); }
+  & .big-score { color: var(--paper); }
+  & .big-score > span { background: rgba(0, 0, 0, 0.18); }
+  & .big-score i { color: var(--paper); }
+  & .status-pill, & .status-pill.completed { border: 2px solid var(--paper); background: transparent; color: var(--paper); }
+  & .modal-penalties-banner { background: var(--paper); color: var(--cobalt); }
+  & .match-info-strip { border: 2px dashed var(--rule); background: transparent; }
+  & .match-info-strip svg { color: var(--cobalt); }
+  & .match-timeline-section h4, & .squad-column h5, & .player-detail-meta h3, & .roster-header h3, & .reader-title { font-family: var(--display); font-weight: 400; }
+  & .public-event-row { border: 1px dashed var(--rule); background: transparent; }
+  & .event-min { color: var(--cobalt); }
+  & .reader-category { background: var(--cobalt); color: var(--paper); }
+  & .reader-lead { border-left-color: var(--cobalt); }
+  & .reader-cover img, & .cutout-stage { filter: grayscale(1) contrast(1.1) sepia(0.2); }
+  & .shirt-badge { background: var(--cobalt); color: var(--paper); }
+  & .captain-badge { background: var(--card-red); color: var(--paper); }
+
+  /* ---------- Motion: small and physical ---------- */
+  & .pg-button, & .pg-fixture, & .pg-club, & .pg-tabs button, & button.pg-sticker, & .pg-scoreboard, & .pg-lead-story { transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+  & .pg-button:active, & .pg-club:active, & .pg-scoreboard:active, & .pg-lead-story:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--ink); }
+  & .pg-fixture:active { transform: translateY(2px); }
+
+  @media (hover: hover) and (pointer: fine) {
+    & button.pg-sticker:hover { transform: rotate(0deg) translateY(-4px) !important; box-shadow: 8px 9px 0 var(--ink); }
+    & .pg-fixture:hover { border-color: var(--cobalt); }
+    & .pg-club:hover { border-color: var(--cobalt); border-top-color: var(--kit); }
+    & .pg-button:hover { background: var(--turf-deep); }
+    & .pg-button.is-ghost:hover { background: var(--ink); color: var(--paper); }
+    & .search-button:hover, & .season-button:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    & .pg-tabs button:hover { background: rgba(31, 63, 168, 0.12); }
+    & .pg-table tbody tr:hover { background: rgba(31, 63, 168, 0.1); }
+    & .public-footer nav button:hover { color: #fff; text-decoration: underline; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & .pg-stickers > li .pg-sticker { transform: none; }
+  }
+
+  @media (max-width: 900px) {
+    & .pg-hero { display: flex; flex-direction: column; }
+    & .pg-hero .public-header { order: -3; }
+    & .pg-hero-photo, & .pg-hero-shade { position: relative; inset: auto; width: calc(100% - 40px); height: 200px; margin: 20px auto 0; transform: rotate(1deg); }
+    & .pg-hero-photo { order: -2; }
+    & .pg-hero-shade { order: -1; margin-top: -200px; }
+    & .pg-hero-body > * { max-width: none; }
+    & .public-nav { border: 2px solid var(--ink); border-radius: var(--radius); background: var(--paper); }
+    & .pg-stickers > li .pg-sticker { transform: none; }
+    & .pg-scoreboard::after { top: 10px; right: 10px; font-size: 0.75rem; }
+    & .pg-scoreboard { padding: 16px 14px 18px; }
+    & .pg-scoreboard-team strong { font-size: 0.92rem; }
+    & .pg-scoreboard-score { gap: 6px; }
+    & .pg-scoreboard-score b { font-size: 2.5rem; }
+  }
+}

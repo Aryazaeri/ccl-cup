@@ -361,7 +361,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <time>{match.date}</time>
           <span className="pg-fixture-team">
             <TeamMark name={match.home} color={homeTeam?.color} secondaryColor={homeTeam?.secondaryColor} logoUrl={homeTeam?.logoUrl} size="sm" />
-            <strong>{match.home}</strong>
+            <strong title={match.home}>{match.home}</strong>
             {homeFlag ? <span className="pg-flag" title={homeFlag.name}>{homeFlag.flag}</span> : null}
           </span>
           <b className={played ? 'pg-fixture-score' : 'pg-fixture-time'}>
@@ -369,7 +369,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </b>
           <span className="pg-fixture-team is-away">
             {awayFlag ? <span className="pg-flag" title={awayFlag.name}>{awayFlag.flag}</span> : null}
-            <strong>{match.away}</strong>
+            <strong title={match.away}>{match.away}</strong>
             <TeamMark name={match.away} color={awayTeam?.color} secondaryColor={awayTeam?.secondaryColor} logoUrl={awayTeam?.logoUrl} size="sm" />
           </span>
           {shootout ? <small className="pg-shootout">{shootout}</small> : null}
@@ -769,7 +769,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           ) : (
             <div className="pg-news">
               <button className="pg-lead-story" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
-                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt={leadStory.title} />
+                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt={leadStory.title} width="640" height="400" loading="lazy" />
                 <span className="pg-lead-copy">
                   <small>
                     {storyCategoryLabel(leadStory.category)}

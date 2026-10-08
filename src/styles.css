@@ -4189,6 +4189,13 @@ table { border-collapse: collapse; width: 100%; }
 }
 
 .programme .content-width { width: min(1240px, calc(100% - 64px)); }
+.programme button, .programme a { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.programme .pg-heading, .programme .pg-lead-copy strong, .programme .pg-story-list strong, .programme .reader-title { text-wrap: balance; }
+/* Club names have no length limit; a long single word (a German compound) must
+   break rather than run out of its card. */
+.programme .pg-lead-copy strong, .programme .pg-story-list strong, .programme .reader-title,
+.programme .pg-club strong, .programme .pg-sticker small, .programme .pg-scoreboard-team strong { overflow-wrap: anywhere; }
+.programme .pg-club { min-width: 0; }
 .programme :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 .programme .pg-hero :focus-visible,
 .programme .pg-band :focus-visible,

@@ -446,6 +446,11 @@ export const tournamentRepository = {
   mode: isSupabaseConfigured ? ('supabase' as const) : ('local' as const),
 
   async load(): Promise<TournamentData> {
+    // Dev-only stress fixtures (?data=worst|empty|one); see src/dev/worstCase.ts.
+    if (import.meta.env.DEV) {
+      const kind = new URLSearchParams(window.location.search).get('data')
+      if (kind) return (await import('../dev/worstCase')).fixture(kind, initialData())
+    }
     if (!isSupabaseConfigured || !supabase) return loadLocal()
     try {
       return await loadRemote()

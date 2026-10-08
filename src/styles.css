@@ -4980,3 +4980,31 @@ main:focus,
 }
 
 .programme button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* ---------------- Entrances for things that used to pop in ----------------
+   CSS only (@starting-style). Short, ease-out, transform + opacity. */
+
+.programme .season-menu,
+.programme .public-nav.is-open { transform-origin: top right; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.programme .search-panel { transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+.programme .search-overlay { transition: opacity 150ms ease; }
+.programme .pg-table-card { transition: opacity 150ms ease; }
+.programme .comment-sent { transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out); }
+
+@starting-style {
+  .programme .season-menu,
+  .programme .public-nav.is-open { opacity: 0; transform: scale(0.97); }
+  .programme .search-panel { opacity: 0; transform: translateY(-8px); }
+  .programme .search-overlay { opacity: 0; }
+  .programme .pg-table-card { opacity: 0; }
+  .programme .comment-sent { opacity: 0; transform: scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    .programme .season-menu,
+    .programme .public-nav.is-open,
+    .programme .search-panel,
+    .programme .comment-sent { transform: none; }
+  }
+}

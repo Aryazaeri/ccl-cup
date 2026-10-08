@@ -618,7 +618,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           {seasonTeams.length === 0 || !shownGroup ? (
             <p className="pg-empty">No clubs are registered for this season yet, so there is no table to show.</p>
           ) : (
-            <div className="pg-table-card" role={standingsGroups.length > 1 ? 'tabpanel' : undefined}>
+            <div className="pg-table-card" key={shownGroup.groupId} role={standingsGroups.length > 1 ? 'tabpanel' : undefined}>
               <div className="table-scroll">
                 <table className="pg-table">
                   <thead>

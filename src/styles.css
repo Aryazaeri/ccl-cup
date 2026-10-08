@@ -4410,9 +4410,9 @@ table { border-collapse: collapse; width: 100%; }
   color: var(--ink);
   text-align: center;
   box-shadow: 0 1px 0 rgba(0, 0, 0, .1), 0 14px 28px rgba(0, 0, 0, .22);
-  transition: transform .18s ease;
+  transition: transform 160ms var(--ease-out);
 }
-button.pg-sticker:hover { transform: translateY(-3px) rotate(-1.2deg); }
+
 .pg-sticker-kit {
   position: relative;
   width: 100%;
@@ -4930,3 +4930,45 @@ main:focus,
 .sidebar-search-box:focus-within,
 .pool-search-box:focus-within,
 .search-field:focus-within { box-shadow: 0 0 0 3px rgba(99, 227, 91, .45); }
+
+/* ---------------- Interaction polish (public site) ---------------- */
+
+.public-site.programme { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+
+.programme .pg-button,
+.programme .pg-fixture,
+.programme .pg-club,
+.programme .pg-tabs button,
+.programme .pg-scoreboard,
+.programme .pg-lead-story { transition: transform 160ms var(--ease-out), border-color 150ms ease, background-color 150ms ease; }
+
+.programme .pg-button:active,
+.programme .pg-fixture:active,
+.programme .pg-club:active,
+.programme .pg-tabs button:active,
+.programme button.pg-sticker:active { transform: scale(0.97); }
+.programme .pg-scoreboard:active,
+.programme .pg-lead-story:active { transform: scale(0.99); }
+
+@media (hover: hover) and (pointer: fine) {
+  .programme button.pg-sticker:hover { transform: translateY(-3px) rotate(-1.2deg); }
+}
+
+/* Popups: a short entrance instead of popping in. Modals scale from centre. */
+.programme .modal-backdrop { transition: opacity 200ms ease; }
+.programme .modal { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+@starting-style {
+  .programme .modal-backdrop { opacity: 0; }
+  .programme .modal { opacity: 0; transform: scale(0.96); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .programme .pg-button:active,
+  .programme .pg-fixture:active,
+  .programme .pg-club:active,
+  .programme .pg-tabs button:active,
+  .programme button.pg-sticker:active,
+  .programme .pg-scoreboard:active,
+  .programme .pg-lead-story:active { transform: none; }
+  @starting-style { .programme .modal { transform: none; } }
+}

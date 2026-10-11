@@ -1,0 +1,39 @@
+Status as of 2026-10-11 — all fixes below are merged to main (PR #7).
+
+1. the news carroile should be shown on the main header
+   -> DONE. The header is now a news carousel: the first 5 stories rotate every 7s, with
+      numbered tabs, a progress bar and a pause button. It holds while the mouse or keyboard
+      focus is on it. Older stories appear under "More news".
+1.1 the public site logos are not being shown properly
+   -> DONE. Wide wordmarks (ROKETSAN, TUSAŞ) were a thin strip inside a small circle. Each logo
+      now sits in a white tile shaped and cropped to its content; square crests stay square.
+2. the errors of admin panel :
+2.1. the "add a new player / club" has
+   -> DONE. Fixed:
+      - saving a club with a preset crest failed
+      - the word "null" was written into empty club fields (cleaned on ROKETSAN and TUSAŞ)
+      - a new club couldn't get players until the page was reopened
+      - shirt numbers outside 1-99 were accepted
+      - a duplicate club name gave a raw database error
+      - clicking save twice created the record twice (all 13 admin save buttons now ignore
+        the second click)
+2.2. the public page is not updatetd after admin panel is updated
+   -> DONE. A score entered while the match was still "scheduled" never showed as a result; it
+      is now marked completed (ROKETSAN 2-1 TUSAŞ now shows). The public page also reloads its
+      data when you return to its tab.
+2.3. the media and sponsors need to be wired to public page properly , and wired together
+   -> DONE. Media shows properly on the public page: Highlights cards were collapsing to
+      a thin strip and are now full photo cards. Sponsors show with their logos and link to
+      their website when one is set (COFFEE DE MADRID has no website set yet).
+      Wired together via sponsor-tagged media: in admin, a media item can optionally be
+      "Presented by" one of its season's sponsors. On the public site a tagged highlight shows
+      "Presented by <sponsor>" with the logo (linking to the sponsor's website when set), and
+      the sponsor's tile shows "Presents N highlights" linking back to Highlights. Deleting a
+      sponsor keeps its media and just clears the tag.
+2.4. the sponsors need their own header on public site after the highlights
+   -> DONE. Sponsors has its own section and heading directly after Highlights, and a menu
+      link when the season has sponsors.
+
+Known leftovers (not in this feedback):
+- a club save that fails after the crest uploads leaves an unused image in storage
+- an old error banner can stay visible when moving between admin pages

@@ -1,4 +1,5 @@
 import { getCountry } from '../lib/countries'
+import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
 
 type Props = {
   name: string
@@ -27,11 +28,20 @@ export function TeamMark({
 
   const country = countryCode ? getCountry(countryCode) : null
 
+  // Wide wordmarks get a tile shaped to fit (see useLogoFit).
+  const fit = useLogoFit(logoUrl)
+  const fitted = logoFitStyles(fit)
+
   return (
     <span className={`team-mark-wrapper size-${size}`}>
       {logoUrl ? (
-        <span className="team-logo-img-wrap" style={{ borderColor: color }}>
-          <img src={logoUrl} alt={name} className="team-logo-img" />
+        <span className={fit ? 'team-logo-img-wrap is-fitted' : 'team-logo-img-wrap'} style={fitted.tile}>
+          <img
+            src={logoUrl}
+            alt={name}
+            className="team-logo-img"
+            style={fitted.img}
+          />
         </span>
       ) : (
         <span

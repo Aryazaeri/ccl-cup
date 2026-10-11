@@ -8,6 +8,7 @@ import {
   withDerivedTeamTotals,
 } from '../src/lib/standingsUtils'
 import type { Match, Season, Team } from '../src/types'
+import { findContentBox, logoFit } from '../src/lib/imageTrimmer'
 
 let passed = 0
 let failed = 0
@@ -411,6 +412,24 @@ check('no shootout recorded', shootoutLine(shootoutBase), null)
 check('away side wins', shootoutLine({ ...shootoutBase, homePenalties: 4, awayPenalties: 5 }), 'Northside won 5–4 on penalties')
 check('home side wins', shootoutLine({ ...shootoutBase, homePenalties: 3, awayPenalties: 2 }), 'Union won 3–2 on penalties')
 check('level shootout is not shown', shootoutLine({ ...shootoutBase, homePenalties: 2, awayPenalties: 2 }), null)
+
+/* ---------------- logo badges ---------------- */
+
+section('Logo badges')
+{
+  // 10x10 transparent image with an opaque 6x2 strip at x=2..7, y=4..5 (a "wordmark").
+  const px = new Array(10 * 10 * 4).fill(0)
+  for (let y = 4; y <= 5; y++) for (let x = 2; x <= 7; x++) px[(y * 10 + x) * 4 + 3] = 255
+  check('content box of a strip', findContentBox(px, 10, 10), { minX: 2, minY: 4, width: 6, height: 2 })
+  check('blank image has no content', findContentBox(new Array(16).fill(0), 2, 2), null)
+
+  const wide = logoFit({ x: 0.06, y: 0.4, w: 0.88, h: 0.2 })
+  check('wide wordmark gets the widest tile', wide.ratio, 2.4)
+  check('wide wordmark is zoomed in (image taller than the tile)', wide.height > 100, true)
+  const square = logoFit({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 })
+  check('square crest keeps a square tile', square.ratio, 1)
+  check('square crest stays centred', Math.round(square.left * 10) / 10, Math.round(square.top * 10) / 10)
+}
 
 /* ---------------- summary ---------------- */
 

@@ -58,6 +58,19 @@ export default function App() {
     void refresh()
   }, [refresh, auth.profile?.id])
 
+  // Results are often entered from the admin panel in another tab. When this
+  // tab comes back into view, reload quietly (no loading screen) so the public
+  // page shows them without a manual refresh. A failure here keeps the data
+  // already on screen; the initial load above is what reports errors.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      tournamentRepository.load().then(applyData).catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [applyData])
+
   // `played`, `goalDifference` and `points` are derived from results rather
   // than read from storage, so every surface sees the same live numbers.
   const derivedTeams = useMemo(() => withDerivedTeamTotals(teams, matches), [teams, matches])

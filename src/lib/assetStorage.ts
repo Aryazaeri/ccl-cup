@@ -63,13 +63,21 @@ function objectPath(folder: AssetFolder, file: File): string {
  * rewritten around Blobs.
  */
 export function dataUrlToFile(dataUrl: string, name = 'upload'): File | null {
-  const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUrl)
+  // Parameters such as ";utf8" or ";charset=utf-8" may sit between the type
+  // and the payload; the preset crests use "data:image/svg+xml;utf8,…", which
+  // the old pattern rejected, so saving a club with a preset crest failed.
+  const match = /^data:([^;,]+)((?:;[^;,]*)*),(.*)$/s.exec(dataUrl)
   if (!match) return null
-  const [, mime, isBase64, payload] = match
+  const [, mime, params, payload] = match
   try {
-    const binary = isBase64 ? atob(payload) : decodeURIComponent(payload)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    let bytes: Uint8Array<ArrayBuffer>
+    if (params.split(';').includes('base64')) {
+      const binary = atob(payload)
+      bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    } else {
+      // Percent-encoded text: encode as UTF-8 so non-ASCII characters survive.
+      bytes = new TextEncoder().encode(decodeURIComponent(payload))
+    }
     return new File([bytes], name, { type: mime })
   } catch {
     return null

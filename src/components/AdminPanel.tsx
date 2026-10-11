@@ -40,7 +40,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
 import { ensureUploaded } from '../lib/assetStorage'
 import { ImageUploadField } from './ImageUploadField'
@@ -202,6 +202,14 @@ export function AdminPanel({
   const [groupLeagueSeason, setGroupLeagueSeason] = useState<Season | null>(null)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  // A club just created from the "new club" modal. The modal stays open on it
+  // so players can be added straight away; without this it kept treating the
+  // club as unsaved, and saving again created a duplicate.
+  const [createdClub, setCreatedClub] = useState<{ name: string; seasonId?: number } | null>(null)
+  const createdTeam = createdClub
+    ? teams.find((t) => t.name === createdClub.name && (createdClub.seasonId == null || t.seasonId === createdClub.seasonId)) ?? null
+    : null
+  const teamInModal = editingTeam ?? createdTeam
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -685,17 +693,22 @@ export function AdminPanel({
 
       {modal === 'team' && (
         <TeamModal
-          initial={editingTeam}
+          initial={teamInModal}
           seasons={seasons}
           allPlayers={players}
-          players={editingTeam ? players.filter((p) => p.teamId === editingTeam.id || p.teamName === editingTeam.name) : []}
+          players={teamInModal ? players.filter((p) => p.teamId === teamInModal.id) : []}
           onClose={() => {
             setModal(null)
             setEditingTeam(null)
+            setCreatedClub(null)
           }}
           onSave={async (team) => {
-            if (editingTeam) await confirmUpdateTeam(team)
-            else await onAddTeam(team)
+            if (teamInModal) {
+              await confirmUpdateTeam({ ...team, id: teamInModal.id })
+            } else {
+              await onAddTeam(team)
+              setCreatedClub({ name: team.name, seasonId: team.seasonId })
+            }
           }}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
@@ -1255,7 +1268,9 @@ function SeasonModal({
     setBracket(generateEmptyBracket(count))
   }
 
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (e: FormEvent<HTMLFormElement>) =>
+    guard(e, async () => {
     e.preventDefault()
     if (!name.trim()) {
       setSaveError('Please enter a season name.')
@@ -1291,7 +1306,7 @@ function SeasonModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   const yearsList = [2028, 2027, 2026, 2025, 2024, 2023, 2022, 2021, 2020]
   const groupCountOptions = [2, 3, 4, 5, 6, 8]
@@ -2735,7 +2750,9 @@ function MediaModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -2757,7 +2774,7 @@ function MediaModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial.id ? 'Edit media asset' : 'Add media asset'} onClose={onClose}>
@@ -2986,7 +3003,9 @@ function SponsorModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -3007,7 +3026,7 @@ function SponsorModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial.id ? 'Edit sponsor' : 'Add sponsor'} onClose={onClose}>
@@ -3358,11 +3377,18 @@ function TeamModal({
 
   const selectedCountry = getCountry(countryCode)
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    // String(null) is "null"; a missing or blank field must stay empty instead.
+    const text = (key: string) => {
+      const value = data.get(key)
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined
+    }
     try {
       // "Takım crud logo bayrak must" — the brief requires both, and neither
       // was enforced. The country select cannot be left empty, and a club
@@ -3387,17 +3413,17 @@ function TeamModal({
         id: initial?.id ?? Date.now(),
         seasonId: selectedSeasonId,
         name: String(data.get('name')).toUpperCase(),
-        shortName: String(data.get('shortName')).toUpperCase() || undefined,
+        shortName: text('shortName')?.toUpperCase(),
         countryCode,
         countryName: selectedCountry.name,
         logoUrl: storedLogoUrl,
         color: String(data.get('color')),
-        secondaryColor: String(data.get('secondaryColor')) || undefined,
-        managerName: String(data.get('managerName')) || undefined,
-        coachName: String(data.get('coachName')) || undefined,
-        bio: String(data.get('bio')) || undefined,
+        secondaryColor: text('secondaryColor'),
+        managerName: text('managerName'),
+        coachName: text('coachName'),
+        bio: text('bio'),
         tournamentFormat: (currentSelectedSeason?.fullName || currentSelectedSeason?.name || 'Champions Cup') as TournamentFormat,
-        groupName: String(data.get('groupName')) || availableGroups[0] || 'Group A',
+        groupName: text('groupName') || availableGroups[0] || 'Group A',
         played: initial?.played ?? 0,
         goalDifference: initial?.goalDifference ?? 0,
         points: initial?.points ?? 0,
@@ -3417,9 +3443,10 @@ function TeamModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
-  const handleAssignPoolPlayer = async () => {
+  const handleAssignPoolPlayer = () =>
+    guard(undefined, async () => {
     if (!selectedPoolPlayerId || !initial || !onUpdatePlayer) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolPlayerId))
     if (!targetPlayer) return
@@ -3446,12 +3473,17 @@ function TeamModal({
     } finally {
       setAssigningPoolPlayer(false)
     }
-  }
+  })
 
-  const handleInlineAddPlayer = async () => {
+  const handleInlineAddPlayer = () =>
+    guard(undefined, async () => {
     if (!newPlayerName.trim()) return
     if (!initial) {
       setSaveError('Please save the club first before adding squad members.')
+      return
+    }
+    if (newPlayerNumber && !validShirtNumber(newPlayerNumber)) {
+      setSquadActionError('Shirt numbers run from 1 to 99.')
       return
     }
     setAddingPlayer(true)
@@ -3481,7 +3513,7 @@ function TeamModal({
     } finally {
       setAddingPlayer(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? `Manage Club: ${initial.name}` : 'Register New Club'} onClose={onClose}>
@@ -3550,8 +3582,9 @@ function TeamModal({
         </div>
 
         <form className="admin-form" onSubmit={submit}>
-          {tab === 'identity' && (
-            <>
+          {/* Every form tab stays mounted (just hidden) so saving from any tab sends
+              all fields; rendering only the open tab saved "null" for the rest. */}
+          <div className="tab-panel" style={{ display: tab === 'identity' ? 'contents' : 'none' }}>
               <label>
                 Club Full Name *
                 <input
@@ -3634,11 +3667,9 @@ function TeamModal({
                   />
                 </div>
               </label>
-            </>
-          )}
+          </div>
 
-          {tab === 'staff' && (
-            <>
+          <div className="tab-panel" style={{ display: tab === 'staff' ? 'contents' : 'none' }}>
               <label>
                 Manager / Director Name
                 <input
@@ -3666,11 +3697,9 @@ function TeamModal({
                   placeholder="Brief description of the club, corporate background, and history..."
                 />
               </label>
-            </>
-          )}
+          </div>
 
-          {tab === 'tournament' && (
-            <>
+          <div className="tab-panel" style={{ display: tab === 'tournament' ? 'contents' : 'none' }}>
               <label className="span-2">
                 Season *
                 <select
@@ -3704,8 +3733,7 @@ function TeamModal({
                     : 'Active this season'}
                 </span>
               </label>
-            </>
-          )}
+          </div>
 
           {tab === 'squad' && initial && (
             <div className="span-2 in-modal-squad-container">
@@ -3950,7 +3978,9 @@ function QuickSquadModal({
     )
   }, [availablePoolPlayers, poolSearch])
 
-  const handleAssignPool = async () => {
+  const guard = useSingleFlight()
+  const handleAssignPool = () =>
+    guard(undefined, async () => {
     if (!selectedPoolId || !onUpdatePlayer) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolId))
     if (!targetPlayer) return
@@ -3977,10 +4007,15 @@ function QuickSquadModal({
     } finally {
       setAssigning(false)
     }
-  }
+  })
 
-  const handleAdd = async () => {
+  const handleAdd = () =>
+    guard(undefined, async () => {
     if (!name.trim()) return
+    if (number && !validShirtNumber(number)) {
+      setAddError('Shirt numbers run from 1 to 99.')
+      return
+    }
     setAdding(true)
     setAddError('')
     try {
@@ -4008,7 +4043,7 @@ function QuickSquadModal({
     } finally {
       setAdding(false)
     }
-  }
+  })
 
   const country = getCountry(team.countryCode)
 
@@ -4248,7 +4283,9 @@ function MatchForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4282,7 +4319,7 @@ function MatchForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title="Create match fixture" onClose={onClose}>
@@ -4374,7 +4411,9 @@ function MatchScoreModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4385,6 +4424,12 @@ function MatchScoreModal({
     const awayPenVal = data.get('awayPenalties')
     // A shootout needs both sides; a half-filled pair is treated as none.
     const hasShootout = !!homePenVal && !!awayPenVal
+    // A scheduled match cannot have a score. Saving one while the status was
+    // left on "Scheduled" kept the result out of the table and scorer list,
+    // which only count finished matches, so a score marks it as full time.
+    const hasScore = homeScoreVal !== '' && homeScoreVal != null && awayScoreVal !== '' && awayScoreVal != null
+    const chosenStatus = String(data.get('matchStatus')) as MatchStatus
+    const matchStatus: MatchStatus = hasScore && chosenStatus === 'scheduled' ? 'completed' : chosenStatus
 
     try {
       await onSave({
@@ -4395,7 +4440,7 @@ function MatchScoreModal({
         time: String(data.get('time')),
         referee: String(data.get('referee')) || undefined,
         streamUrl: String(data.get('streamUrl')).trim() || undefined,
-        matchStatus: String(data.get('matchStatus')) as MatchStatus,
+        matchStatus,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
         homePenalties: hasShootout ? Number(homePenVal) : undefined,
@@ -4408,7 +4453,7 @@ function MatchScoreModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={`Match Scorekeeper: ${match.home} vs ${match.away}`} onClose={onClose}>
@@ -4472,6 +4517,7 @@ function MatchScoreModal({
             <option value="completed">Completed (Final)</option>
             <option value="postponed">Postponed</option>
           </select>
+          <small className="field-hint">Saving a score on a scheduled match marks it Completed, so it counts in the table.</small>
         </label>
 
         <label>
@@ -4547,7 +4593,9 @@ function MatchEventsModal({
     return players.filter((p) => p.teamName === selectedTeam)
   }, [players, selectedTeam])
 
-  const submitEvent = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submitEvent = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     const form = event.currentTarget
     setSaving(true)
@@ -4566,7 +4614,7 @@ function MatchEventsModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={`Match Events Timeline: ${match.home} vs ${match.away}`} onClose={onClose}>
@@ -4659,6 +4707,33 @@ function MatchEventsModal({
   )
 }
 
+/**
+ * Wrap an async handler so a second call while the first is still running is
+ * ignored. A button's disabled={saving} only takes effect after React
+ * re-renders, so two clicks in quick succession (or Enter plus a click) both
+ * got through and created duplicate players. The ignored call still has its
+ * default prevented, so a form never falls through to a page reload.
+ */
+function useSingleFlight() {
+  const busy = useRef(false)
+  return useCallback(async (event: { preventDefault?: () => void } | undefined, fn: () => Promise<void>) => {
+    event?.preventDefault?.()
+    if (busy.current) return
+    busy.current = true
+    try {
+      await fn()
+    } finally {
+      busy.current = false
+    }
+  }, [])
+}
+
+/** The database accepts shirt numbers 1-99 (players_shirt_number_check). */
+function validShirtNumber(value: string): boolean {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 1 && n <= 99
+}
+
 function PlayerForm({
   initial,
   teams,
@@ -4696,7 +4771,9 @@ function PlayerForm({
     }
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4732,7 +4809,7 @@ function PlayerForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? `Edit Player: ${initial.fullName}` : 'Register New Player'} onClose={onClose}>
@@ -4857,7 +4934,9 @@ function StoryForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4880,7 +4959,7 @@ function StoryForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? 'Edit Story Article' : 'Write New Story'} onClose={onClose}>

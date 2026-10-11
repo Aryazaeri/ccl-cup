@@ -113,6 +113,7 @@ table { border-collapse: collapse; width: 100%; }
 
 /* Admin */
 .admin-shell { min-height: 100vh; display: grid; grid-template-columns: 270px 1fr; background: #f8f9fa; }
+.admin-sidebar-scrim { display: none; }
 .admin-sidebar { position: fixed; inset: 0 auto 0 0; width: 270px; z-index: 20; padding: 30px 14px 18px; color: #fff; background: var(--navy); display: flex; flex-direction: column; }
 .sidebar-top { min-height: 55px; height: auto; padding: 0 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .admin-sidebar .brand { font-size: 2rem; }
@@ -189,6 +190,7 @@ table { border-collapse: collapse; width: 100%; }
 .metric-strip span { color: #526071; font-size: .9rem; align-self: start; margin-top: 7px; }
 .overview-grid { min-width: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(310px, 1fr); gap: 16px; margin-top: 18px; }
 .admin-panel { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #d5dbe0; border-radius: 7px; }
+.admin-panel:has(> .admin-table) { overflow-x: auto; }
 .admin-panel h2 { margin: 0; padding: 24px; border-bottom: 1px solid #d5dbe0; font-size: 1.2rem; }
 .table-scroll { overflow-x: auto; }
 .admin-table { min-width: 690px; font-variant-numeric: tabular-nums; }
@@ -2642,8 +2644,9 @@ table { border-collapse: collapse; width: 100%; }
   .public-footer nav { order: 3; justify-content: flex-start; flex-wrap: wrap; }
   .admin-shell { grid-template-columns: 1fr; }
   .admin-main { grid-column: 1; }
-  .admin-sidebar { transform: translateX(-100%); transition: transform .22s ease; box-shadow: 12px 0 50px rgba(0,0,0,.25); }
-  .admin-sidebar.is-open { transform: translateX(0); }
+  .admin-sidebar { visibility: hidden; transform: translateX(-100%); transition: transform .22s ease; box-shadow: 12px 0 50px rgba(0,0,0,.25); }
+  .admin-sidebar.is-open { visibility: visible; transform: translateX(0); }
+  .admin-sidebar-scrim { display: block; position: fixed; inset: 0; z-index: 19; border: 0; background: rgba(7, 21, 37, .45); }
   .sidebar-close, .admin-menu { display: block; }
   .admin-topbar { padding-inline: 24px; }
   .admin-content { padding-inline: 24px; }
@@ -3426,7 +3429,8 @@ table { border-collapse: collapse; width: 100%; }
   .public-footer nav { gap: 14px; }
   .admin-topbar { min-height: 82px; padding-inline: 16px; }
   .admin-topbar h1 { font-size: 2rem; }
-  .admin-top-actions .admin-season, .admin-top-actions .site-switch { display: none; }
+  .admin-top-actions .admin-season { display: none; }
+  .admin-top-actions .site-switch { min-height: 40px; padding-inline: 10px; font-size: .75rem; }
   .admin-top-actions .data-source { display: none; }
   .admin-top-actions .button-admin { font-size: 0; width: 48px; padding: 0; }
   .admin-top-actions .button-admin svg { margin: 0; }
@@ -4380,6 +4384,43 @@ table { border-collapse: collapse; width: 100%; }
 .pg-form-pip.is-l { background: var(--card-red); }
 .pg-table-note { margin: 0; padding: 12px 16px 14px; border-top: 1px solid var(--rule); color: var(--muted); font-size: .88rem; }
 
+/* Table-stage qualification and the shared knockout draw. */
+.qualification-panel { min-width: 0; }
+.qualification-panel h3 { display: flex; align-items: center; gap: 8px; }
+.qualification-panel .admin-panel-head { flex-wrap: wrap; gap: 16px; }
+.qualification-panel .admin-panel-head p { color: #627184; margin: 8px 0 0; }
+.qualification-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.qualification-message { margin: 0; padding: 12px 20px; color: #566578; font-size: .9rem; line-height: 1.6; }
+.qualification-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 16px 20px; }
+.qualification-preview > span { display: grid; gap: 6px; padding: 12px; border: 1px solid #dce3ea; border-radius: 8px; }
+.qualification-preview small, .qualification-preview > span > span { color: #627184; }
+.qualification-settings { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 16px; padding: 16px; background: #f3f6f8; border-radius: 8px; }
+.qualification-settings p { margin: 0; align-self: center; color: #627184; line-height: 1.6; font-size: .9rem; }
+.bracket-workspace-grid.qualified-workspace { grid-template-columns: minmax(0, 1fr); }
+.knockout-scroll { overflow-x: auto; padding: 16px 0; max-width: 100%; }
+.knockout-scroll:focus-visible { outline: 2px solid #34754b; outline-offset: 3px; }
+.knockout-rounds { display: flex; gap: 24px; align-items: stretch; }
+.knockout-round { flex: 0 0 245px; display: flex; flex-direction: column; gap: 16px; }
+.knockout-round h3 { margin: 0; font-size: 1rem; font-weight: 700; }
+.knockout-ties { display: flex; flex: 1; flex-direction: column; justify-content: space-around; gap: 16px; }
+.knockout-tie, .knockout-champion > .knockout-club { border: 1px solid #d6ded7; border-radius: 8px; background: #fff; color: #18291f; overflow: hidden; }
+.knockout-club { display: flex; align-items: center; gap: 10px; padding: 12px; min-height: 66px; }
+.knockout-club + .knockout-club { border-top: 1px solid #e3e8e3; }
+.knockout-club > span { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.knockout-club strong { font-size: .88rem; overflow-wrap: anywhere; }
+.knockout-club small { color: #627184; font-size: .75rem; }
+.knockout-club > b { margin-left: auto; }
+.knockout-club.is-winner { background: #edf5ed; }
+.knockout-champion > .knockout-club { margin: auto 0; }
+.knockout-note { display: block; border-top: 1px solid #e3e8e3; padding: 8px 12px; color: #627184; }
+.qualification-panel .knockout-scroll { padding: 16px 20px; }
+.pg-table .qualification-row > td:first-child { box-shadow: inset 3px 0 #34754b; }
+@media (max-width: 700px) {
+  .qualification-settings { grid-template-columns: minmax(0, 1fr); }
+  .knockout-round { flex-basis: 225px; }
+  .knockout-rounds { gap: 16px; }
+}
+
 /* ---------------- Top scorers: the sticker band ---------------- */
 
 .pg-band { margin-top: 88px; padding: 80px 0 88px; background: var(--turf); color: var(--chalk); }
@@ -4593,6 +4634,18 @@ table { border-collapse: collapse; width: 100%; }
 .programme .public-footer nav button { min-height: 44px; padding-inline: 2px; }
 @media (max-width: 1050px) {
   .programme .menu-button { display: grid; }
+}
+
+/* Season selection and search remain available on phones, where the old
+   header hid both controls and stranded visitors in the default season. */
+@media (max-width: 700px) {
+  .programme .public-header { height: auto; padding-block: 14px; grid-template-columns: 1fr auto auto; }
+  .programme .brand-button { grid-column: 1; grid-row: 1; }
+  .programme .search-button { display: grid; grid-column: 2; grid-row: 1; }
+  .programme .menu-button { grid-column: 3; grid-row: 1; }
+  .programme .season-switcher { grid-column: 1 / -1; grid-row: 2; }
+  .programme .season-button { display: flex; width: 100%; justify-content: space-between; }
+  .programme .public-nav { top: 140px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

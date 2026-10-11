@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flagImageUrl, getCountry } from '../lib/countries'
-import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers, shootoutLine } from '../lib/standingsUtils'
+import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers, shootoutLine, withDerivedPlayerTotals } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository } from '../services/tournamentRepository'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
@@ -26,6 +26,8 @@ import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
+import { bracketWithResults, tableStageMatches } from '../lib/qualificationUtils'
+import { KnockoutBracket } from './KnockoutBracket'
 
 /* ------------------------------------------------------------------ *
  * Site configuration
@@ -108,6 +110,8 @@ type Props = {
   stories: Story[]
   media: MediaAsset[]
   sponsors: Sponsor[]
+  selectedSeasonId: number | null
+  onSelectSeason: (id: number) => void
   onAdmin: () => void
 }
 
@@ -115,6 +119,7 @@ type Props = {
 const nav = [
   { label: 'Fixtures', id: 'fixtures' },
   { label: 'Standings', id: 'standings' },
+  { label: 'Knockout', id: 'knockout' },
   { label: 'Scorers', id: 'scorers' },
   { label: 'News', id: 'home' },
   { label: 'Clubs', id: 'teams' },
@@ -216,7 +221,7 @@ function useCarousel(count: number) {
   }
 }
 
-export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, onAdmin }: Props) {
+export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, selectedSeasonId, onSelectSeason, onAdmin }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [route, setRoute] = useState<PublicRoute>(() => parsePublicRoute(window.location.hash))
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false)
@@ -231,17 +236,10 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     [seasons],
   )
 
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)
-
-  // Default to the season marked current, else the newest.
-  useEffect(() => {
-    if (selectedSeasonId !== null || seasonOptions.length === 0) return
-    const current = seasonOptions.find((season) => season.isActive) ?? seasonOptions[0]
-    setSelectedSeasonId(current.id)
-  }, [seasonOptions, selectedSeasonId])
-
+  // The selection lives above this screen so staff visits and data refreshes
+  // do not reset it. A deleted/stale selection falls back to the current season.
   const activeSeason = useMemo(
-    () => seasonOptions.find((season) => season.id === selectedSeasonId) ?? seasonOptions[0],
+    () => seasonOptions.find((season) => season.id === selectedSeasonId) ?? seasonOptions.find((season) => season.isActive) ?? seasonOptions[0],
     [seasonOptions, selectedSeasonId],
   )
 
@@ -273,12 +271,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   // club membership so they are not dropped, but nothing falls back to "show
   // everything" — see seasonTeams.
   const seasonMatches = useMemo(() => {
-    if (!activeSeason || !seasonScopingAvailable) return matches
+    if (!activeSeason) return matches
     const names = new Set(seasonTeams.map((team) => team.name))
     return matches.filter((match) =>
       match.seasonId != null ? match.seasonId === activeSeason.id : names.has(match.home) || names.has(match.away),
     )
-  }, [matches, seasonTeams, activeSeason, seasonScopingAvailable])
+  }, [matches, seasonTeams, activeSeason])
 
   /**
    * Squad members for the selected season.
@@ -355,9 +353,10 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   // One group (or none) renders as a single league table; two or more render
   // as separate group tables, which is what the competition format calls for.
   const standingsGroups = useMemo(
-    () => computeGroupStandings(seasonTeams, seasonMatches),
-    [seasonTeams, seasonMatches],
+    () => computeGroupStandings(seasonTeams, tableStageMatches(activeSeason, seasonMatches), activeSeason),
+    [seasonTeams, seasonMatches, activeSeason],
   )
+  const knockoutBracket = useMemo(() => activeSeason?.bracket ? bracketWithResults(activeSeason.bracket, seasonMatches) : null, [activeSeason, seasonMatches])
   const hasResults = useMemo(
     () => standingsGroups.some((group) => group.rows.some((row) => row.played > 0)),
     [standingsGroups],
@@ -373,6 +372,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     () => computeTopAssists(seasonPlayers, seasonMatches, 5),
     [seasonPlayers, seasonMatches],
   )
+
+  const rosterPlayers = useMemo(() => withDerivedPlayerTotals(players, seasonMatches), [players, seasonMatches])
 
   const participants = useMemo(
     () => [...seasonTeams].sort((a, b) => a.name.localeCompare(b.name, 'tr')),
@@ -396,12 +397,17 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   }, [])
 
   const openDetail = (next: PublicRoute) => {
-    window.location.assign(routeToHash(next))
+    window.history.pushState({ ...window.history.state, cclPublicDetail: true }, '', routeToHash(next))
+    setRoute(next)
   }
   const closeDetail = () => {
-    // Prefer going back so the detail view does not pile up in history.
-    if (window.history.length > 1) window.history.back()
-    else window.location.hash = '#site'
+    // Only go back for a detail opened here. A shared/direct link may have
+    // admin or another website behind it, and Close must stay on the portal.
+    if (window.history.state?.cclPublicDetail) window.history.back()
+    else {
+      window.history.replaceState(null, '', '#site')
+      setRoute({ kind: 'home' })
+    }
   }
 
   const scrollTo = (id: string) => {
@@ -418,7 +424,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const upcomingMatch = scheduledMatches[0] ?? null
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   // Sponsors only get a menu entry when the season has some.
-  const visibleNav = nav.filter((item) => item.id !== 'sponsors' || seasonSponsors.length > 0)
+  const visibleNav = nav.filter((item) => (item.id !== 'sponsors' || seasonSponsors.length > 0) && (item.id !== 'knockout' || knockoutBracket != null))
   const heroStories = seasonStories.slice(0, 5)
   const olderStories = seasonStories.slice(5)
   const carousel = useCarousel(heroStories.length)
@@ -538,7 +544,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                           aria-selected={isSelected}
                           className={isSelected ? 'is-selected' : ''}
                           onClick={() => {
-                            setSelectedSeasonId(season.id)
+                            onSelectSeason(season.id)
                             setGroupIndex(0)
                             setSeasonMenuOpen(false)
                           }}
@@ -826,6 +832,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             ) : null}
           </div>
 
+          {activeSeason?.bracket?.qualification ? <p className="pg-table-note">Top {activeSeason.bracket.qualification.qualifiersPerTable} from {standingsGroups.length === 1 ? 'the table' : 'each group'} qualify for the knockout stage. Knockout results do not change these standings.</p> : null}
+
           {seasonTeams.length === 0 || !shownGroup ? (
             <p className="pg-empty">No clubs are registered for this season yet, so there is no table to show.</p>
           ) : (
@@ -852,7 +860,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                       const country = getCountry(row.countryCode)
                       const team = teamById.get(row.teamId)
                       return (
-                        <tr key={row.teamId} onClick={() => team && openDetail({ kind: 'team', id: team.id })}>
+                        <tr key={row.teamId} className={activeSeason?.bracket?.qualification && row.position <= activeSeason.bracket.qualification.qualifiersPerTable ? 'qualification-row' : undefined} onClick={() => team && openDetail({ kind: 'team', id: team.id })}>
                           <td className="pg-num">{row.position}</td>
                           <td>
                             <button
@@ -906,6 +914,13 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             </div>
           )}
         </section>
+
+        {knockoutBracket ? <section className="pg-section content-width" id="knockout">
+          <div className="pg-heading-row"><h2 className="pg-heading">Knockout stage</h2><span>{knockoutBracket.teamCount} clubs</span></div>
+          {knockoutBracket.qualification && !knockoutBracket.qualification.seededAt
+            ? <p className="pg-empty">The draw will appear after the table stage is complete and qualification is confirmed. Top {knockoutBracket.qualification.qualifiersPerTable} from {standingsGroups.length === 1 ? 'the table' : 'each group'} advance.</p>
+            : <KnockoutBracket bracket={knockoutBracket} matches={seasonMatches} />}
+        </section> : null}
 
         <section className="pg-band" id="scorers">
           <div className="content-width">
@@ -1184,7 +1199,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <TeamRosterModal
           team={selectedTeamRoster}
           seasons={seasons}
-          players={players.filter(
+          players={rosterPlayers.filter(
             (p) =>
               (p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name) &&
               playerActiveIn(p, selectedTeamRoster.seasonId ?? activeSeason?.id),
@@ -1209,7 +1224,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           teams={seasonTeams}
           players={seasonPlayers}
           matches={seasonMatches}
-          stories={stories}
+          stories={seasonStories}
           onClose={() => setSearchOpen(false)}
           onSelectTeam={(team) => {
             setSearchOpen(false)

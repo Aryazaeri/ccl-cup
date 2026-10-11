@@ -9,6 +9,7 @@ export type BracketSlot = {
   teamLogo?: string
   teamColor?: string
   teamCountryCode?: string
+  qualificationLabel?: string
 }
 
 export type BracketMatch = {
@@ -27,6 +28,8 @@ export type BracketMatch = {
    * the match.
    */
   winnerTeamId?: number | null
+  /** Fixture whose result supplies this tie; cleared if that fixture is removed. */
+  resultMatchId?: number
 }
 
 export type BracketRound = {
@@ -39,6 +42,11 @@ export type TournamentBracket = {
   teamCount: number
   rounds: BracketRound[]
   championSlot?: BracketSlot
+  /** A league/group stage that qualifies clubs into this knockout draw. */
+  qualification?: {
+    qualifiersPerTable: number
+    seededAt?: string
+  }
 }
 
 export type LeagueSlot = {

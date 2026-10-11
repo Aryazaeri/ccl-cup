@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { PublicSite } from './components/PublicSite'
-import { withDerivedTeamTotals } from './lib/standingsUtils'
+import { withDerivedPlayerTotals, withDerivedTeamTotals } from './lib/standingsUtils'
 import { tournamentRepository, type TournamentData } from './services/tournamentRepository'
 import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
 
@@ -22,6 +22,13 @@ const currentView = (): View => (window.location.hash.startsWith('#admin') ? 'ad
 export default function App() {
   const auth = useAuth()
   const [view, setView] = useState<View>(currentView)
+  const lastAdminHash = useRef(window.location.hash.startsWith('#admin') ? window.location.hash : '#admin')
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(() => {
+    try {
+      const saved = Number(sessionStorage.getItem('ccl-cup:public-season:v1'))
+      return Number.isInteger(saved) && saved > 0 ? saved : null
+    } catch { return null }
+  })
   const [seasons, setSeasons] = useState<Season[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [players, setPlayers] = useState<Player[]>([])
@@ -43,7 +50,8 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    setDataLoading(true)
+    // Only the initial load blocks the page. Refreshing after a media/sponsor
+    // save must not unmount the active screen and discard its state.
     setDataError('')
     try {
       applyData(await tournamentRepository.load())
@@ -73,16 +81,28 @@ export default function App() {
 
   // `played`, `goalDifference` and `points` are derived from results rather
   // than read from storage, so every surface sees the same live numbers.
-  const derivedTeams = useMemo(() => withDerivedTeamTotals(teams, matches), [teams, matches])
+  const derivedTeams = useMemo(() => withDerivedTeamTotals(teams, matches, seasons), [teams, matches, seasons])
+  const derivedPlayers = useMemo(() => withDerivedPlayerTotals(players, matches), [players, matches])
+
+  const selectSeason = (id: number) => {
+    setSelectedSeasonId(id)
+    try { sessionStorage.setItem('ccl-cup:public-season:v1', String(id)) } catch { /* Storage is optional. */ }
+  }
 
   useEffect(() => {
-    const onHash = () => setView(currentView())
+    const onHash = () => {
+      if (currentView() === 'admin') lastAdminHash.current = window.location.hash
+      setDataError('')
+      setView(currentView())
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   const navigate = (next: View) => {
-    window.location.hash = next === 'admin' ? 'admin' : 'site'
+    if (currentView() === 'admin') lastAdminHash.current = window.location.hash
+    window.location.hash = next === 'admin' ? lastAdminHash.current : '#site'
+    setDataError('')
     setView(next)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -121,6 +141,7 @@ export default function App() {
         <main className="access-denied">
           <h1>Admin access required</h1>
           <p>This account has a viewer role.</p>
+          <button onClick={() => navigate('site')}>Public website</button>
           <button onClick={() => void auth.signOut()}>Sign out</button>
         </main>
       )
@@ -130,7 +151,7 @@ export default function App() {
       <AdminPanel
         seasons={seasons}
         teams={derivedTeams}
-        players={players}
+        players={derivedPlayers}
         matches={matches}
         stories={stories}
         media={media}
@@ -170,7 +191,9 @@ export default function App() {
       <PublicSite
         seasons={seasons}
         teams={derivedTeams}
-        players={players}
+        players={derivedPlayers}
+        selectedSeasonId={selectedSeasonId}
+        onSelectSeason={selectSeason}
         matches={matches.filter((match) => match.status === 'Scheduled')}
         stories={stories.filter((story) => story.status === 'Published')}
         media={media.filter((asset) => asset.isPublished)}

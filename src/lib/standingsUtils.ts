@@ -1,4 +1,5 @@
 import type { Match, MatchEvent, Player, Season, Team } from '../types'
+import { tableStageMatches } from './matchStages'
 
 /**
  * Standings engine.
@@ -369,6 +370,16 @@ export function computeGroupStandings(
   season?: Season | null,
   options: StandingsOptions = {},
 ): GroupStandings[] {
+  // A saved single table takes precedence over legacy team.groupName values.
+  if (season?.seasonType === 'league') {
+    const teamIds = season.league?.slots.map((slot) => slot.teamId)
+      .filter((id): id is number => typeof id === 'number')
+    return [{
+      groupId: 'league',
+      groupName: 'League Table',
+      rows: computeStandings(teams, matches, { ...options, ...(teamIds ? { teamIds } : {}) }),
+    }]
+  }
   const layout = season?.groupLeague
 
   if (layout && Array.isArray(layout.groups) && layout.groups.length > 0) {
@@ -543,12 +554,32 @@ export function computeTopAssists(
  * code should consume `computeStandings` directly — the stored columns are no
  * longer the source of truth.
  */
-export function withDerivedTeamTotals(teams: Team[], matches: Match[]): Team[] {
+export function withDerivedTeamTotals(teams: Team[], matches: Match[], seasons: Season[] = []): Team[] {
   const rows = new Map(computeStandings(teams, matches).map((row) => [row.teamId, row]))
+  for (const season of seasons) {
+    const seasonTeams = teams.filter((team) => team.seasonId === season.id)
+    if (!seasonTeams.length) continue
+    const names = new Set(seasonTeams.map((team) => normalizeName(team.name)))
+    const seasonMatches = matches.filter((match) => match.seasonId != null ? match.seasonId === season.id : names.has(normalizeName(match.home)) && names.has(normalizeName(match.away)))
+    const groups = computeGroupStandings(seasonTeams, tableStageMatches(season, seasonMatches), season)
+    const seasonRows = new Map(groups.flatMap((group) => group.rows).map((row) => [row.teamId, row]))
+    for (const team of seasonTeams) {
+      rows.set(team.id, seasonRows.get(team.id) ?? computeStandings([team], [])[0])
+    }
+  }
   return teams.map((team) => {
     const row = rows.get(team.id)
     if (!row) return team
     return { ...team, played: row.played, goalDifference: row.goalDifference, points: row.points }
+  })
+}
+
+/** Keep roster/pool totals in sync with the same event log as the scorer lists. */
+export function withDerivedPlayerTotals(players: Player[], matches: Match[]): Player[] {
+  const stats = new Map(computePlayerStats(players, matches).map((line) => [line.playerId, line]))
+  return players.map((player) => {
+    const line = stats.get(player.id)
+    return { ...player, goals: line?.goals ?? 0, assists: line?.assists ?? 0 }
   })
 }
 

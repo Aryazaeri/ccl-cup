@@ -10,6 +10,106 @@ export type CropConfig = {
   rotation: number
 }
 
+/** Pixel bounding box of an image's visible content. */
+export type ContentBox = { minX: number; minY: number; width: number; height: number }
+
+/**
+ * Find the visible content in RGBA pixels: anything not transparent, and, when
+ * the top-left corner is white or transparent, not near-white either. Null for
+ * a blank image. Shared by the upload trimmer and the logo badge.
+ */
+export function findContentBox(data: ArrayLike<number>, width: number, height: number): ContentBox | null {
+  const bgWhiteOrTransparent = data[3] < 15 || (data[0] > 240 && data[1] > 240 && data[2] > 240)
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      if (data[i + 3] < 15) continue
+      if (bgWhiteOrTransparent && data[i] > 240 && data[i + 1] > 240 && data[i + 2] > 240) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null
+  return { minX, minY, width: maxX - minX + 1, height: maxY - minY + 1 }
+}
+
+/** Where a logo's content sits inside its square image, as fractions of the side. */
+export type LogoShape = { x: number; y: number; w: number; h: number }
+
+const LOGO_SAMPLE = 96
+const logoShapes = new Map<string, Promise<LogoShape | null>>()
+
+/**
+ * Measure a square logo's content once per URL, so a wide wordmark can be
+ * drawn in a wide badge instead of a thin strip inside a small circle.
+ * Null when the image can't be read (no CORS, broken link) or isn't square;
+ * the badge then shows the image as it is.
+ */
+export function measureLogo(url: string): Promise<LogoShape | null> {
+  const cached = logoShapes.get(url)
+  if (cached) return cached
+  const shape = new Promise<LogoShape | null>((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        if (!img.naturalWidth || img.naturalWidth !== img.naturalHeight) return resolve(null)
+        const canvas = document.createElement('canvas')
+        canvas.width = LOGO_SAMPLE
+        canvas.height = LOGO_SAMPLE
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        if (!ctx) return resolve(null)
+        ctx.drawImage(img, 0, 0, LOGO_SAMPLE, LOGO_SAMPLE)
+        const box = findContentBox(ctx.getImageData(0, 0, LOGO_SAMPLE, LOGO_SAMPLE).data, LOGO_SAMPLE, LOGO_SAMPLE)
+        resolve(
+          box && {
+            x: box.minX / LOGO_SAMPLE,
+            y: box.minY / LOGO_SAMPLE,
+            w: box.width / LOGO_SAMPLE,
+            h: box.height / LOGO_SAMPLE,
+          },
+        )
+      } catch {
+        resolve(null)
+      }
+    }
+    img.onerror = () => resolve(null)
+    img.src = url
+  })
+  logoShapes.set(url, shape)
+  return shape
+}
+
+/** How a measured logo sits in its badge: tile aspect and the image's crop, in %. */
+export type LogoFit = { ratio: number; width: number; height: number; left: number; top: number }
+
+/**
+ * Badge geometry for a measured logo. The tile widens with the logo (up to
+ * 2.4:1) so a wordmark isn't squeezed into a square, and the square image is
+ * scaled so its content fills the tile with a small margin. Percentages are of
+ * the tile's width (width, left) and height (height, top).
+ */
+export function logoFit(shape: LogoShape, margin = 0.84): LogoFit {
+  const ratio = Math.min(Math.max(shape.w / shape.h, 1), 2.4)
+  // Image side, in tile heights, so the content fits both ways.
+  const side = Math.min((ratio * margin) / shape.w, margin / shape.h)
+  const centerX = (shape.x + shape.w / 2) * side
+  const centerY = (shape.y + shape.h / 2) * side
+  return {
+    ratio,
+    width: (side / ratio) * 100,
+    height: side * 100,
+    left: ((ratio / 2 - centerX) / ratio) * 100,
+    top: (0.5 - centerY) * 100,
+  }
+}
+
 /**
  * Automatically detects non-transparent and non-white pixels to find the bounding box
  * of the actual emblem/logo, then crops and centers it with padding.
@@ -36,58 +136,14 @@ export async function smartAutoTrimImage(imageSrc: string, paddingRatio: number 
         const imgData = ctx.getImageData(0, 0, width, height)
         const data = imgData.data
 
-        // Detect corner background color to handle solid white or solid color borders
-        const getPixel = (x: number, y: number) => {
-          const idx = (y * width + x) * 4
-          return {
-            r: data[idx],
-            g: data[idx + 1],
-            b: data[idx + 2],
-            a: data[idx + 3],
-          }
-        }
-
-        const topLeft = getPixel(0, 0)
-        const isBgWhiteOrTransparent =
-          topLeft.a < 15 || (topLeft.r > 240 && topLeft.g > 240 && topLeft.b > 240)
-
-        const isBackground = (r: number, g: number, b: number, a: number) => {
-          if (a < 15) return true
-          if (isBgWhiteOrTransparent && r > 240 && g > 240 && b > 240) return true
-          return false
-        }
-
-        let minX = width
-        let minY = height
-        let maxX = 0
-        let maxY = 0
-        let foundContent = false
-
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const idx = (y * width + x) * 4
-            const r = data[idx]
-            const g = data[idx + 1]
-            const b = data[idx + 2]
-            const a = data[idx + 3]
-
-            if (!isBackground(r, g, b, a)) {
-              if (x < minX) minX = x
-              if (x > maxX) maxX = x
-              if (y < minY) minY = y
-              if (y > maxY) maxY = y
-              foundContent = true
-            }
-          }
-        }
-
-        if (!foundContent) {
+        const box = findContentBox(data, width, height)
+        if (!box) {
           resolve(imageSrc)
           return
         }
-
-        const contentWidth = maxX - minX + 1
-        const contentHeight = maxY - minY + 1
+        const { minX, minY } = box
+        const contentWidth = box.width
+        const contentHeight = box.height
 
         // Create square target canvas (e.g. 512x512)
         const targetSize = 512

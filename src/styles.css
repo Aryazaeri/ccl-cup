@@ -5090,3 +5090,14 @@ main:focus,
   .pg-slide-photo, .pg-slide { transition: none; }
   .pg-slide-progress { animation: none; transform: scaleX(1); }
 }
+
+/* Club logos: a white rounded tile instead of a ringed circle. A measured
+   logo (is-fitted) gets a tile as wide as its content needs, up to 2.4:1, and
+   the image is cropped to that content, so wordmarks stay legible. */
+.team-logo-img-wrap { position: relative; border: 1px solid rgba(20, 33, 61, .14); border-radius: 9px; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.team-logo-img-wrap.is-fitted { width: auto; }
+.team-mark-wrapper.size-lg .team-logo-img-wrap.is-fitted { width: auto; }
+.team-logo-img-wrap.is-fitted .team-logo-img { position: absolute; max-width: none; object-fit: fill; }
+/* A wide logo next to the name left too little room for it; stack them. */
+.pg-scoreboard-team { flex-direction: column; align-items: flex-start; gap: 10px; }
+.pg-scoreboard-team.is-away { flex-direction: column; align-items: flex-end; }

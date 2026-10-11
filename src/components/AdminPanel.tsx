@@ -4406,6 +4406,12 @@ function MatchScoreModal({
     const awayPenVal = data.get('awayPenalties')
     // A shootout needs both sides; a half-filled pair is treated as none.
     const hasShootout = !!homePenVal && !!awayPenVal
+    // A scheduled match cannot have a score. Saving one while the status was
+    // left on "Scheduled" kept the result out of the table and scorer list,
+    // which only count finished matches, so a score marks it as full time.
+    const hasScore = homeScoreVal !== '' && homeScoreVal != null && awayScoreVal !== '' && awayScoreVal != null
+    const chosenStatus = String(data.get('matchStatus')) as MatchStatus
+    const matchStatus: MatchStatus = hasScore && chosenStatus === 'scheduled' ? 'completed' : chosenStatus
 
     try {
       await onSave({
@@ -4416,7 +4422,7 @@ function MatchScoreModal({
         time: String(data.get('time')),
         referee: String(data.get('referee')) || undefined,
         streamUrl: String(data.get('streamUrl')).trim() || undefined,
-        matchStatus: String(data.get('matchStatus')) as MatchStatus,
+        matchStatus,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
         homePenalties: hasShootout ? Number(homePenVal) : undefined,
@@ -4493,6 +4499,7 @@ function MatchScoreModal({
             <option value="completed">Completed (Final)</option>
             <option value="postponed">Postponed</option>
           </select>
+          <small className="field-hint">Saving a score on a scheduled match marks it Completed, so it counts in the table.</small>
         </label>
 
         <label>

@@ -68,9 +68,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
 ### 4. Run database migrations
-Apply the SQL migration scripts in `supabase/migrations/` in your Supabase SQL Editor:
-1. `supabase/migrations/202608150001_initial_schema.sql`
-2. `supabase/migrations/202608170001_update_players_table.sql`
+Apply every SQL migration in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor. Existing projects should apply only migrations they have not run.
+
+Fixture generation requires `202610120001_generated_fixtures.sql`, which adds a unique fixture key per season and support for Round of 32. It preserves existing games and access policies.
 
 ### 5. Launch development server
 ```bash
@@ -79,6 +79,26 @@ npm run dev
 
 - **Public Tournament Portal**: `http://localhost:5173/#site`
 - **Admin Management Panel**: `http://localhost:5173/#admin`
+
+### Fixture generation
+
+Save the club assignments in the season's league/group canvas, then use **Matches → Plan fixtures**. Choose one meeting per pair or home/away games, dates, kickoff gaps, a venue, and draft/published visibility. Review the preview before creating the schedule. Existing games count towards the requested schedule and retain their scores.
+
+For a league/group format with qualification, complete and publish the table schedule, then generate the draw in **Standings**. Return to **Matches → Plan fixtures → Knockout games with known opponents**. Generate later rounds after recording earlier results. Corrected results that change an already scheduled final require reviewing that fixture first.
+
+### Checks
+
+Use Node.js 22.12 or newer. The PR workflow runs:
+
+```bash
+npm test
+npm run lint
+npm run build
+npx playwright install chromium
+npm run test:browser
+```
+
+Browser tests use isolated local demo data, with Supabase environment variables explicitly cleared. They cover desktop/mobile login, failed table saves and retry, fixture persistence/visibility, knockout progression, qualification, and player transfers. Failure traces and screenshots are saved in `playwright-report/` and `test-results/` (gitignored).
 
 ---
 

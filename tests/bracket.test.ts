@@ -162,7 +162,9 @@ console.log('\n9. Single table ignores legacy group names')
   const tagged = teams.map((t) => ({ ...t, groupName: t.id <= 2 ? 'Old A' : 'Old B' }))
   check('league always has one table', computeGroupStandings(tagged, tableFixtures, league).length, 1)
   check('league table uses all assigned clubs', computeGroupStandings(tagged, tableFixtures, league)[0].rows.length, 4)
-  const b = seedQualifiedBracket(league, tagged, tableFixtures, 'test-date')
+  check('playing one game each does not qualify an incomplete league schedule', qualificationPreview(league, tagged, tableFixtures).ready, false)
+  const completeLeague = [...tableFixtures, fixture(6, 'ALPHA', 'CHARLIE', 'League', 0, 0), fixture(7, 'ALPHA', 'DELTA', 'League', 0, 0), fixture(8, 'BRAVO', 'CHARLIE', 'League', 0, 0), fixture(9, 'BRAVO', 'DELTA', 'League', 0, 0)]
+  const b = seedQualifiedBracket(league, tagged, completeLeague, 'test-date')
   check('top two qualify directly into the final', [nameAt(b, 0, 0, 1), nameAt(b, 0, 0, 2)], ['ALPHA', 'CHARLIE'])
   check('empty saved league has no unassigned clubs', computeGroupStandings(teams, tableFixtures, { ...league, league: { teamCount: 0, slots: [] } })[0].rows.length, 0)
 }

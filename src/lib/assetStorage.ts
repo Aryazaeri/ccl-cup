@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabase'
+import type { UploadedAsset } from './assetSaveUtils'
 
 /**
  * Uploading images to Supabase Storage.
@@ -96,6 +97,10 @@ export function isDataUrl(value: string | undefined): boolean {
  * browser holds the bytes.
  */
 export async function uploadAsset(file: File, folder: AssetFolder): Promise<string> {
+  return (await uploadAssetReceipt(file, folder)).url!
+}
+
+async function uploadAssetReceipt(file: File, folder: AssetFolder): Promise<UploadedAsset> {
   const invalid = validateAssetFile(file)
   if (invalid) throw new AssetUploadError(invalid)
 
@@ -106,7 +111,7 @@ export async function uploadAsset(file: File, folder: AssetFolder): Promise<stri
       reader.onerror = () => reject(new AssetUploadError('Could not read that file.'))
       reader.readAsDataURL(file)
     })
-    return dataUrl
+    return { url: dataUrl }
   }
 
   const path = objectPath(folder, file)
@@ -126,7 +131,21 @@ export async function uploadAsset(file: File, folder: AssetFolder): Promise<stri
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
   if (!data?.publicUrl) throw new AssetUploadError('Upload succeeded but no public URL was returned.')
-  return data.publicUrl
+  return { url: data.publicUrl, path }
+}
+
+/** Only receipts from this upload operation may be discarded, never an old URL. */
+export async function discardUploadedAsset(asset: UploadedAsset): Promise<void> {
+  if (!asset.path || !supabase) return
+  const { error } = await supabase.storage.from(BUCKET).remove([asset.path])
+  if (error) throw new AssetUploadError(error.message)
+}
+
+export async function prepareUploadedAsset(value: string | undefined, folder: AssetFolder): Promise<UploadedAsset> {
+  if (!value || !isDataUrl(value)) return { url: value }
+  const file = dataUrlToFile(value, `${folder}-upload`)
+  if (!file) throw new AssetUploadError('That image could not be read.')
+  return uploadAssetReceipt(file, folder)
 }
 
 /**

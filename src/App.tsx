@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { PublicSite } from './components/PublicSite'
+import type { FixtureOptions } from './lib/fixtureUtils'
 import { withDerivedPlayerTotals, withDerivedTeamTotals } from './lib/standingsUtils'
 import { tournamentRepository, type TournamentData } from './services/tournamentRepository'
 import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
@@ -168,6 +169,7 @@ export default function App() {
         onAddPlayer={(player: Player) => mutate(() => tournamentRepository.addPlayer(player))}
         onUpdatePlayer={(player: Player) => mutate(() => tournamentRepository.updatePlayer(player))}
         onDeletePlayer={(id: number) => mutate(() => tournamentRepository.deletePlayer(id))}
+        onGenerateFixtures={(seasonId: number, options: FixtureOptions) => mutate(() => tournamentRepository.generateFixtures(seasonId, options))}
         onAddMatch={(match: Match) => mutate(() => tournamentRepository.addMatch(match))}
         onUpdateMatch={(match: Match) => mutate(() => tournamentRepository.updateMatch(match))}
         onDeleteMatch={(id: number) => mutate(() => tournamentRepository.deleteMatch(id))}

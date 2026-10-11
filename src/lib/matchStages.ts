@@ -1,4 +1,16 @@
-import type { Match, Season } from '../types'
+import type { BracketMatch, Match, Season } from '../types'
+
+export function knockoutFixtureKey(tie: BracketMatch): string {
+  return `knockout:${tie.matchId}:${[tie.slot1.teamId, tie.slot2.teamId].sort((a, b) => (a ?? 0) - (b ?? 0)).join(':')}`
+}
+
+export function hasFixtureTeams(match: Match, home: { id?: number | null; name: string }, away: { id?: number | null; name: string }): boolean {
+  const norm = (name: string) => name.trim().toLocaleLowerCase('tr')
+  const isTeam = (id: number | undefined, name: string, team: typeof home) =>
+    id != null && team.id != null ? id === team.id : norm(name) === norm(team.name)
+  return (isTeam(match.homeTeamId, match.home, home) && isTeam(match.awayTeamId, match.away, away)) ||
+    (isTeam(match.homeTeamId, match.home, away) && isTeam(match.awayTeamId, match.away, home))
+}
 
 /** The fixture stage, rather than the clubs, distinguishes table and cup results. */
 export function knockoutRoundSize(stage: string): number | null {

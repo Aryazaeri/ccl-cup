@@ -154,8 +154,8 @@ export function computeStandings(
     if (!isCountableMatch(match)) continue
     if (stageFilter && stageFilter.length > 0 && !stageFilter.includes(normalizeName(match.stage))) continue
 
-    const home = byName.get(normalizeName(match.home))
-    const away = byName.get(normalizeName(match.away))
+    const home = match.homeTeamId != null ? byId.get(match.homeTeamId) : byName.get(normalizeName(match.home))
+    const away = match.awayTeamId != null ? byId.get(match.awayTeamId) : byName.get(normalizeName(match.away))
     // A match against a team outside this table (or a renamed/deleted club) is
     // skipped rather than half-counted.
     if (!home || !away) continue
@@ -257,10 +257,10 @@ export function headToHead(
     if (!isCountableMatch(match)) continue
     if (stageFilter && stageFilter.length > 0 && !stageFilter.includes(normalizeName(match.stage))) continue
 
-    const homeId = nameToId.get(normalizeName(match.home))
-    const awayId = nameToId.get(normalizeName(match.away))
+    const homeId = match.homeTeamId ?? nameToId.get(normalizeName(match.home))
+    const awayId = match.awayTeamId ?? nameToId.get(normalizeName(match.away))
     // Both teams must be inside the tied group for the match to be relevant.
-    if (homeId === undefined || awayId === undefined || homeId === awayId) continue
+    if (homeId === undefined || awayId === undefined || homeId === awayId || !records.has(homeId) || !records.has(awayId)) continue
 
     const homeScore = match.homeScore as number
     const awayScore = match.awayScore as number
@@ -469,11 +469,14 @@ function countableEvents(matches: Match[]): MatchEvent[] {
 export function computePlayerStats(players: Player[], matches: Match[]): PlayerStatLine[] {
   const lines = new Map<string, PlayerStatLine>()
 
-  const keyFor = (playerName: string, teamName: string) =>
+  const legacyKey = (playerName: string, teamName: string) =>
     `${normalizeName(playerName)}::${normalizeName(teamName)}`
+  const legacyPlayers = new Map<string, Player[]>()
 
   for (const player of players) {
-    lines.set(keyFor(player.fullName, player.teamName), {
+    const key = legacyKey(player.fullName, player.teamName)
+    legacyPlayers.set(key, [...(legacyPlayers.get(key) ?? []), player])
+    lines.set(`player:${player.id}`, {
       playerId: player.id,
       playerName: player.fullName,
       teamName: player.teamName,
@@ -488,12 +491,18 @@ export function computePlayerStats(players: Player[], matches: Match[]): PlayerS
 
   for (const event of countableEvents(matches)) {
     if (!event.playerName?.trim()) continue
-    const key = keyFor(event.playerName, event.teamName)
+    // Old unlinked events can resolve only when the roster match is unique.
+    // Once recorded, a database ID survives both transfers and name changes.
+    const candidates = legacyPlayers.get(legacyKey(event.playerName, event.teamName)) ?? []
+    const playerId = event.playerId ?? (candidates.length === 1 ? candidates[0].id : undefined)
+    const key = playerId != null ? `player:${playerId}` : `unlinked:${legacyKey(event.playerName, event.teamName)}`
     let line = lines.get(key)
     if (!line) {
       line = {
+        playerId,
         playerName: event.playerName.trim(),
         teamName: event.teamName,
+        teamId: event.teamId,
         goals: 0,
         assists: 0,
         yellowCards: 0,

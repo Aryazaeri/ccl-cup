@@ -219,6 +219,7 @@ export type MatchEventType =
 export type MatchEvent = {
   id: number
   matchId: number
+  playerId?: number
   teamId?: number
   teamName: string
   playerName: string
@@ -234,6 +235,12 @@ export type Match = {
   id: number
   home: string
   away: string
+  homeTeamId?: number
+  awayTeamId?: number
+  /** Exact Istanbul date; display-only dates omit the year. */
+  kickoffAt?: string
+  /** Stable identity for a generated fixture, scoped to its season. */
+  fixtureKey?: string
   stage: string
   date: string
   time: string

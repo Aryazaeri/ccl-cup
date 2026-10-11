@@ -1,5 +1,7 @@
 import { autoSeedBracket, generateEmptyBracket, setMatchWinner } from '../src/lib/bracketUtils'
-import type { Team, TournamentBracket } from '../src/types'
+import { bracketMatchScores, bracketWithResults, qualificationOptions, qualificationPreview, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
+import { computeGroupStandings, withDerivedTeamTotals } from '../src/lib/standingsUtils'
+import type { Match, Season, Team, TournamentBracket } from '../src/types'
 
 let passed = 0
 let failed = 0
@@ -116,6 +118,98 @@ console.log('\n7. Eight-team bracket routes correctly')
   check('quarter 3 winner reaches semi 2 slot 1', nameAt(b, 1, 1, 1), 'ECHO')
   b = setMatchWinner(b, b.rounds[0].matches[3].matchId, b.rounds[0].matches[3].slot2.slotId)
   check('quarter 4 winner reaches semi 2 slot 2', nameAt(b, 1, 1, 2), 'HOTEL')
+}
+
+console.log('\n8. Table stage qualifies into a knockout draw')
+const season: Season = {
+  id: 10, city: 'Antalya', year: 2026, name: 'Test', fullName: 'Antalya 2026 Test', seasonType: 'group_league', groupCount: 2,
+  groupLeague: { groupCount: 2, groups: [
+    { id: 'a', name: 'Group A', slots: [{ position: 1, teamId: 1 }, { position: 2, teamId: 2 }] },
+    { id: 'b', name: 'Group B', slots: [{ position: 1, teamId: 3 }, { position: 2, teamId: 4 }] },
+  ] },
+  bracket: { ...generateEmptyBracket(4), qualification: { qualifiersPerTable: 2 } },
+}
+function fixture(id: number, home: string, away: string, stage: string, homeScore = 1, awayScore = 0): Match {
+  return { id, home, away, stage, homeScore, awayScore, seasonId: 10, date: '18 Aug', time: '20:30', venue: 'Arena', matchStatus: 'completed', status: 'Scheduled' }
+}
+const tableFixtures = [fixture(1, 'ALPHA', 'BRAVO', 'Group A'), fixture(2, 'CHARLIE', 'DELTA', 'Group B')]
+{
+  const preview = qualificationPreview(season, teams, tableFixtures)
+  check('complete table stage is ready', preview.ready, true)
+  check('all four table qualifiers', preview.qualifiers.map((row) => row.teamName), ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA'])
+  const b = seedQualifiedBracket(season, teams, tableFixtures, 'test-date')
+  check('group winner meets other group runner-up', [nameAt(b, 0, 0, 1), nameAt(b, 0, 0, 2)], ['ALPHA', 'DELTA'])
+  check('opposite pairing uses the remaining qualifiers', [nameAt(b, 0, 1, 1), nameAt(b, 0, 1, 2)], ['CHARLIE', 'BRAVO'])
+  check('qualification source shown in the draw', b.rounds[0].matches[0].slot1.qualificationLabel, 'Group A #1')
+  check('seed time persisted', b.qualification?.seededAt, 'test-date')
+  check('two qualifiers support a final-only draw', generateEmptyBracket(2).rounds.map((round) => round.matches.length), [1])
+  check('single table supports top 2, 4, 8, 16', qualificationOptions(1), [2, 4, 8, 16])
+  check('four groups support top 1, 2, 4', qualificationOptions(4), [1, 2, 4])
+  check('three equal groups cannot form a full knockout draw', qualificationOptions(3), [])
+  check('pending group match blocks qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], matchStatus: 'scheduled' }]).ready, false)
+  check('draft result blocks qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], status: 'Draft' }]).ready, false)
+  check('empty fixture list blocks qualification', qualificationPreview(season, teams, []).ready, false)
+  check('missing club results block qualification', qualificationPreview(season, teams, [tableFixtures[0]]).ready, false)
+  const duplicate = { ...season, groupLeague: { groupCount: 2, groups: [season.groupLeague!.groups[0], { ...season.groupLeague!.groups[1], slots: [{ position: 1, teamId: 1 }, { position: 2, teamId: 4 }] }] } }
+  check('club cannot qualify from two groups', qualificationPreview(duplicate, teams, tableFixtures).ready, false)
+  check('pending fixture outside the assigned tables does not block', qualificationPreview(season, teams, [...tableFixtures, { ...fixture(8, 'OUTSIDE', 'ALPHA', 'Group Stage'), matchStatus: 'scheduled' }]).ready, true)
+  check('another season does not affect qualification', qualificationPreview(season, teams, [...tableFixtures, { ...tableFixtures[0], id: 9, seasonId: 11, matchStatus: 'scheduled' }]).ready, true)
+}
+
+console.log('\n9. Single table ignores legacy group names')
+{
+  const league: Season = { ...season, seasonType: 'league', groupLeague: undefined, league: { teamCount: 4, slots: teams.map((t, index) => ({ position: index + 1, teamId: t.id })) }, bracket: { ...generateEmptyBracket(2), qualification: { qualifiersPerTable: 2 } } }
+  const tagged = teams.map((t) => ({ ...t, groupName: t.id <= 2 ? 'Old A' : 'Old B' }))
+  check('league always has one table', computeGroupStandings(tagged, tableFixtures, league).length, 1)
+  check('league table uses all assigned clubs', computeGroupStandings(tagged, tableFixtures, league)[0].rows.length, 4)
+  const b = seedQualifiedBracket(league, tagged, tableFixtures, 'test-date')
+  check('top two qualify directly into the final', [nameAt(b, 0, 0, 1), nameAt(b, 0, 0, 2)], ['ALPHA', 'CHARLIE'])
+  check('empty saved league has no unassigned clubs', computeGroupStandings(teams, tableFixtures, { ...league, league: { teamCount: 0, slots: [] } })[0].rows.length, 0)
+}
+
+console.log('\nEight groups feed a round of 16')
+{
+  const clubs = Array.from({ length: 16 }, (_, index) => team(index + 1, `CLUB ${index + 1}`))
+  const groups = Array.from({ length: 8 }, (_, index) => ({ id: `g${index}`, name: `Group ${String.fromCharCode(65 + index)}`, slots: [{ position: 1, teamId: index * 2 + 1 }, { position: 2, teamId: index * 2 + 2 }] }))
+  const larger: Season = { ...season, groupCount: 8, groupLeague: { groupCount: 8, groups } }
+  const games = groups.map((g, index) => fixture(index + 1, clubs[index * 2].name, clubs[index * 2 + 1].name, g.name))
+  const b = seedQualifiedBracket(larger, clubs, games, 'test-date')
+  const slots = b.rounds[0].matches.flatMap((tie) => [tie.slot1, tie.slot2])
+  check('sixteen distinct clubs are seeded', new Set(slots.map((slot) => slot.teamId)).size, 16)
+  check('sixteen qualifiers produce four rounds', b.rounds.length, 4)
+  check('first-round opponents always come from different groups', b.rounds[0].matches.every((tie) => tie.slot1.qualificationLabel?.split(' #')[0] !== tie.slot2.qualificationLabel?.split(' #')[0]), true)
+  check('group winners meet runners-up', b.rounds[0].matches.every((tie) => [tie.slot1.qualificationLabel?.split(' #')[1], tie.slot2.qualificationLabel?.split(' #')[1]].sort().join(',') === '1,2'), true)
+}
+
+console.log('\n10. Fixture scores drive knockout progression without affecting tables')
+{
+  const seeded = seedQualifiedBracket(season, teams, tableFixtures, 'test-date')
+  const semis = [fixture(3, 'DELTA', 'ALPHA', 'Semi-final', 1, 3), fixture(4, 'CHARLIE', 'BRAVO', 'Semi-finals', 0, 1)]
+  const final = { ...fixture(5, 'ALPHA', 'BRAVO', 'Final', 2, 2), homePenalties: 3, awayPenalties: 4 }
+  const all = [...tableFixtures, ...semis, final]
+  const b = bracketWithResults(seeded, all)
+  check('home/away reversal still advances correct club', nameAt(b, 1, 0, 1), 'ALPHA')
+  check('reversed fixture displays scores beside the seeded clubs', bracketMatchScores(b.rounds[0].matches[0], semis[0]), [3, 1])
+  check('score display handles normalized club names', bracketMatchScores(b.rounds[0].matches[0], fixture(7, '  alpha ', 'DELTA', 'Semi-final', 3, 1)), [3, 1])
+  check('second semi advances the winner', nameAt(b, 1, 0, 2), 'BRAVO')
+  check('penalty shootout decides champion', b.championSlot?.teamName, 'BRAVO')
+  check('fixture id attaches to its tie', b.rounds[1].matches[0].resultMatchId, 5)
+  check('knockout scores leave table matches unchanged', tableStageMatches(season, all).map((m) => m.id), [1, 2])
+  check('table points exclude cup wins', computeGroupStandings(teams, tableStageMatches(season, all), season)[0].rows.map((row) => row.points), [3, 0])
+  const scopedTeams = teams.map((t) => ({ ...t, seasonId: 10 }))
+  check('club pool totals also exclude cup wins', withDerivedTeamTotals(scopedTeams, all, [season]).find((t) => t.id === 1)?.points, 3)
+  check('club pool played count comes from its table', withDerivedTeamTotals(scopedTeams, all, [season]).find((t) => t.id === 1)?.played, 1)
+  check('another season does not inflate club pool totals', withDerivedTeamTotals(scopedTeams, [...all, { ...fixture(6, 'ALPHA', 'BRAVO', 'Group Stage', 8, 0), seasonId: 11 }], [season]).find((t) => t.id === 1)?.points, 3)
+  check('shootout missing leaves final unresolved', bracketWithResults(seeded, [...tableFixtures, ...semis, { ...final, homePenalties: undefined, awayPenalties: undefined }]).championSlot?.teamId, null)
+  check('live scores do not advance clubs', bracketWithResults(seeded, [...tableFixtures, { ...semis[0], matchStatus: 'live' }]).rounds[1].matches[0].slot1.teamId, null)
+  check('deleting a result removes stale advancement', bracketWithResults(b, tableFixtures).championSlot?.teamId, null)
+  check('revised semi clears incompatible final result', bracketWithResults(b, [...tableFixtures, { ...semis[0], homeScore: 4 }, semis[1], final]).championSlot?.teamId, null)
+  check('group match between finalists cannot decide final', bracketWithResults(seeded, [...tableFixtures, ...semis, { ...final, stage: 'Group Stage' }]).championSlot?.teamId, null)
+  check('third place never supplies a final result', bracketWithResults(seeded, [...tableFixtures, ...semis, { ...final, stage: 'Third-place Play-off' }]).championSlot?.teamId, null)
+  check('progression does not mutate saved draw', seeded.rounds[1].matches[0].slot1.teamId, null)
+  const reseeded = seedQualifiedBracket({ ...season, bracket: b }, teams, tableFixtures, 'new-date')
+  check('regenerating clears saved winners', reseeded.championSlot?.teamId, null)
+  check('regenerating keeps qualification settings', reseeded.qualification?.qualifiersPerTable, 2)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -4,7 +4,7 @@ import { Brand } from './Brand'
 import { DEMO_EMAIL, DEMO_PASSWORD, useAuth } from '../auth/AuthContext'
 
 export function LoginPage({ onBack }: { onBack: () => void }) {
-  const { signIn, backend, loading } = useAuth()
+  const { signIn, backend, signingIn } = useAuth()
   const [email, setEmail] = useState(backend === 'local-demo' ? DEMO_EMAIL : '')
   const [password, setPassword] = useState(backend === 'local-demo' ? DEMO_PASSWORD : '')
   const [error, setError] = useState('')
@@ -77,8 +77,8 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
             </div>
           ) : null}
 
-          <button className="button button-primary" disabled={loading} type="submit">
-            {loading ? 'Signing in…' : 'Sign in'}
+          <button className="button button-primary" disabled={signingIn} type="submit">
+            {signingIn ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
@@ -88,7 +88,7 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
               type="button"
               className="quick-demo-login-btn"
               onClick={handleQuickDemo}
-              disabled={loading}
+              disabled={signingIn}
             >
               <Sparkles size={14} />
               <span>

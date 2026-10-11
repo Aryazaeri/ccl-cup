@@ -1,14 +1,14 @@
 import type { BracketMatch, BracketRound, BracketSlot, Team, TournamentBracket } from '../types'
 
 export function generateEmptyBracket(teamCount: number = 8): TournamentBracket {
-  const count = [4, 8, 16, 32].includes(teamCount) ? teamCount : 8
+  const count = [2, 4, 8, 16, 32].includes(teamCount) ? teamCount : 8
   const rounds: BracketRound[] = []
 
   let currentMatches = count / 2
   let roundIdx = 0
 
   while (currentMatches >= 1) {
-    let roundName = 'Round of 16'
+    let roundName = `Round of ${currentMatches * 2}`
     if (currentMatches === 8) roundName = 'Round of 16'
     else if (currentMatches === 4) roundName = 'Quarter-finals'
     else if (currentMatches === 2) roundName = 'Semi-finals'
@@ -138,6 +138,7 @@ function carry(target: BracketSlot, source: BracketSlot): BracketSlot {
     teamLogo: source.teamLogo,
     teamColor: source.teamColor,
     teamCountryCode: source.teamCountryCode,
+    qualificationLabel: source.qualificationLabel,
   }
 }
 

@@ -7,6 +7,7 @@ export type AuthProfile = { id: string; fullName: string; email: string; role: U
 
 type AuthContextValue = {
   loading: boolean
+  signingIn: boolean
   profile: AuthProfile | null
   backend: 'supabase' | 'local-demo'
   signIn: (email: string, password: string) => Promise<void>
@@ -59,6 +60,7 @@ async function fetchProfile(user: User): Promise<AuthProfile> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
+  const [signingIn, setSigningIn] = useState(false)
   const [profile, setProfile] = useState<AuthProfile | null>(null)
 
   useEffect(() => {
@@ -94,12 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => ({
     loading,
+    signingIn,
     profile,
     backend: isSupabaseConfigured ? 'supabase' : 'local-demo',
     async signIn(email, password) {
-      setLoading(true)
+      // Keep LoginPage mounted so a failed attempt retains its error/inputs.
+      setSigningIn(true)
       const cleanEmail = email.trim().toLowerCase()
-      const cleanPassword = password.trim()
+      const cleanPassword = password
 
       try {
         // When a real project is configured, Supabase Auth is the ONLY way in.
@@ -132,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         throw new Error('Invalid email or password.')
       } finally {
-        setLoading(false)
+        setSigningIn(false)
       }
     },
     async signOut() {
@@ -140,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(demoSessionKey)
       setProfile(null)
     },
-  }), [loading, profile])
+  }), [loading, signingIn, profile])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

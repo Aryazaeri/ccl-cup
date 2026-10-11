@@ -47,6 +47,8 @@ import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
+import { qualificationOptions, tableStageMatches } from '../lib/qualificationUtils'
+import { QualificationPanel } from './QualificationPanel'
 import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
 import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
@@ -147,6 +149,11 @@ const sections: { label: AdminSection; icon: typeof Home; area?: PermissionArea 
   { label: 'Users', icon: Users, area: 'users' },
 ]
 
+function sectionFromHash(): AdminSection {
+  const slug = window.location.hash.split('/')[1]?.toLowerCase()
+  return sections.find((entry) => entry.label.toLowerCase() === slug)?.label ?? 'Overview'
+}
+
 export function AdminPanel({
   seasons,
   teams,
@@ -180,7 +187,12 @@ export function AdminPanel({
   onSignOut,
   onViewSite,
 }: Props) {
-  const [section, setSection] = useState<AdminSection>('Overview')
+  const [section, setSection] = useState<AdminSection>(sectionFromHash)
+  useEffect(() => {
+    const onHash = () => setSection(sectionFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   // The database enforces this for real via RLS; hiding the screens keeps the
   // panel from offering actions that would only come back as an error.
@@ -425,12 +437,15 @@ export function AdminPanel({
   const scheduled = stories.filter((story) => story.status === 'Scheduled').length
 
   const chooseSection = (next: AdminSection) => {
+    window.location.assign(next === 'Overview' ? '#admin' : `#admin/${next.toLowerCase()}`)
     setSection(next)
     setSidebarOpen(false)
+    window.scrollTo({ top: 0 })
   }
 
   return (
     <div className="admin-shell">
+      {sidebarOpen ? <button className="admin-sidebar-scrim" aria-label="Close admin menu" onClick={() => setSidebarOpen(false)} /> : null}
       <aside className={sidebarOpen ? 'admin-sidebar is-open' : 'admin-sidebar'}>
         <div className="sidebar-top">
           <Brand admin />
@@ -460,7 +475,7 @@ export function AdminPanel({
 
       <div className="admin-main">
         <header className="admin-topbar">
-          <button className="admin-menu" onClick={() => setSidebarOpen(true)} aria-label="Open admin menu">
+          <button className="admin-menu" onClick={() => setSidebarOpen(true)} aria-label="Open admin menu" aria-expanded={sidebarOpen}>
             <Menu />
           </button>
           <h1>{activeSection}</h1>
@@ -582,7 +597,8 @@ export function AdminPanel({
           )}
 
           {activeSection === 'Standings' && (
-            <StandingsManager seasons={seasons} teams={teams} players={players} matches={matches} />
+            <StandingsManager seasons={seasons} teams={teams} players={players} matches={matches}
+              canManage={can(profile.role, 'seasons')} onUpdateSeason={onUpdateSeason} onOpenBracket={setBracketSeason} />
           )}
 
           {activeSection === 'Comments' && <CommentsManager />}
@@ -613,14 +629,15 @@ export function AdminPanel({
       {bracketSeason && (
         <BracketCanvasModal
           seasonTitle={bracketSeason.fullName}
-          teams={teams}
+          teams={teams.filter((team) => team.seasonId == null || team.seasonId === bracketSeason.id)}
           initialBracket={bracketSeason.bracket ?? generateEmptyBracket(bracketSeason.teamCount ?? 8)}
+          matches={matches.filter((match) => match.seasonId === bracketSeason.id || match.seasonId == null)}
           onClose={() => setBracketSeason(null)}
           onSave={async (bracket) => {
             await onUpdateSeason({
               ...bracketSeason,
-              seasonType: 'tournament',
-              teamCount: bracket.teamCount,
+              seasonType: bracketSeason.seasonType ?? 'tournament',
+              teamCount: bracketSeason.bracket?.qualification ? bracketSeason.teamCount : bracket.teamCount,
               bracket,
             })
             setBracketSeason(null)
@@ -631,7 +648,7 @@ export function AdminPanel({
       {leagueSeason && (
         <LeagueCanvasModal
           seasonTitle={leagueSeason.fullName}
-          teams={teams}
+          teams={teams.filter((team) => team.seasonId == null || team.seasonId === leagueSeason.id)}
           initialLeague={leagueSeason.league ?? { teamCount: 0, slots: [] }}
           onClose={() => setLeagueSeason(null)}
           onSave={async (league) => {
@@ -649,7 +666,7 @@ export function AdminPanel({
       {groupLeagueSeason && (
         <GroupLeagueCanvasModal
           seasonTitle={groupLeagueSeason.fullName}
-          teams={teams}
+          teams={teams.filter((team) => team.seasonId == null || team.seasonId === groupLeagueSeason.id)}
           initialGroupLeague={
             groupLeagueSeason.groupLeague ?? generateEmptyGroupLeague(groupLeagueSeason.groupCount ?? 4)
           }
@@ -829,7 +846,7 @@ function Overview({
     { icon: Trophy, value: seasonsCount, label: 'Seasons & Tournaments' },
     { icon: Shield, value: teams.length, label: 'Clubs & Teams' },
     { icon: Users, value: players.length, label: 'Registered Players' },
-    { icon: CalendarDays, value: matches.length, label: 'Scheduled Matches' },
+    { icon: CalendarDays, value: matches.filter((match) => match.matchStatus === 'scheduled').length, label: 'Scheduled Matches' },
   ]
 
   return (
@@ -847,9 +864,9 @@ function Overview({
       <div className="overview-grid">
         <section className="admin-panel upcoming">
           <div className="panel-header-row">
-            <h2>Recent & Upcoming matches</h2>
+            <h2>Live & Upcoming matches</h2>
           </div>
-          <MatchTable matches={matches.slice(0, 4)} onEdit={onManageMatchScore} />
+          <MatchTable matches={matches.filter((match) => match.matchStatus === 'live' || match.matchStatus === 'scheduled').slice(0, 4)} onEdit={onManageMatchScore} />
         </section>
 
         <section className="admin-panel activity">
@@ -1153,6 +1170,12 @@ function SeasonsManager({
                           <Trophy size={15} aria-hidden="true" />
                         </button>
                       )}
+                      {season.bracket?.qualification ? <button
+                        className="btn-season-action bracket"
+                        onClick={() => onOpenBracket(season)}
+                        title="Open knockout bracket"
+                        aria-label={`Open knockout bracket for ${season.fullName}`}
+                      ><Trophy size={15} aria-hidden="true" /></button> : null}
                       <button
                         className="btn-season-action settings"
                         onClick={() => onEdit(season)}
@@ -1245,6 +1268,9 @@ function SeasonModal({
   const [groupCount, setGroupCount] = useState<number>(
     initial?.groupCount ?? initial?.groupLeague?.groupCount ?? 4
   )
+  const [knockout, setKnockout] = useState(Boolean(initial?.bracket?.qualification))
+  const [qualifiersPerTable, setQualifiersPerTable] = useState(initial?.bracket?.qualification?.qualifiersPerTable ?? 2)
+  const { confirm, confirmDialog } = useConfirm()
   const [bracket, setBracket] = useState<TournamentBracket | undefined>(
     initial?.bracket ?? (initial?.seasonType === 'tournament' ? generateEmptyBracket(initial?.teamCount ?? 8) : undefined)
   )
@@ -1276,6 +1302,11 @@ function SeasonModal({
       setSaveError('Please enter a season name.')
       return
     }
+    const tableCount = seasonType === 'group_league' ? groupCount : 1
+    if (knockout && seasonType !== 'tournament' && !qualificationOptions(tableCount).includes(qualifiersPerTable)) {
+      setSaveError('The knockout stage needs 2, 4, 8 or 16 qualifiers. Choose 2, 4 or 8 groups and a supported number per table.')
+      return
+    }
     setSaving(true)
     setSaveError('')
     try {
@@ -1286,7 +1317,25 @@ function SeasonModal({
           ? (groupLeague?.groups.reduce((acc, g) => acc + g.slots.length, 0) ?? 0)
           : (league?.slots.length ?? 0)
 
+      const qualificationChanged = initial?.seasonType !== seasonType ||
+        initial?.bracket?.qualification?.qualifiersPerTable !== qualifiersPerTable ||
+        (seasonType === 'group_league' && initial?.groupCount !== groupCount) || !knockout
+      if (initial?.bracket?.qualification?.seededAt && qualificationChanged && !(await confirm({
+        title: 'Change knockout format?',
+        body: 'Changing qualification settings will reset the saved knockout draw.',
+        consequences: ['Bracket pairings and saved winners will be cleared.', 'Matches and their scores will remain.'],
+        confirmLabel: 'Change format',
+      }))) return
+      const finalBracket = seasonType === 'tournament'
+        ? { ...(bracket ?? generateEmptyBracket(teamCount)), qualification: undefined }
+        : knockout
+        ? !qualificationChanged && bracket?.qualification
+          ? bracket
+          : { ...generateEmptyBracket(tableCount * qualifiersPerTable), qualification: { qualifiersPerTable } }
+        : undefined
+
       await onSave({
+        ...initial,
         id: initial?.id ?? Date.now(),
         city,
         year: Number(year),
@@ -1295,7 +1344,7 @@ function SeasonModal({
         seasonType,
         teamCount: finalTeamCount,
         groupCount: seasonType === 'group_league' ? groupCount : undefined,
-        bracket: seasonType === 'tournament' ? (bracket ?? generateEmptyBracket(teamCount)) : undefined,
+        bracket: finalBracket,
         league: seasonType === 'league' ? (league ?? { teamCount: 0, slots: [] }) : undefined,
         groupLeague: seasonType === 'group_league' ? (groupLeague ?? generateEmptyGroupLeague(groupCount)) : undefined,
         isActive,
@@ -1350,10 +1399,14 @@ function SeasonModal({
           <label className={seasonType === 'league' ? 'span-2' : ''}>
             Format *
             <select
-              value={seasonType}
+              value={knockout && seasonType !== 'tournament' ? `${seasonType}_knockout` : seasonType}
               onChange={(e) => {
-                const nextType = e.target.value as SeasonType
+                const hasKnockout = e.target.value.endsWith('_knockout')
+                const nextType = e.target.value.replace('_knockout', '') as SeasonType
+                setKnockout(hasKnockout)
                 setSeasonType(nextType)
+                const qualifierOptions = qualificationOptions(nextType === 'group_league' ? groupCount : 1)
+                if (!qualifierOptions.includes(qualifiersPerTable) && qualifierOptions.length) setQualifiersPerTable(qualifierOptions[0])
                 if (nextType === 'tournament' && !bracket) {
                   setBracket(generateEmptyBracket(8))
                   setTeamCount(8)
@@ -1367,6 +1420,8 @@ function SeasonModal({
               <option value="tournament">🏆 Tournament (knockout bracket)</option>
               <option value="league">⚽ League (single table)</option>
               <option value="group_league">🗂️ Group league (multiple groups)</option>
+              <option value="league_knockout">⚽ League → Knockout (single table, then elimination)</option>
+              <option value="group_league_knockout">🗂️ Groups → Knockout (group tables, then elimination)</option>
             </select>
           </label>
 
@@ -1393,6 +1448,8 @@ function SeasonModal({
                   const count = Number(e.target.value)
                   setGroupCount(count)
                   setGroupLeague(generateEmptyGroupLeague(count))
+                  const options = qualificationOptions(count)
+                  if (!options.includes(qualifiersPerTable) && options.length) setQualifiersPerTable(options[0])
                 }}
               >
                 {groupCountOptions.map((c) => (
@@ -1403,6 +1460,18 @@ function SeasonModal({
               </select>
             </label>
           )}
+
+          {knockout && seasonType !== 'tournament' ? <div className="span-2 qualification-settings">
+            <label>
+              {seasonType === 'group_league' ? 'Qualifiers per group' : 'Qualifiers from the table'}
+              <select value={qualifiersPerTable} onChange={(event) => setQualifiersPerTable(Number(event.target.value))}>
+                {qualificationOptions(seasonType === 'group_league' ? groupCount : 1).map((count) => <option key={count} value={count}>Top {count}</option>)}
+              </select>
+            </label>
+            <p>{qualificationOptions(seasonType === 'group_league' ? groupCount : 1).length
+              ? `${qualifiersPerTable * (seasonType === 'group_league' ? groupCount : 1)} clubs enter the knockout stage. Assign clubs to the table(s), enter results in Matches, then generate the draw from Standings.`
+              : 'Choose 2, 4 or 8 groups for a knockout stage.'}</p>
+          </div> : null}
 
           {seasonType === 'tournament' && (
             <div className="span-2 season-bracket-launch-box">
@@ -1527,6 +1596,7 @@ function SeasonModal({
           }}
         />
       )}
+      {confirmDialog}
     </>
   )
 }
@@ -1955,7 +2025,11 @@ function PlayersManager({
                 <td>
                   {player.teamId && player.teamId > 0 && player.teamName !== 'Free Agent' ? (
                     <span className="team-cell-small">
-                      <TeamMark name={player.teamName} />
+                      <TeamMark
+                        name={player.teamName}
+                        logoUrl={teams.find((team) => team.id === player.teamId)?.logoUrl}
+                        color={teams.find((team) => team.id === player.teamId)?.color}
+                      />
                       <span>{player.teamName}</span>
                     </span>
                   ) : (
@@ -2170,11 +2244,17 @@ function StandingsManager({
   teams,
   players,
   matches,
+  canManage,
+  onUpdateSeason,
+  onOpenBracket,
 }: {
   seasons: Season[]
   teams: Team[]
   players: Player[]
   matches: Match[]
+  canManage: boolean
+  onUpdateSeason: (season: Season) => Promise<void>
+  onOpenBracket: (season: Season) => void
 }) {
   const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => {
     const active = seasons.find((season) => season.isActive)
@@ -2193,14 +2273,16 @@ function StandingsManager({
     return teams.filter((team) => team.seasonId === undefined || team.seasonId === selectedSeason.id)
   }, [teams, selectedSeason])
 
-  const groups = useMemo(
-    () => computeGroupStandings(scopedTeams, matches, selectedSeason),
-    [scopedTeams, matches, selectedSeason],
-  )
+  const scopedMatches = useMemo(() => {
+    if (!selectedSeason) return matches
+    const names = new Set(scopedTeams.map((team) => team.name))
+    return matches.filter((match) => match.seasonId != null ? match.seasonId === selectedSeason.id : names.has(match.home) || names.has(match.away))
+  }, [matches, selectedSeason, scopedTeams])
+  const groups = useMemo(() => computeGroupStandings(scopedTeams, tableStageMatches(selectedSeason, scopedMatches), selectedSeason), [scopedTeams, scopedMatches, selectedSeason])
 
-  const topScorers = useMemo(() => computeTopScorers(players, matches, 10), [players, matches])
-  const resultsEntered = useMemo(() => matches.filter(isCountableMatch).length, [matches])
-  const awaitingResult = Math.max(0, matches.length - resultsEntered)
+  const topScorers = useMemo(() => computeTopScorers(players, scopedMatches, 10), [players, scopedMatches])
+  const resultsEntered = useMemo(() => scopedMatches.filter(isCountableMatch).length, [scopedMatches])
+  const awaitingResult = Math.max(0, scopedMatches.length - resultsEntered)
   const goalsLogged = topScorers.reduce((total, scorer) => total + scorer.goals, 0)
 
   const metrics = [
@@ -2249,6 +2331,8 @@ function StandingsManager({
           </div>
         ))}
       </section>
+
+      {selectedSeason?.bracket?.qualification ? <QualificationPanel key={selectedSeason.id} season={selectedSeason} teams={scopedTeams} matches={scopedMatches} canManage={canManage} onUpdateSeason={onUpdateSeason} onOpenBracket={onOpenBracket} /> : null}
 
       {resultsEntered === 0 ? (
         <section className="admin-panel standings-hint">
@@ -2658,7 +2742,7 @@ function MediaManager({
         <div>
           <h2>Media library</h2>
           <p className="module-sub">
-            {media.length} asset{media.length === 1 ? '' : 's'} · published items appear on the public site
+            {media.length} asset{media.length === 1 ? '' : 's'} · publish an item to show it in Highlights for its season
           </p>
         </div>
         <button className="button button-admin" onClick={() => setEditing(emptyMedia())}>
@@ -2688,6 +2772,9 @@ function MediaManager({
                 <span className={`status-chip ${asset.isPublished ? 'status-approved' : 'status-pending'}`}>
                   {asset.isPublished ? 'Published' : 'Draft'}
                 </span>
+                <small className="field-hint">
+                  {asset.seasonId == null ? 'All seasons' : seasonLabelsForIds([asset.seasonId], seasons).join(', ')}
+                </small>
                 {asset.sponsorId ? (
                   <small className="field-hint">
                     Presented by {sponsors.find((s) => s.id === asset.sponsorId)?.name ?? 'a sponsor'}
@@ -2712,6 +2799,7 @@ function MediaManager({
                 </button>
                 <button
                   className="mini-button danger"
+                  aria-label={`Delete media ${asset.title}`}
                   disabled={busyId === asset.id}
                   onClick={async () => {
                     const ok = await confirm({
@@ -2917,7 +3005,7 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
         <div>
           <h2>Sponsors</h2>
           <p className="module-sub">
-            {sponsors.length} partner{sponsors.length === 1 ? '' : 's'} · active ones appear in the public footer rail
+            {sponsors.length} partner{sponsors.length === 1 ? '' : 's'} · active partners appear in Sponsors for their season
           </p>
         </div>
         <button
@@ -2958,6 +3046,9 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
                   </td>
                   <td>
                     <strong>{sponsor.name}</strong>
+                    <div className="field-hint">
+                      {sponsor.seasonId == null ? 'All seasons' : seasonLabelsForIds([sponsor.seasonId], seasons).join(', ')}
+                    </div>
                   </td>
                   <td>
                     {sponsor.websiteUrl ? (
@@ -2981,11 +3072,12 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
                     >
                       {sponsor.isActive ? 'Hide' : 'Show'}
                     </button>
-                    <button className="mini-button" onClick={() => setEditing(sponsor)}>
+                    <button className="mini-button" onClick={() => setEditing(sponsor)} aria-label={`Edit sponsor ${sponsor.name}`}>
                       <Edit2 size={13} />
                     </button>
                     <button
                       className="mini-button danger"
+                      aria-label={`Delete sponsor ${sponsor.name}`}
                       disabled={busyId === sponsor.id}
                       onClick={async () => {
                         const ok = await confirm({
@@ -4398,7 +4490,12 @@ function MatchForm({
         </label>
         <label>
           Stage
-          <input name="stage" defaultValue="Group A" required />
+          <input name="stage" defaultValue="Group A" list="fixture-stages" required />
+          <datalist id="fixture-stages">
+            {(seasons.find((season) => season.id === seasonId)?.groupLeague?.groups.map((group) => group.name) ?? ['Group A', 'Group B', 'Group Stage']).map((stage) => <option key={stage} value={stage} />)}
+            {['Round of 16', 'Quarter-final', 'Semi-final', 'Final', 'Third-place Play-off'].map((stage) => <option key={stage} value={stage} />)}
+          </datalist>
+          <small className="field-hint">For knockout fixtures, use Round of 16, Quarter-final, Semi-final or Final so the score updates the draw.</small>
         </label>
         <label>
           Venue

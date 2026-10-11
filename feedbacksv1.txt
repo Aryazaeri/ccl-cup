@@ -1,4 +1,6 @@
-Status as of 2026-10-11 — all fixes below are merged to main (PR #7).
+Status as of 2026-10-11 — items 1–2.4 are present on remote main.
+Items 2.5–2.6 and the latest admin/public flow fixes are implemented and verified,
+ready for review; these changes have not yet been merged or deployed.
 
 1. the news carroile should be shown on the main header
    -> DONE. The header is now a news carousel: the first 5 stories rotate every 7s, with
@@ -33,7 +35,29 @@ Status as of 2026-10-11 — all fixes below are merged to main (PR #7).
 2.4. the sponsors need their own header on public site after the highlights
    -> DONE. Sponsors has its own section and heading directly after Highlights, and a menu
       link when the season has sponsors.
+2.5. inconsistency between players and teams and matches table , like there are not working and wired to the same database e.g. when a player scored a goal in match , its only shown from the match section but their stats are not updated from the players section pool
+   -> IMPLEMENTED (pending merge). Player goals and assists now come from completed match events
+      in the admin pool, public rosters, and scorer lists. Club points, played,
+      and goal difference use the same standings engine, scoped to the club's season.
+      For league/group formats, knockout results do not inflate table statistics.
+      Verified MUHAMMET VEYİL's goal in the real Supabase admin/public pages, and
+      event changes in the isolated demo. Regression tests cover recalculation.
+
+2.6. type of a league where tables are then taken into a bracket , but first it starts from table or tables then the brackets for elimination phases after the group stages
+   -> IMPLEMENTED (pending merge). Added "League → Knockout" and "Groups → Knockout" formats.
+      Choose qualifiers per table/group (2, 4, 8 or 16 total qualifiers), assign
+      clubs to the tables, and enter the table-stage fixtures/results in Matches.
+      In Standings, select the season and use "Generate knockout draw" once all
+      entered table fixtures are published/completed and every club has played.
+      Pairings use table ranks; grouped draws pair clubs from different groups.
+      Enter knockout fixtures with Round of 16 / Quarter-final / Semi-final / Final.
+      Completed scores and shootouts advance winners into the next round and
+      select the champion. The public page shows qualification and the saved draw.
+      Regenerating a draw requires confirmation and clears saved bracket winners.
+      Verified both formats through Computer Use in an isolated local demo,
+      including a full semi-finals → final → penalty winner flow, reload persistence,
+      unchanged group points, and a mobile bracket with horizontal scrolling.
 
 Known leftovers (not in this feedback):
 - a club save that fails after the crest uploads leaves an unused image in storage
-- an old error banner can stay visible when moving between admin pages
+- IMPLEMENTED (pending merge): old error banners clear when changing admin/public routes

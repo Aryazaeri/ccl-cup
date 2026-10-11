@@ -10,7 +10,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
-import { useMemo, useState, type DragEvent } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
 import {
   autoSeedBracket,
@@ -19,7 +19,8 @@ import {
   recomputeProgression,
   setMatchWinner,
 } from '../lib/bracketUtils'
-import type { BracketSlot, Team, TournamentBracket } from '../types'
+import type { BracketSlot, Match, Team, TournamentBracket } from '../types'
+import { bracketWithResults } from '../lib/qualificationUtils'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 
@@ -27,23 +28,30 @@ type Props = {
   seasonTitle: string
   teams: Team[]
   initialBracket?: TournamentBracket
+  matches?: Match[]
   onClose: () => void
-  onSave: (bracket: TournamentBracket) => void
+  onSave: (bracket: TournamentBracket) => void | Promise<void>
 }
 
 export function BracketCanvasModal({
   seasonTitle,
   teams,
   initialBracket,
+  matches = [],
   onClose,
   onSave,
 }: Props) {
   const [teamCount, setTeamCount] = useState<number>(initialBracket?.teamCount ?? 8)
-  const [bracket, setBracket] = useState<TournamentBracket>(
+  const [storedBracket, setBracket] = useState<TournamentBracket>(
     initialBracket && initialBracket.rounds.length > 0
       ? initialBracket
       : generateEmptyBracket(initialBracket?.teamCount ?? 8)
   )
+  const bracket = useMemo(() => bracketWithResults(storedBracket, matches), [storedBracket, matches])
+  const lockedSeeding = Boolean(bracket.qualification)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const savingRef = useRef(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
   const [dragOverSlotId, setDragOverSlotId] = useState<string | null>(null)
@@ -117,6 +125,7 @@ export function BracketCanvasModal({
   }
 
   const placeTeamInSlot = (team: Team, roundIdx: number, matchIdx: number, slotKey: 'slot1' | 'slot2') => {
+    if (lockedSeeding || roundIdx !== 0) return
     const updated: TournamentBracket = JSON.parse(JSON.stringify(bracket))
     const match = updated.rounds[roundIdx]?.matches[matchIdx]
     if (!match) return
@@ -147,6 +156,7 @@ export function BracketCanvasModal({
 
   const removeTeamFromSlot = (roundIdx: number, matchIdx: number, slotKey: 'slot1' | 'slot2', e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
+    if (lockedSeeding || roundIdx !== 0) return
     const updated: TournamentBracket = JSON.parse(JSON.stringify(bracket))
     const match = updated.rounds[roundIdx]?.matches[matchIdx]
     if (!match) return
@@ -158,9 +168,20 @@ export function BracketCanvasModal({
     setBracket(recomputeProgression(updated))
   }
 
-  const handleSave = () => {
-    onSave(bracket)
-    onClose()
+  const handleSave = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    setSaveError('')
+    try {
+      await onSave(bracket)
+      onClose()
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'The bracket could not be saved.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   return (
@@ -174,27 +195,27 @@ export function BracketCanvasModal({
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
             <span className="toolbar-label">Format:</span>
-            <div className="team-count-pills">
-              {[4, 8, 16].map((count) => (
+            {lockedSeeding ? <strong>{teamCount} qualified clubs · pairings from table positions</strong> : <div className="team-count-pills">
+              {[2, 4, 8, 16].map((count) => (
                 <button
                   key={count}
                   type="button"
                   className={`count-pill-btn ${teamCount === count ? 'active' : ''}`}
                   onClick={() => handleTeamCountChange(count)}
                 >
-                  {count} teams ({count === 4 ? 'semi-finals' : count === 8 ? 'quarter-finals' : 'round of 16'})
+                  {count} teams ({count === 2 ? 'final' : count === 4 ? 'semi-finals' : count === 8 ? 'quarter-finals' : 'round of 16'})
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Random draw">
+            {!lockedSeeding && <><button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Random draw">
               <Dices size={16} /> Auto draw
             </button>
             <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear bracket">
               <RotateCcw size={16} /> Clear
-            </button>
+            </button></>}
             <button
               type="button"
               className="toolbar-btn icon-only"
@@ -203,16 +224,18 @@ export function BracketCanvasModal({
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
-            <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Save bracket
+            <button type="button" className="toolbar-btn primary" disabled={saving} onClick={() => void handleSave()}>
+              <Check size={16} /> {saving ? 'Saving…' : 'Save bracket'}
             </button>
           </div>
         </header>
 
         {/* MAIN BUILDER WORKSPACE: SIDEBAR + BRACKET CANVAS */}
-        <div className="bracket-workspace-grid">
+        {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
+        {lockedSeeding ? <p className="qualification-message">Qualifiers are fixed by the saved draw. Match scores advance winners automatically; use the winner controls only for ties without a fixture.</p> : null}
+        <div className={`bracket-workspace-grid${lockedSeeding ? ' qualified-workspace' : ''}`}>
           {/* AVAILABLE CLUBS SIDEBAR */}
-          <aside className="bracket-teams-sidebar">
+          {!lockedSeeding && <aside className="bracket-teams-sidebar">
             <div className="sidebar-search-box">
               <Search size={15} />
               <input
@@ -276,7 +299,7 @@ export function BracketCanvasModal({
                 <div className="empty-teams-notice">No clubs found.</div>
               )}
             </div>
-          </aside>
+          </aside>}
 
           {/* BRACKET TREE CANVAS */}
           <main className="bracket-tree-canvas-container">
@@ -300,6 +323,7 @@ export function BracketCanvasModal({
                           {/* SLOT 1 */}
                           <BracketSlotView
                             slot={match.slot1}
+                            editable={!lockedSeeding && rIdx === 0}
                             slotLabel="Team 1"
                             isDragOver={dragOverSlotId === match.slot1.slotId}
                             onDragOver={(e) => handleDragOver(e, match.slot1.slotId)}
@@ -314,6 +338,7 @@ export function BracketCanvasModal({
                           {/* SLOT 2 */}
                           <BracketSlotView
                             slot={match.slot2}
+                            editable={!lockedSeeding && rIdx === 0}
                             slotLabel="Team 2"
                             isDragOver={dragOverSlotId === match.slot2.slotId}
                             onDragOver={(e) => handleDragOver(e, match.slot2.slotId)}
@@ -330,6 +355,7 @@ export function BracketCanvasModal({
                               <span>Winner</span>
                               <button
                                 type="button"
+                                disabled={match.resultMatchId != null}
                                 className={match.winnerSlotId === match.slot1.slotId ? 'is-winner' : ''}
                                 onClick={() => setBracket(setMatchWinner(bracket, match.matchId, match.slot1.slotId))}
                                 title="Advance this club"
@@ -338,6 +364,7 @@ export function BracketCanvasModal({
                               </button>
                               <button
                                 type="button"
+                                disabled={match.resultMatchId != null}
                                 className={match.winnerSlotId === match.slot2.slotId ? 'is-winner' : ''}
                                 onClick={() => setBracket(setMatchWinner(bracket, match.matchId, match.slot2.slotId))}
                                 title="Advance this club"
@@ -362,8 +389,7 @@ export function BracketCanvasModal({
                     <Trophy size={48} className="trophy-gold" />
                     <div className="champion-slot-container">
                       <div className="champion-slot-target">
-                        <strong>Champion</strong>
-                        <span>Tournament trophy</span>
+                        {bracket.championSlot?.teamName ? <><TeamMark name={bracket.championSlot.teamName} logoUrl={bracket.championSlot.teamLogo} color={bracket.championSlot.teamColor} /><strong>{bracket.championSlot.teamName}</strong></> : <><strong>Champion</strong><span>Awaiting the final result</span></>}
                       </div>
                     </div>
                   </div>
@@ -380,6 +406,7 @@ export function BracketCanvasModal({
 function BracketSlotView({
   slot,
   slotLabel,
+  editable,
   isDragOver,
   onDragOver,
   onDragLeave,
@@ -389,6 +416,7 @@ function BracketSlotView({
 }: {
   slot: BracketSlot
   slotLabel: string
+  editable: boolean
   isDragOver: boolean
   onDragOver: (e: DragEvent) => void
   onDragLeave: (e: DragEvent) => void
@@ -413,14 +441,14 @@ function BracketSlotView({
           <strong>{slot.teamName}</strong>
           {country && <small>{country.flag} {country.name}</small>}
         </div>
-        <button
+        {editable && <button
           type="button"
           className="btn-slot-remove"
           onClick={onRemove}
           title="Remove team"
         >
           <X size={13} />
-        </button>
+        </button>}
       </div>
     )
   }

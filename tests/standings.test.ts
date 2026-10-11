@@ -6,8 +6,9 @@ import {
   computeTopScorers,
   shootoutLine,
   withDerivedTeamTotals,
+  withDerivedPlayerTotals,
 } from '../src/lib/standingsUtils'
-import type { Match, Season, Team } from '../src/types'
+import type { Match, Player, Season, Team } from '../src/types'
 import { findContentBox, logoFit } from '../src/lib/imageTrimmer'
 
 let passed = 0
@@ -405,6 +406,25 @@ section('11. withDerivedTeamTotals')
 }
 
 /* ---------------- penalty shootouts ---------------- */
+
+section('Player pool totals follow event changes')
+{
+  const player: Player = {
+    id: 501, fullName: 'MUHAMMET VEYİL', teamId: 77, teamName: 'ROKETSAN',
+    position: 'forward', goals: 99, assists: 99,
+  }
+  const match = played('ROKETSAN', 2, 'TUSAŞ', 1)
+  match.events = [
+    { id: 1, matchId: match.id, teamName: player.teamName, playerName: player.fullName, eventType: 'goal', minute: 10 },
+    { id: 2, matchId: match.id, teamName: player.teamName, playerName: player.fullName, eventType: 'assist', minute: 20 },
+  ]
+  const totals = (matches: Match[]) => withDerivedPlayerTotals([player], matches).map((p) => [p.goals, p.assists])
+  check('pool agrees with completed match events', totals([match]), [[1, 1]])
+  check('live events do not inflate final totals', totals([{ ...match, matchStatus: 'live' }]), [[0, 0]])
+  check('deleting an event recalculates pool totals', totals([{ ...match, events: match.events.slice(1) }]), [[0, 1]])
+  check('deleting a match clears its totals', totals([]), [[0, 0]])
+  check('derivation does not rewrite stored player record', [player.goals, player.assists], [99, 99])
+}
 
 section('Penalty shootouts')
 const shootoutBase = { ...initialMatches[0], home: 'Union', away: 'Northside', homeScore: 0, awayScore: 0 }

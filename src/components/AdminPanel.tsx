@@ -40,7 +40,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
 import { ensureUploaded } from '../lib/assetStorage'
 import { ImageUploadField } from './ImageUploadField'
@@ -1268,7 +1268,9 @@ function SeasonModal({
     setBracket(generateEmptyBracket(count))
   }
 
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (e: FormEvent<HTMLFormElement>) =>
+    guard(e, async () => {
     e.preventDefault()
     if (!name.trim()) {
       setSaveError('Please enter a season name.')
@@ -1304,7 +1306,7 @@ function SeasonModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   const yearsList = [2028, 2027, 2026, 2025, 2024, 2023, 2022, 2021, 2020]
   const groupCountOptions = [2, 3, 4, 5, 6, 8]
@@ -2748,7 +2750,9 @@ function MediaModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -2770,7 +2774,7 @@ function MediaModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial.id ? 'Edit media asset' : 'Add media asset'} onClose={onClose}>
@@ -2999,7 +3003,9 @@ function SponsorModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -3020,7 +3026,7 @@ function SponsorModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial.id ? 'Edit sponsor' : 'Add sponsor'} onClose={onClose}>
@@ -3371,7 +3377,9 @@ function TeamModal({
 
   const selectedCountry = getCountry(countryCode)
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -3435,9 +3443,10 @@ function TeamModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
-  const handleAssignPoolPlayer = async () => {
+  const handleAssignPoolPlayer = () =>
+    guard(undefined, async () => {
     if (!selectedPoolPlayerId || !initial || !onUpdatePlayer) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolPlayerId))
     if (!targetPlayer) return
@@ -3464,9 +3473,10 @@ function TeamModal({
     } finally {
       setAssigningPoolPlayer(false)
     }
-  }
+  })
 
-  const handleInlineAddPlayer = async () => {
+  const handleInlineAddPlayer = () =>
+    guard(undefined, async () => {
     if (!newPlayerName.trim()) return
     if (!initial) {
       setSaveError('Please save the club first before adding squad members.')
@@ -3503,7 +3513,7 @@ function TeamModal({
     } finally {
       setAddingPlayer(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? `Manage Club: ${initial.name}` : 'Register New Club'} onClose={onClose}>
@@ -3968,7 +3978,9 @@ function QuickSquadModal({
     )
   }, [availablePoolPlayers, poolSearch])
 
-  const handleAssignPool = async () => {
+  const guard = useSingleFlight()
+  const handleAssignPool = () =>
+    guard(undefined, async () => {
     if (!selectedPoolId || !onUpdatePlayer) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolId))
     if (!targetPlayer) return
@@ -3995,9 +4007,10 @@ function QuickSquadModal({
     } finally {
       setAssigning(false)
     }
-  }
+  })
 
-  const handleAdd = async () => {
+  const handleAdd = () =>
+    guard(undefined, async () => {
     if (!name.trim()) return
     if (number && !validShirtNumber(number)) {
       setAddError('Shirt numbers run from 1 to 99.')
@@ -4030,7 +4043,7 @@ function QuickSquadModal({
     } finally {
       setAdding(false)
     }
-  }
+  })
 
   const country = getCountry(team.countryCode)
 
@@ -4270,7 +4283,9 @@ function MatchForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4304,7 +4319,7 @@ function MatchForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title="Create match fixture" onClose={onClose}>
@@ -4396,7 +4411,9 @@ function MatchScoreModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4436,7 +4453,7 @@ function MatchScoreModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={`Match Scorekeeper: ${match.home} vs ${match.away}`} onClose={onClose}>
@@ -4576,7 +4593,9 @@ function MatchEventsModal({
     return players.filter((p) => p.teamName === selectedTeam)
   }, [players, selectedTeam])
 
-  const submitEvent = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submitEvent = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     const form = event.currentTarget
     setSaving(true)
@@ -4595,7 +4614,7 @@ function MatchEventsModal({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={`Match Events Timeline: ${match.home} vs ${match.away}`} onClose={onClose}>
@@ -4688,6 +4707,27 @@ function MatchEventsModal({
   )
 }
 
+/**
+ * Wrap an async handler so a second call while the first is still running is
+ * ignored. A button's disabled={saving} only takes effect after React
+ * re-renders, so two clicks in quick succession (or Enter plus a click) both
+ * got through and created duplicate players. The ignored call still has its
+ * default prevented, so a form never falls through to a page reload.
+ */
+function useSingleFlight() {
+  const busy = useRef(false)
+  return useCallback(async (event: { preventDefault?: () => void } | undefined, fn: () => Promise<void>) => {
+    event?.preventDefault?.()
+    if (busy.current) return
+    busy.current = true
+    try {
+      await fn()
+    } finally {
+      busy.current = false
+    }
+  }, [])
+}
+
 /** The database accepts shirt numbers 1-99 (players_shirt_number_check). */
 function validShirtNumber(value: string): boolean {
   const n = Number(value)
@@ -4731,7 +4771,9 @@ function PlayerForm({
     }
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4767,7 +4809,7 @@ function PlayerForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? `Edit Player: ${initial.fullName}` : 'Register New Player'} onClose={onClose}>
@@ -4892,7 +4934,9 @@ function StoryForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
     event.preventDefault()
     setSaving(true)
     setSaveError('')
@@ -4915,7 +4959,7 @@ function StoryForm({
     } finally {
       setSaving(false)
     }
-  }
+  })
 
   return (
     <Modal title={initial ? 'Edit Story Article' : 'Write New Story'} onClose={onClose}>

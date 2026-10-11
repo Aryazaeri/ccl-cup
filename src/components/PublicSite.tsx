@@ -25,6 +25,7 @@ import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team }
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
+import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
 
 /* ------------------------------------------------------------------ *
  * Site configuration
@@ -117,6 +118,7 @@ const nav = [
   { label: 'Scorers', id: 'scorers' },
   { label: 'News', id: 'home' },
   { label: 'Clubs', id: 'teams' },
+  { label: 'Sponsors', id: 'sponsors' },
   { label: 'About', id: 'about' },
 ]
 
@@ -150,6 +152,17 @@ function playerActiveIn(player: Player, seasonId?: number): boolean {
   if (seasonId == null) return true
   const active = player.activeSeasonIds
   return !active || active.length === 0 || active.includes(seasonId)
+}
+
+/** A sponsor logo cropped to its content, like the club badges. */
+function SponsorLogo({ url }: { url: string }) {
+  const fit = useLogoFit(url)
+  const fitted = logoFitStyles(fit)
+  return (
+    <span className={fit ? 'pg-sponsor-art is-fitted' : 'pg-sponsor-art'} style={fitted.tile}>
+      <img src={url} alt="" loading="lazy" style={fitted.img} />
+    </span>
+  )
 }
 
 /** Index, autoplay and pause state for the news carousel in the header. */
@@ -386,6 +399,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
   const upcomingMatch = scheduledMatches[0] ?? null
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
+  // Sponsors only get a menu entry when the season has some.
+  const visibleNav = nav.filter((item) => item.id !== 'sponsors' || seasonSponsors.length > 0)
   const heroStories = seasonStories.slice(0, 5)
   const olderStories = seasonStories.slice(5)
   const carousel = useCarousel(heroStories.length)
@@ -467,7 +482,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <Brand />
           </button>
           <nav id="public-nav" className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
-            {nav.map((item) => (
+            {visibleNav.map((item) => (
               <button key={item.id} onClick={() => scrollTo(item.id)}>
                 {item.label}
               </button>
@@ -1043,6 +1058,40 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </section>
         )}
 
+        {seasonSponsors.length > 0 && (
+          <section className="pg-section content-width" id="sponsors">
+            <h2 className="pg-heading">Sponsors</h2>
+            <ul className="pg-sponsors">
+              {seasonSponsors.map((sponsor) => {
+                const body = (
+                  <>
+                    <span className="pg-sponsor-logo">
+                      {sponsor.logoUrl ? (
+                        <SponsorLogo url={sponsor.logoUrl} />
+                      ) : (
+                        <span className="pg-sponsor-wordmark">{sponsor.name}</span>
+                      )}
+                    </span>
+                    <strong>{sponsor.name}</strong>
+                    {sponsor.websiteUrl ? <small>Visit website</small> : null}
+                  </>
+                )
+                return (
+                  <li key={sponsor.id}>
+                    {sponsor.websiteUrl ? (
+                      <a className="pg-sponsor" href={sponsor.websiteUrl} target="_blank" rel="noopener noreferrer">
+                        {body}
+                      </a>
+                    ) : (
+                      <div className="pg-sponsor">{body}</div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+
         <section className="pg-about" id="about">
           <div className="content-width pg-about-grid">
             <div>
@@ -1075,45 +1124,13 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
         <CommentsSection />
 
-        {seasonSponsors.length > 0 && (
-          <section className="sponsors-section" id="sponsors">
-            <div className="content-width">
-              <h2 className="sponsors-title">Our partners</h2>
-              <div className="sponsor-rail">
-                {seasonSponsors.map((sponsor) => {
-                  const mark = sponsor.logoUrl ? (
-                    <img src={sponsor.logoUrl} alt={sponsor.name} loading="lazy" />
-                  ) : (
-                    <span className="sponsor-wordmark">{sponsor.name}</span>
-                  )
-                  return sponsor.websiteUrl ? (
-                    <a
-                      className="sponsor-item"
-                      key={sponsor.id}
-                      href={sponsor.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={sponsor.name}
-                    >
-                      {mark}
-                    </a>
-                  ) : (
-                    <span className="sponsor-item" key={sponsor.id} title={sponsor.name}>
-                      {mark}
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          </section>
-        )}
       </main>
 
       <footer className="public-footer">
         <div className="content-width">
           <Brand />
           <nav aria-label="Footer navigation">
-            {nav.map((item) => (
+            {visibleNav.map((item) => (
               <button key={item.id} onClick={() => scrollTo(item.id)}>
                 {item.label}
               </button>

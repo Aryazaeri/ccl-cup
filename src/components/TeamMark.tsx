@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { getCountry } from '../lib/countries'
-import { logoFit, measureLogo, type LogoShape } from '../lib/imageTrimmer'
+import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
 
 type Props = {
   name: string
@@ -29,31 +28,19 @@ export function TeamMark({
 
   const country = countryCode ? getCountry(countryCode) : null
 
-  // Uploaded crests are padded into a square, so a wide wordmark is only a
-  // thin strip of it. Measure the content once and draw it in a tile shaped
-  // to fit; until then (or if it can't be read) the image shows as it is.
-  const [shape, setShape] = useState<{ url: string; value: LogoShape | null } | null>(null)
-  useEffect(() => {
-    if (!logoUrl) return
-    let live = true
-    void measureLogo(logoUrl).then((value) => {
-      if (live) setShape({ url: logoUrl, value })
-    })
-    return () => {
-      live = false
-    }
-  }, [logoUrl])
-  const fit = shape && shape.url === logoUrl && shape.value ? logoFit(shape.value) : null
+  // Wide wordmarks get a tile shaped to fit (see useLogoFit).
+  const fit = useLogoFit(logoUrl)
+  const fitted = logoFitStyles(fit)
 
   return (
     <span className={`team-mark-wrapper size-${size}`}>
       {logoUrl ? (
-        <span className={fit ? 'team-logo-img-wrap is-fitted' : 'team-logo-img-wrap'} style={fit ? { aspectRatio: fit.ratio } : undefined}>
+        <span className={fit ? 'team-logo-img-wrap is-fitted' : 'team-logo-img-wrap'} style={fitted.tile}>
           <img
             src={logoUrl}
             alt={name}
             className="team-logo-img"
-            style={fit ? { width: `${fit.width}%`, height: `${fit.height}%`, left: `${fit.left}%`, top: `${fit.top}%` } : undefined}
+            style={fitted.img}
           />
         </span>
       ) : (

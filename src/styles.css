@@ -5101,3 +5101,47 @@ main:focus,
 /* A wide logo next to the name left too little room for it; stack them. */
 .pg-scoreboard-team { flex-direction: column; align-items: flex-start; gap: 10px; }
 .pg-scoreboard-team.is-away { flex-direction: column; align-items: flex-end; }
+
+/* ---------------- Highlights and sponsors ---------------- */
+
+/* The media card had no height of its own (its image is absolutely
+   positioned), so a photo collapsed to the height of its title. */
+.programme .media-rail { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.programme .media-card {
+  display: block;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius);
+  background: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.programme .media-card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(10, 20, 30, .78) 0%, transparent 55%); }
+.programme .media-card .video-title { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 2; color: #fff; font-size: .98rem; font-weight: 700; }
+.programme .media-card .media-play { position: absolute; z-index: 2; inset: 0; margin: auto; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; background: rgba(255, 255, 255, .9); color: var(--ink); }
+
+.pg-sponsors { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.pg-sponsor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  text-align: center;
+  text-decoration: none;
+}
+.pg-sponsor-logo { width: 100%; height: 84px; display: grid; place-items: center; }
+.pg-sponsor-art { position: relative; height: 84px; aspect-ratio: 1; max-width: 100%; overflow: hidden; }
+.pg-sponsor-art img { width: 100%; height: 100%; object-fit: contain; }
+.pg-sponsor-art.is-fitted img { position: absolute; max-width: none; object-fit: fill; }
+.pg-sponsor-wordmark { font-family: var(--display); font-size: 1.5rem; font-weight: 800; }
+.pg-sponsor strong { font-size: 1rem; font-weight: 700; }
+.pg-sponsor small { color: var(--turf); font-size: .86rem; font-weight: 600; }
+
+@media (hover: hover) and (pointer: fine) {
+  .programme a.pg-sponsor:hover { border-color: var(--turf); }
+  .programme a.media-card:hover .video-title { text-decoration: underline; }
+}

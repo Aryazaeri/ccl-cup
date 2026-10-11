@@ -3376,6 +3376,11 @@ function TeamModal({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    // String(null) is "null"; a missing or blank field must stay empty instead.
+    const text = (key: string) => {
+      const value = data.get(key)
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined
+    }
     try {
       // "Takım crud logo bayrak must" — the brief requires both, and neither
       // was enforced. The country select cannot be left empty, and a club
@@ -3400,17 +3405,17 @@ function TeamModal({
         id: initial?.id ?? Date.now(),
         seasonId: selectedSeasonId,
         name: String(data.get('name')).toUpperCase(),
-        shortName: String(data.get('shortName')).toUpperCase() || undefined,
+        shortName: text('shortName')?.toUpperCase(),
         countryCode,
         countryName: selectedCountry.name,
         logoUrl: storedLogoUrl,
         color: String(data.get('color')),
-        secondaryColor: String(data.get('secondaryColor')) || undefined,
-        managerName: String(data.get('managerName')) || undefined,
-        coachName: String(data.get('coachName')) || undefined,
-        bio: String(data.get('bio')) || undefined,
+        secondaryColor: text('secondaryColor'),
+        managerName: text('managerName'),
+        coachName: text('coachName'),
+        bio: text('bio'),
         tournamentFormat: (currentSelectedSeason?.fullName || currentSelectedSeason?.name || 'Champions Cup') as TournamentFormat,
-        groupName: String(data.get('groupName')) || availableGroups[0] || 'Group A',
+        groupName: text('groupName') || availableGroups[0] || 'Group A',
         played: initial?.played ?? 0,
         goalDifference: initial?.goalDifference ?? 0,
         points: initial?.points ?? 0,
@@ -3567,8 +3572,9 @@ function TeamModal({
         </div>
 
         <form className="admin-form" onSubmit={submit}>
-          {tab === 'identity' && (
-            <>
+          {/* Every form tab stays mounted (just hidden) so saving from any tab sends
+              all fields; rendering only the open tab saved "null" for the rest. */}
+          <div className="tab-panel" style={{ display: tab === 'identity' ? 'contents' : 'none' }}>
               <label>
                 Club Full Name *
                 <input
@@ -3651,11 +3657,9 @@ function TeamModal({
                   />
                 </div>
               </label>
-            </>
-          )}
+          </div>
 
-          {tab === 'staff' && (
-            <>
+          <div className="tab-panel" style={{ display: tab === 'staff' ? 'contents' : 'none' }}>
               <label>
                 Manager / Director Name
                 <input
@@ -3683,11 +3687,9 @@ function TeamModal({
                   placeholder="Brief description of the club, corporate background, and history..."
                 />
               </label>
-            </>
-          )}
+          </div>
 
-          {tab === 'tournament' && (
-            <>
+          <div className="tab-panel" style={{ display: tab === 'tournament' ? 'contents' : 'none' }}>
               <label className="span-2">
                 Season *
                 <select
@@ -3721,8 +3723,7 @@ function TeamModal({
                     : 'Active this season'}
                 </span>
               </label>
-            </>
-          )}
+          </div>
 
           {tab === 'squad' && initial && (
             <div className="span-2 in-modal-squad-container">

@@ -419,6 +419,7 @@ async function loadRemote(): Promise<TournamentData> {
     isPublished: Boolean(m.is_published),
     createdAt: m.created_at ? String(m.created_at) : undefined,
     seasonId: m.season_id != null ? Number(m.season_id) : undefined,
+    sponsorId: m.sponsor_id != null ? Number(m.sponsor_id) : undefined,
   }))
 
   const sponsors: Sponsor[] = (sponsorsRes.data ?? []).map((s2: Record<string, unknown>) => ({
@@ -1150,6 +1151,7 @@ export const mediaRepository = {
       duration_seconds: asset.durationSeconds ?? null,
       is_published: asset.isPublished,
       season_id: asset.seasonId ?? null,
+      sponsor_id: asset.sponsorId ?? null,
     }
     // media_assets.id is GENERATED ALWAYS, so a new row must not carry one.
     const { error } = asset.id

@@ -587,7 +587,7 @@ export function AdminPanel({
 
           {activeSection === 'Comments' && <CommentsManager />}
 
-          {activeSection === 'Media' && <MediaManager media={media} seasons={seasons} onRefresh={onRefresh} />}
+          {activeSection === 'Media' && <MediaManager media={media} seasons={seasons} sponsors={sponsors} onRefresh={onRefresh} />}
 
           {activeSection === 'Sponsors' && <SponsorsManager sponsors={sponsors} seasons={seasons} onRefresh={onRefresh} />}
 
@@ -2623,7 +2623,17 @@ const emptyMedia = (): MediaAsset => ({
   isPublished: false,
 })
 
-function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seasons: Season[]; onRefresh: () => Promise<void> }) {
+function MediaManager({
+  media,
+  seasons,
+  sponsors,
+  onRefresh,
+}: {
+  media: MediaAsset[]
+  seasons: Season[]
+  sponsors: Sponsor[]
+  onRefresh: () => Promise<void>
+}) {
   const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<MediaAsset | null>(null)
   const [error, setError] = useState('')
@@ -2678,6 +2688,11 @@ function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seas
                 <span className={`status-chip ${asset.isPublished ? 'status-approved' : 'status-pending'}`}>
                   {asset.isPublished ? 'Published' : 'Draft'}
                 </span>
+                {asset.sponsorId ? (
+                  <small className="field-hint">
+                    Presented by {sponsors.find((s) => s.id === asset.sponsorId)?.name ?? 'a sponsor'}
+                  </small>
+                ) : null}
                 {asset.externalUrl ? (
                   <a href={asset.externalUrl} target="_blank" rel="noopener noreferrer" className="media-admin-link">
                     <ExternalLink size={13} /> Open
@@ -2724,6 +2739,7 @@ function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seas
         <MediaModal
           initial={editing}
           seasons={seasons}
+          sponsors={sponsors}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null)
@@ -2739,15 +2755,20 @@ function MediaManager({ media, seasons, onRefresh }: { media: MediaAsset[]; seas
 function MediaModal({
   initial,
   seasons,
+  sponsors,
   onClose,
   onSaved,
 }: {
   initial: MediaAsset
   seasons: Season[]
+  sponsors: Sponsor[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
+  const [seasonId, setSeasonId] = useState(initial.seasonId ? String(initial.seasonId) : '')
+  // A season-wide asset can carry any sponsor; a season asset only that season's or season-wide ones.
+  const sponsorOptions = sponsors.filter((s) => !seasonId || !s.seasonId || String(s.seasonId) === seasonId)
   const [saveError, setSaveError] = useState('')
 
   const guard = useSingleFlight()
@@ -2767,6 +2788,7 @@ function MediaModal({
         durationSeconds: data.get('duration') ? Number(data.get('duration')) : undefined,
         isPublished: data.get('isPublished') === 'on',
         seasonId: Number(data.get('seasonId')) || undefined,
+        sponsorId: Number(data.get('sponsorId')) || undefined,
       })
       await onSaved()
     } catch (reason) {
@@ -2785,7 +2807,7 @@ function MediaModal({
         </label>
         <label className="span-2">
           Season
-          <select name="seasonId" defaultValue={initial.seasonId ?? ''}>
+          <select name="seasonId" value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
             <option value="">All seasons</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
@@ -2794,6 +2816,22 @@ function MediaModal({
             ))}
           </select>
           <small className="field-hint">Shown in the public media rail only while this season is selected.</small>
+        </label>
+        <label className="span-2">
+          Presented by
+          <select
+            name="sponsorId"
+            key={seasonId}
+            defaultValue={sponsorOptions.some((s) => s.id === initial.sponsorId) ? initial.sponsorId : ''}
+          >
+            <option value="">No sponsor</option>
+            {sponsorOptions.map((sponsor) => (
+              <option key={sponsor.id} value={sponsor.id}>
+                {sponsor.name}
+              </option>
+            ))}
+          </select>
+          <small className="field-hint">Optional. Shows a “Presented by” badge with the sponsor’s logo on the public card.</small>
         </label>
         <label>
           Type

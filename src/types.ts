@@ -166,6 +166,8 @@ export type MediaAsset = {
   createdAt?: string
   /** Which season this asset belongs to; undefined means it is not season-specific. */
   seasonId?: number
+  /** Optional "presented by" sponsor. */
+  sponsorId?: number
 }
 
 export type Sponsor = {

@@ -330,7 +330,7 @@ async function loadRemote(): Promise<TournamentData> {
     shirtNumber: p.shirt_number ? Number(p.shirt_number) : undefined,
     position: (p.position as Player['position']) || 'forward',
     strongFoot: (p.strong_foot as Player['strongFoot']) || 'right',
-    birthYear: p.birth_date ? new Date(String(p.birth_date)).getFullYear() : undefined,
+    birthYear: p.birth_year != null ? Number(p.birth_year) : p.birth_date ? new Date(String(p.birth_date)).getFullYear() : undefined,
     nationality: p.nationality ? String(p.nationality) : 'TR',
     isCaptain: Boolean(p.is_captain),
     activeSeasonIds: Array.isArray(p.active_season_ids) ? (p.active_season_ids as unknown[]).map(Number) : [],
@@ -440,6 +440,12 @@ async function loadRemote(): Promise<TournamentData> {
     media,
     sponsors,
   }
+}
+
+/** Postgres' unique-violation text means nothing to an admin; name the clash instead. */
+function clubSaveError(error: { code?: string; message: string }, name: string): Error {
+  if (error.code === '23505') return new Error(`A club called "${name}" is already registered for this season.`)
+  return new Error(error.message)
 }
 
 export const tournamentRepository = {
@@ -560,7 +566,7 @@ export const tournamentRepository = {
       tournament_format: team.tournamentFormat || 'Champions Cup',
       group_name: team.groupName || null,
     })
-    if (error) throw error
+    if (error) throw clubSaveError(error, team.name)
     return loadRemote()
   },
 
@@ -589,7 +595,7 @@ export const tournamentRepository = {
         group_name: team.groupName || null,
       })
       .eq('id', team.id)
-    if (error) throw error
+    if (error) throw clubSaveError(error, team.name)
     return loadRemote()
   },
 
@@ -625,6 +631,7 @@ export const tournamentRepository = {
       goals: player.goals ?? 0,
       assists: player.assists ?? 0,
       photo_url: player.photoUrl ?? null,
+      birth_year: player.birthYear ?? null,
     })
     if (error) throw error
     return loadRemote()
@@ -649,6 +656,7 @@ export const tournamentRepository = {
         goals: player.goals ?? 0,
         assists: player.assists ?? 0,
         photo_url: player.photoUrl ?? null,
+        birth_year: player.birthYear ?? null,
       })
       .eq('id', player.id)
     if (error) throw error

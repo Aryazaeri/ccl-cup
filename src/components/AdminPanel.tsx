@@ -202,6 +202,14 @@ export function AdminPanel({
   const [groupLeagueSeason, setGroupLeagueSeason] = useState<Season | null>(null)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  // A club just created from the "new club" modal. The modal stays open on it
+  // so players can be added straight away; without this it kept treating the
+  // club as unsaved, and saving again created a duplicate.
+  const [createdClub, setCreatedClub] = useState<{ name: string; seasonId?: number } | null>(null)
+  const createdTeam = createdClub
+    ? teams.find((t) => t.name === createdClub.name && (createdClub.seasonId == null || t.seasonId === createdClub.seasonId)) ?? null
+    : null
+  const teamInModal = editingTeam ?? createdTeam
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -685,17 +693,22 @@ export function AdminPanel({
 
       {modal === 'team' && (
         <TeamModal
-          initial={editingTeam}
+          initial={teamInModal}
           seasons={seasons}
           allPlayers={players}
-          players={editingTeam ? players.filter((p) => p.teamId === editingTeam.id || p.teamName === editingTeam.name) : []}
+          players={teamInModal ? players.filter((p) => p.teamId === teamInModal.id) : []}
           onClose={() => {
             setModal(null)
             setEditingTeam(null)
+            setCreatedClub(null)
           }}
           onSave={async (team) => {
-            if (editingTeam) await confirmUpdateTeam(team)
-            else await onAddTeam(team)
+            if (teamInModal) {
+              await confirmUpdateTeam({ ...team, id: teamInModal.id })
+            } else {
+              await onAddTeam(team)
+              setCreatedClub({ name: team.name, seasonId: team.seasonId })
+            }
           }}
           onAddPlayer={onAddPlayer}
           onUpdatePlayer={onUpdatePlayer}
@@ -3454,6 +3467,10 @@ function TeamModal({
       setSaveError('Please save the club first before adding squad members.')
       return
     }
+    if (newPlayerNumber && !validShirtNumber(newPlayerNumber)) {
+      setSquadActionError('Shirt numbers run from 1 to 99.')
+      return
+    }
     setAddingPlayer(true)
     setSquadActionError('')
     try {
@@ -3981,6 +3998,10 @@ function QuickSquadModal({
 
   const handleAdd = async () => {
     if (!name.trim()) return
+    if (number && !validShirtNumber(number)) {
+      setAddError('Shirt numbers run from 1 to 99.')
+      return
+    }
     setAdding(true)
     setAddError('')
     try {
@@ -4657,6 +4678,12 @@ function MatchEventsModal({
       </div>
     </Modal>
   )
+}
+
+/** The database accepts shirt numbers 1-99 (players_shirt_number_check). */
+function validShirtNumber(value: string): boolean {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 1 && n <= 99
 }
 
 function PlayerForm({

@@ -7,6 +7,7 @@ import {
   MapPin,
   Menu,
   MessageCircle,
+  Pause,
   Play,
   Radio,
   Search,
@@ -114,7 +115,7 @@ const nav = [
   { label: 'Fixtures', id: 'fixtures' },
   { label: 'Standings', id: 'standings' },
   { label: 'Scorers', id: 'scorers' },
-  { label: 'News', id: 'news' },
+  { label: 'News', id: 'home' },
   { label: 'Clubs', id: 'teams' },
   { label: 'About', id: 'about' },
 ]
@@ -149,6 +150,39 @@ function playerActiveIn(player: Player, seasonId?: number): boolean {
   if (seasonId == null) return true
   const active = player.activeSeasonIds
   return !active || active.length === 0 || active.includes(seasonId)
+}
+
+/** Index, autoplay and pause state for the news carousel in the header. */
+const SLIDE_MS = 7000
+
+function useCarousel(count: number) {
+  const [index, setIndex] = useState(0)
+  const [held, setHeld] = useState(false)
+  // Reduced-motion users start paused; they can still press play.
+  const [userPaused, setUserPaused] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  const current = count > 0 ? Math.min(index, count - 1) : 0
+  const running = count > 1 && !held && !userPaused
+
+  useEffect(() => {
+    if (!running) return
+    const timer = window.setTimeout(() => setIndex((i) => (i + 1) % count), SLIDE_MS)
+    return () => window.clearTimeout(timer)
+  }, [running, current, count])
+
+  return {
+    index: current,
+    setIndex,
+    running,
+    userPaused,
+    togglePaused: () => setUserPaused((paused) => !paused),
+    // Hovering or focusing inside the carousel holds the current slide.
+    holdProps: {
+      onMouseEnter: () => setHeld(true),
+      onMouseLeave: () => setHeld(false),
+      onFocus: () => setHeld(true),
+      onBlur: () => setHeld(false),
+    },
+  }
 }
 
 export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, onAdmin }: Props) {
@@ -352,7 +386,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
   const upcomingMatch = scheduledMatches[0] ?? null
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
-  const leadStory = seasonStories[0]
+  const heroStories = seasonStories.slice(0, 5)
+  const olderStories = seasonStories.slice(5)
+  const carousel = useCarousel(heroStories.length)
   const seasonTitle = activeSeason ? `CCL Cup ${activeSeason.city} ${activeSeason.year}` : 'CCL Cup'
 
   const fixtureRow = (match: Match) => {
@@ -402,14 +438,29 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       </button>
       <FlagRippleDefs />
       <section className="pg-hero" id="home">
-        <img
-          className="pg-hero-photo"
-          src="/assets/ccl-hero.png"
-          alt="A floodlit CCL Cup football match in progress"
-          width="1440"
-          height="800"
-          fetchPriority="high"
-        />
+        {heroStories.length > 0 ? (
+          heroStories.map((story, i) => (
+            <img
+              key={story.id}
+              className={i === carousel.index ? 'pg-hero-photo pg-slide-photo is-active' : 'pg-hero-photo pg-slide-photo'}
+              src={story.coverImageUrl || (i % 2 ? '/assets/ccl-celebration.png' : '/assets/ccl-hero.png')}
+              alt=""
+              width="1440"
+              height="800"
+              fetchPriority={i === 0 ? 'high' : undefined}
+              loading={i === 0 ? undefined : 'lazy'}
+            />
+          ))
+        ) : (
+          <img
+            className="pg-hero-photo"
+            src="/assets/ccl-hero.png"
+            alt="A floodlit CCL Cup football match in progress"
+            width="1440"
+            height="800"
+            fetchPriority="high"
+          />
+        )}
         <div className="pg-hero-shade" />
         <header className="public-header content-width">
           <button className="brand-button" onClick={() => scrollTo('home')}>
@@ -486,75 +537,202 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </button>
         </header>
 
-        <div className="pg-hero-body content-width">
-          <h1 className={latestResult ? 'pg-hero-title' : 'pg-hero-title is-large'}>{seasonTitle}</h1>
-
-          {latestResult ? (
-            <button className="pg-scoreboard" onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
-              <span className="pg-scoreboard-status">
-                {latestResult.matchStatus === 'live' ? <span className="pg-live">Live</span> : 'Full time'}
-                <span>
-                  {latestResult.date}, {latestResult.stage}
-                </span>
-                {shootoutLine(latestResult) ? <span className="pg-scoreboard-shootout">{shootoutLine(latestResult)}</span> : null}
-              </span>
-              <span className="pg-scoreboard-row">
-                <span className="pg-scoreboard-team">
-                  <TeamMark
-                    name={latestResult.home}
-                    color={teamLookup.get(latestResult.home)?.color}
-                    secondaryColor={teamLookup.get(latestResult.home)?.secondaryColor}
-                    logoUrl={teamLookup.get(latestResult.home)?.logoUrl}
-                    size="lg"
-                  />
-                  <strong>{latestResult.home}</strong>
-                </span>
-                <span className="pg-scoreboard-score" aria-label={`${latestResult.homeScore ?? 0} to ${latestResult.awayScore ?? 0}`}>
-                  <b>{latestResult.homeScore ?? 0}</b>
-                  <b>{latestResult.awayScore ?? 0}</b>
-                </span>
-                <span className="pg-scoreboard-team is-away">
-                  <TeamMark
-                    name={latestResult.away}
-                    color={teamLookup.get(latestResult.away)?.color}
-                    secondaryColor={teamLookup.get(latestResult.away)?.secondaryColor}
-                    logoUrl={teamLookup.get(latestResult.away)?.logoUrl}
-                    size="lg"
-                  />
-                  <strong>{latestResult.away}</strong>
-                </span>
-              </span>
-            </button>
-          ) : (
-            <p className="pg-hero-lede">
-              {upcomingMatch
-                ? `The season kicks off on ${upcomingMatch.date}. Results, tables and scorers appear here as matches are played.`
-                : 'Fixtures for this season will be published here once the draw is made.'}
-            </p>
-          )}
-
-          {upcomingMatch ? (
-            <button className="pg-next" onClick={() => openDetail({ kind: 'match', id: upcomingMatch.id })}>
-              <span className="pg-next-label">Next match</span>
-              <strong>
-                {upcomingMatch.home} v {upcomingMatch.away}
-              </strong>
-              <span>
-                {upcomingMatch.date}, {upcomingMatch.time} at {upcomingMatch.venue}
-              </span>
-            </button>
-          ) : null}
-
-          <div className="pg-hero-actions">
-            <button className="pg-button" onClick={() => scrollTo('fixtures')}>
-              See all fixtures
-            </button>
-            <button className="pg-button is-ghost" onClick={() => scrollTo('standings')}>
-              See the table
-            </button>
+        {heroStories.length > 0 ? (
+          <div
+            className={carousel.running ? 'pg-hero-body content-width pg-carousel' : 'pg-hero-body content-width pg-carousel is-paused'}
+            aria-roledescription="carousel"
+            aria-label="Latest news"
+            {...carousel.holdProps}
+          >
+            <h1 className="pg-hero-title">{seasonTitle}</h1>
+            <div className="pg-slides" aria-live={carousel.running ? 'off' : 'polite'}>
+              {heroStories.map((story, i) =>
+                i === carousel.index ? (
+                  <article key={story.id} className="pg-slide" aria-roledescription="slide" aria-label={`${i + 1} of ${heroStories.length}`}>
+                    <small className="pg-slide-meta">
+                      {storyCategoryLabel(story.category)}
+                      {story.publishedAt ? `, ${story.publishedAt}` : ''}
+                    </small>
+                    <h2 className="pg-slide-title">{story.title}</h2>
+                    {story.summary ? <p className="pg-slide-summary">{story.summary}</p> : null}
+                    <button className="pg-button" onClick={() => openDetail({ kind: 'story', id: story.id })}>
+                      Read the story
+                    </button>
+                  </article>
+                ) : null,
+              )}
+            </div>
+            {heroStories.length > 1 ? (
+              <div className="pg-slide-tabs">
+                <ol>
+                  {heroStories.map((story, i) => (
+                    <li key={story.id}>
+                      <button
+                        className={i === carousel.index ? 'pg-slide-tab is-active' : 'pg-slide-tab'}
+                        aria-current={i === carousel.index ? 'true' : undefined}
+                        aria-label={`Story ${i + 1}: ${story.title}`}
+                        onClick={() => carousel.setIndex(i)}
+                      >
+                        <b>{i + 1}</b>
+                        <span>{story.title}</span>
+                        {i === carousel.index ? (
+                          <i className="pg-slide-progress" style={{ animationDuration: `${SLIDE_MS}ms` }} aria-hidden="true" />
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  className="pg-carousel-toggle"
+                  aria-label={carousel.userPaused ? 'Play the news carousel' : 'Pause the news carousel'}
+                  onClick={carousel.togglePaused}
+                >
+                  {carousel.userPaused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
+                </button>
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : (
+          <div className="pg-hero-body content-width">
+            <h1 className={latestResult ? 'pg-hero-title' : 'pg-hero-title is-large'}>{seasonTitle}</h1>
+            {latestResult ? (
+              <button className="pg-scoreboard" onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
+                <span className="pg-scoreboard-status">
+                  {latestResult.matchStatus === 'live' ? <span className="pg-live">Live</span> : 'Full time'}
+                  <span>
+                    {latestResult.date}, {latestResult.stage}
+                  </span>
+                  {shootoutLine(latestResult) ? <span className="pg-scoreboard-shootout">{shootoutLine(latestResult)}</span> : null}
+                </span>
+                <span className="pg-scoreboard-row">
+                  <span className="pg-scoreboard-team">
+                    <TeamMark
+                      name={latestResult.home}
+                      color={teamLookup.get(latestResult.home)?.color}
+                      secondaryColor={teamLookup.get(latestResult.home)?.secondaryColor}
+                      logoUrl={teamLookup.get(latestResult.home)?.logoUrl}
+                      size="lg"
+                    />
+                    <strong>{latestResult.home}</strong>
+                  </span>
+                  <span className="pg-scoreboard-score" aria-label={`${latestResult.homeScore ?? 0} to ${latestResult.awayScore ?? 0}`}>
+                    <b>{latestResult.homeScore ?? 0}</b>
+                    <b>{latestResult.awayScore ?? 0}</b>
+                  </span>
+                  <span className="pg-scoreboard-team is-away">
+                    <TeamMark
+                      name={latestResult.away}
+                      color={teamLookup.get(latestResult.away)?.color}
+                      secondaryColor={teamLookup.get(latestResult.away)?.secondaryColor}
+                      logoUrl={teamLookup.get(latestResult.away)?.logoUrl}
+                      size="lg"
+                    />
+                    <strong>{latestResult.away}</strong>
+                  </span>
+                </span>
+              </button>
+            ) : (
+              <p className="pg-hero-lede">
+                {upcomingMatch
+                  ? `The season kicks off on ${upcomingMatch.date}. Results, tables and scorers appear here as matches are played.`
+                  : 'Fixtures for this season will be published here once the draw is made.'}
+              </p>
+            )}
+
+            {upcomingMatch ? (
+              <button className="pg-next" onClick={() => openDetail({ kind: 'match', id: upcomingMatch.id })}>
+                <span className="pg-next-label">Next match</span>
+                <strong>
+                  {upcomingMatch.home} v {upcomingMatch.away}
+                </strong>
+                <span>
+                  {upcomingMatch.date}, {upcomingMatch.time} at {upcomingMatch.venue}
+                </span>
+              </button>
+            ) : null}
+
+            <div className="pg-hero-actions">
+              <button className="pg-button" onClick={() => scrollTo('fixtures')}>
+                See all fixtures
+              </button>
+              <button className="pg-button is-ghost" onClick={() => scrollTo('standings')}>
+                See the table
+              </button>
+            </div>
+          </div>
+        )}
       </section>
+
+      {heroStories.length > 0 ? (
+        <section className="pg-matchday" aria-label="Matchday">
+          <div className="content-width pg-matchday-inner">
+            {latestResult ? (
+              <button className="pg-scoreboard" onClick={() => openDetail({ kind: 'match', id: latestResult.id })}>
+                <span className="pg-scoreboard-status">
+                  {latestResult.matchStatus === 'live' ? <span className="pg-live">Live</span> : 'Full time'}
+                  <span>
+                    {latestResult.date}, {latestResult.stage}
+                  </span>
+                  {shootoutLine(latestResult) ? <span className="pg-scoreboard-shootout">{shootoutLine(latestResult)}</span> : null}
+                </span>
+                <span className="pg-scoreboard-row">
+                  <span className="pg-scoreboard-team">
+                    <TeamMark
+                      name={latestResult.home}
+                      color={teamLookup.get(latestResult.home)?.color}
+                      secondaryColor={teamLookup.get(latestResult.home)?.secondaryColor}
+                      logoUrl={teamLookup.get(latestResult.home)?.logoUrl}
+                      size="lg"
+                    />
+                    <strong>{latestResult.home}</strong>
+                  </span>
+                  <span className="pg-scoreboard-score" aria-label={`${latestResult.homeScore ?? 0} to ${latestResult.awayScore ?? 0}`}>
+                    <b>{latestResult.homeScore ?? 0}</b>
+                    <b>{latestResult.awayScore ?? 0}</b>
+                  </span>
+                  <span className="pg-scoreboard-team is-away">
+                    <TeamMark
+                      name={latestResult.away}
+                      color={teamLookup.get(latestResult.away)?.color}
+                      secondaryColor={teamLookup.get(latestResult.away)?.secondaryColor}
+                      logoUrl={teamLookup.get(latestResult.away)?.logoUrl}
+                      size="lg"
+                    />
+                    <strong>{latestResult.away}</strong>
+                  </span>
+                </span>
+              </button>
+            ) : (
+              <p className="pg-hero-lede">
+                {upcomingMatch
+                  ? `The season kicks off on ${upcomingMatch.date}. Results, tables and scorers appear here as matches are played.`
+                  : 'Fixtures for this season will be published here once the draw is made.'}
+              </p>
+            )}
+
+            {upcomingMatch ? (
+              <button className="pg-next" onClick={() => openDetail({ kind: 'match', id: upcomingMatch.id })}>
+                <span className="pg-next-label">Next match</span>
+                <strong>
+                  {upcomingMatch.home} v {upcomingMatch.away}
+                </strong>
+                <span>
+                  {upcomingMatch.date}, {upcomingMatch.time} at {upcomingMatch.venue}
+                </span>
+              </button>
+            ) : null}
+
+            <div className="pg-hero-actions">
+              <button className="pg-button" onClick={() => scrollTo('fixtures')}>
+                See all fixtures
+              </button>
+              <button className="pg-button is-ghost" onClick={() => scrollTo('standings')}>
+                See the table
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <main id="main-content" tabIndex={-1}>
         <section className="pg-section content-width" id="fixtures">
@@ -769,42 +947,24 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </div>
         </section>
 
-        <section className="pg-section content-width" id="news">
-          <h2 className="pg-heading">News</h2>
-          {!leadStory ? (
-            <p className="pg-empty">Match reports and club news will appear here during the season.</p>
-          ) : (
-            <div className="pg-news">
-              <button className="pg-lead-story" onClick={() => openDetail({ kind: 'story', id: leadStory.id })}>
-                <img src={leadStory.coverImageUrl || '/assets/ccl-celebration.png'} alt={leadStory.title} width="640" height="400" loading="lazy" />
-                <span className="pg-lead-copy">
-                  <small>
-                    {storyCategoryLabel(leadStory.category)}
-                    {leadStory.publishedAt ? `, ${leadStory.publishedAt}` : ''}
-                  </small>
-                  <strong>{leadStory.title}</strong>
-                  {leadStory.summary ? <span>{leadStory.summary}</span> : null}
-                  <em>Read the full story</em>
-                </span>
-              </button>
-              {seasonStories.length > 1 ? (
-                <ul className="pg-story-list">
-                  {seasonStories.slice(1, 5).map((story) => (
-                    <li key={story.id}>
-                      <button onClick={() => openDetail({ kind: 'story', id: story.id })}>
-                        <small>
-                          {storyCategoryLabel(story.category)}
-                          {story.publishedAt ? `, ${story.publishedAt}` : ''}
-                        </small>
-                        <strong>{story.title}</strong>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          )}
-        </section>
+        {olderStories.length > 0 ? (
+          <section className="pg-section content-width" id="more-news">
+            <h2 className="pg-heading">More news</h2>
+            <ul className="pg-story-list">
+              {olderStories.map((story) => (
+                <li key={story.id}>
+                  <button onClick={() => openDetail({ kind: 'story', id: story.id })}>
+                    <small>
+                      {storyCategoryLabel(story.category)}
+                      {story.publishedAt ? `, ${story.publishedAt}` : ''}
+                    </small>
+                    <strong>{story.title}</strong>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <section className="pg-section content-width" id="teams">
           <h2 className="pg-heading">Clubs</h2>

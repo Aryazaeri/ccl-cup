@@ -165,6 +165,24 @@ function SponsorLogo({ url }: { url: string }) {
   )
 }
 
+/** "Presented by" line under a sponsor-tagged highlight; links out when the sponsor has a website. */
+function PresentedBy({ sponsor }: { sponsor: Sponsor }) {
+  const body = (
+    <>
+      <span>Presented by</span>
+      {sponsor.logoUrl ? <SponsorLogo url={sponsor.logoUrl} /> : null}
+      <strong>{sponsor.name}</strong>
+    </>
+  )
+  return sponsor.websiteUrl ? (
+    <a className="pg-presented" href={sponsor.websiteUrl} target="_blank" rel="noopener noreferrer">
+      {body}
+    </a>
+  ) : (
+    <div className="pg-presented">{body}</div>
+  )
+}
+
 /** Index, autoplay and pause state for the news carousel in the header. */
 const SLIDE_MS = 7000
 
@@ -1019,6 +1037,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <h2 className="pg-heading">Highlights</h2>
             <div className="media-rail">
               {seasonMedia.slice(0, 6).map((asset) => {
+                const presenter = seasonSponsors.find((s) => s.id === asset.sponsorId)
                 const body = (
                   <>
                     {asset.thumbnailUrl ? (
@@ -1038,19 +1057,16 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                     ) : null}
                   </>
                 )
-                return asset.externalUrl ? (
-                  <a
-                    className="media-card clickable-card"
-                    key={asset.id}
-                    href={asset.externalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {body}
-                  </a>
-                ) : (
-                  <div className="media-card" key={asset.id}>
-                    {body}
+                return (
+                  <div className="media-item" key={asset.id}>
+                    {asset.externalUrl ? (
+                      <a className="media-card clickable-card" href={asset.externalUrl} target="_blank" rel="noopener noreferrer">
+                        {body}
+                      </a>
+                    ) : (
+                      <div className="media-card">{body}</div>
+                    )}
+                    {presenter ? <PresentedBy sponsor={presenter} /> : null}
                   </div>
                 )
               })}
@@ -1063,6 +1079,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <h2 className="pg-heading">Sponsors</h2>
             <ul className="pg-sponsors">
               {seasonSponsors.map((sponsor) => {
+                const tagged = seasonMedia.filter((m) => m.sponsorId === sponsor.id).length
                 const body = (
                   <>
                     <span className="pg-sponsor-logo">
@@ -1085,6 +1102,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                     ) : (
                       <div className="pg-sponsor">{body}</div>
                     )}
+                    {tagged > 0 ? (
+                      <a className="pg-sponsor-media" href="#media">
+                        Presents {tagged} highlight{tagged === 1 ? '' : 's'}
+                      </a>
+                    ) : null}
                   </li>
                 )
               })}

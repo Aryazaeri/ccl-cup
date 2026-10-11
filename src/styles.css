@@ -5145,3 +5145,16 @@ main:focus,
   .programme a.pg-sponsor:hover { border-color: var(--turf); }
   .programme a.media-card:hover .video-title { text-decoration: underline; }
 }
+
+/* Sponsor-tagged highlights: a "Presented by" line under the card, and a
+   link from the sponsor tile back to the highlights it presents. */
+.media-item { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pg-presented { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); text-decoration: none; }
+.pg-presented .pg-sponsor-art { height: 32px; flex: none; }
+.pg-presented strong { color: var(--ink); font-weight: 700; }
+.pg-sponsors > li { display: flex; flex-direction: column; gap: 6px; }
+.pg-sponsors > li > .pg-sponsor { height: auto; flex: 1; }
+.pg-sponsor-media { align-self: center; color: var(--turf); font-size: .84rem; font-weight: 600; }
+@media (hover: hover) and (pointer: fine) {
+  a.pg-presented:hover strong { text-decoration: underline; }
+}

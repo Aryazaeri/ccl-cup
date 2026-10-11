@@ -4,6 +4,7 @@ import {
   computePlayerStats,
   computeStandings,
   computeTopScorers,
+  shootoutLine,
   withDerivedTeamTotals,
 } from '../src/lib/standingsUtils'
 import type { Match, Season, Team } from '../src/types'
@@ -401,6 +402,15 @@ section('11. withDerivedTeamTotals')
   check('MARMARA stored 3/2/6 is replaced by real 1/1/3', [marmara.played, marmara.goalDifference, marmara.points], [1, 1, 3])
   check('team identity preserved', nova.id, initialTeams.find((t) => t.name === 'NOVA FC')!.id)
 }
+
+/* ---------------- penalty shootouts ---------------- */
+
+section('Penalty shootouts')
+const shootoutBase = { ...initialMatches[0], home: 'Union', away: 'Northside', homeScore: 0, awayScore: 0 }
+check('no shootout recorded', shootoutLine(shootoutBase), null)
+check('away side wins', shootoutLine({ ...shootoutBase, homePenalties: 4, awayPenalties: 5 }), 'Northside won 5–4 on penalties')
+check('home side wins', shootoutLine({ ...shootoutBase, homePenalties: 3, awayPenalties: 2 }), 'Union won 3–2 on penalties')
+check('level shootout is not shown', shootoutLine({ ...shootoutBase, homePenalties: 2, awayPenalties: 2 }), null)
 
 /* ---------------- summary ---------------- */
 

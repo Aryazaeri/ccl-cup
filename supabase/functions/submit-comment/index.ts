@@ -142,6 +142,10 @@ Deno.serve(async (request) => {
   } catch {
     return json({ error: 'Expected a JSON body' }, 400)
   }
+  // `null`, arrays and primitives parse fine but are not a request object.
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return json({ error: 'Expected a JSON object' }, 400)
+  }
 
   /* ---- Staff re-screen ------------------------------------------------ */
   if (payload.commentId != null) {

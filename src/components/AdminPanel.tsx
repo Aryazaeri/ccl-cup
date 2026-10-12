@@ -2231,7 +2231,7 @@ function ContentManager({
                     <button className="row-action secondary" onClick={() => void onToggle(story.id)}>
                       {story.status === 'Published' ? 'Unpublish' : 'Publish'}
                     </button>
-                    <button className="row-action danger" onClick={() => void onDelete(story.id)}>
+                    <button className="row-action danger" onClick={() => void onDelete(story.id)} aria-label={`Delete ${story.title}`} title="Delete article">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -2687,9 +2687,9 @@ function CommentsManager() {
 /* ------------------------------------------------------------------ *
  * Media
  *
- * Assets are referenced by URL rather than uploaded: no storage bucket is
- * configured on the project, and a link-based library is the honest version of
- * that until one is.
+ * Assets are referenced by URL rather than uploaded. Only thumbnails go to the
+ * club-assets bucket (images only); direct video/document upload is an open
+ * product decision.
  * ------------------------------------------------------------------ */
 
 // These must stay in step with media_assets_kind_check; the database rejects
@@ -2836,8 +2836,8 @@ function MediaManager({
           sponsors={sponsors}
           onClose={() => setEditing(null)}
           onSaved={async () => {
-            setEditing(null)
             await onRefresh()
+            setEditing(null)
           }}
         />
       ) : null}
@@ -2951,8 +2951,8 @@ function MediaModal({
             required
           />
           <small className="field-hint">
-            Required — the database rejects an asset with neither an uploaded file nor a link, and there is no
-            storage bucket configured yet.
+            Required — media are shared as links (YouTube, Instagram, a hosted file). Only the thumbnail
+            below is uploaded.
           </small>
         </label>
         <ImageUploadField
@@ -3115,8 +3115,8 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
           seasons={seasons}
           onClose={() => setEditing(null)}
           onSaved={async () => {
-            setEditing(null)
             await onRefresh()
+            setEditing(null)
           }}
         />
       ) : null}
@@ -3285,7 +3285,7 @@ function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
 
       <p className="module-note">
         <ShieldCheck size={15} />
-        Accounts are created by signing up through the staff login. Email addresses live in Supabase Auth and
+        Accounts are created in the Supabase dashboard (Authentication → Users); the staff login only signs in. Email addresses live in Supabase Auth and
         are not readable from here, so accounts are listed by profile name.
       </p>
 
@@ -4602,6 +4602,7 @@ function MatchScoreModal({
             <input
               type="number"
               name="homeScore"
+              aria-label={`${match.home} score`}
               defaultValue={match.homeScore ?? ''}
               placeholder="0"
               min={0}
@@ -4613,6 +4614,7 @@ function MatchScoreModal({
             <input
               type="number"
               name="awayScore"
+              aria-label={`${match.away} score`}
               defaultValue={match.awayScore ?? ''}
               placeholder="0"
               min={0}
@@ -4629,6 +4631,7 @@ function MatchScoreModal({
             <input
               type="number"
               name="homePenalties"
+              aria-label={`${match.home} penalties`}
               defaultValue={match.homePenalties ?? ''}
               placeholder="Home"
               min={0}
@@ -4638,6 +4641,7 @@ function MatchScoreModal({
             <input
               type="number"
               name="awayPenalties"
+              aria-label={`${match.away} penalties`}
               defaultValue={match.awayPenalties ?? ''}
               placeholder="Away"
               min={0}

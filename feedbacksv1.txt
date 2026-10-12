@@ -1,6 +1,6 @@
-Status as of 2026-10-11 — items 1–2.4 are present on remote main.
-Items 2.5–2.6 and the latest admin/public flow fixes are implemented and verified,
-ready for review; these changes have not yet been merged or deployed.
+Status as of 2026-10-12 — all items below, including 2.5–2.6 and the admin/public flow
+fixes, are merged to main and deployed (PR #10, 7d28f7c). Follow-up work is tracked in the
+2026-10-12 production audit backlog.
 
 1. the news carroile should be shown on the main header
    -> DONE. The header is now a news carousel: the first 5 stories rotate every 7s, with

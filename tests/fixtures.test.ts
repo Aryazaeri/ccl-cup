@@ -19,6 +19,10 @@ check('all odd/even pools from 2–32 play every opponent exactly once without d
     for (const round of schedule) assert.equal(new Set(round.flat()).size, round.flat().length)
   }
 })
+check('a club entered in another season is rejected, naming the season checked', () => {
+  const foreign = { ...league, league: { teamCount: 2, slots: [{ position: 1, teamId: 1 }, { position: 2, teamId: 99 }] } }
+  assert.throws(() => planFixtures(foreign, teams, [], options), /^Error: 2026 — Test: a club in its table or draw is not entered in this season/)
+})
 check('duplicate assignments and incomplete tables are rejected', () => {
   assert.throws(() => roundRobin([1, 1]), /more than once/)
   assert.throws(() => roundRobin([1]), /at least two/)

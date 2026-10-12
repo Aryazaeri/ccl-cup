@@ -301,6 +301,7 @@ async function loadRemote(): Promise<TournamentData> {
     groupLeague: s.group_league as Season['groupLeague'],
     parentSeasonId: s.parent_season_id ? Number(s.parent_season_id) : null,
     isActive: Boolean(s.is_current),
+    status: (s.status as Season['status']) ?? 'published',
   }))
 
   const teams: Team[] = (teamsRes.data ?? []).map((t: Record<string, unknown>) => ({
@@ -520,9 +521,8 @@ export const tournamentRepository = {
       name: season.name,
       slug: `${slugify(season.fullName || season.name)}-${Date.now().toString(36)}`,
       is_current: season.isActive ?? false,
-      // `seasons_public_read` gates on status, so a season left at the 'draft'
-      // default would be invisible to the public site.
-      status: 'published',
+      // Separate from is_current: only published seasons appear publicly.
+      status: season.status ?? 'published',
       city: season.city,
       year: season.year,
       full_name: season.fullName,
@@ -551,7 +551,7 @@ export const tournamentRepository = {
         name: season.name,
         slug: slugify(season.fullName || season.name),
         is_current: season.isActive ?? false,
-        status: 'published',
+        status: season.status ?? 'published',
         city: season.city,
         year: season.year,
         full_name: season.fullName,
@@ -1100,6 +1100,8 @@ export type CommentDraft = {
   body: string
   matchId?: number | null
   storyId?: number | null
+  /** The season being viewed; feedback is listed and moderated per season. */
+  seasonId?: number | null
 }
 
 function loadLocalComments(): Comment[] {
@@ -1116,15 +1118,14 @@ function loadLocalComments(): Comment[] {
 export const commentsRepository = {
   /** Approved comments, newest first. Never throws — an unavailable table
    *  yields an empty list rather than breaking the page around it. */
-  async listApproved(): Promise<Comment[]> {
+  async listApproved(seasonId: number | undefined): Promise<Comment[]> {
     if (!supabase) {
-      return loadLocalComments().filter((comment) => comment.status === 'approved')
+      return loadLocalComments().filter((comment) => comment.status === 'approved' && (seasonId == null || comment.seasonId === seasonId))
     }
     try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('*')
-        .eq('status', 'approved')
+      let query = supabase.from('comments').select('*').eq('status', 'approved')
+      if (seasonId != null) query = query.eq('season_id', seasonId)
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(50)
       if (error) throw error
@@ -1134,6 +1135,7 @@ export const commentsRepository = {
         body: String(row.body),
         matchId: row.match_id != null ? Number(row.match_id) : null,
         storyId: row.story_id != null ? Number(row.story_id) : null,
+        seasonId: row.season_id != null ? Number(row.season_id) : null,
         status: row.status as Comment['status'],
         createdAt: row.created_at
           ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(
@@ -1169,6 +1171,7 @@ export const commentsRepository = {
         body,
         matchId: draft.matchId ?? null,
         storyId: draft.storyId ?? null,
+        seasonId: draft.seasonId ?? null,
         status: 'pending',
       }
       localStorage.setItem(commentsStorageKey, JSON.stringify([comment, ...existing]))
@@ -1176,7 +1179,7 @@ export const commentsRepository = {
     }
 
     const screened = await supabase.functions.invoke<{ status?: string }>('submit-comment', {
-      body: { authorName, body, matchId: draft.matchId ?? null, storyId: draft.storyId ?? null },
+      body: { authorName, body, matchId: draft.matchId ?? null, storyId: draft.storyId ?? null, seasonId: draft.seasonId ?? null },
     })
     if (!screened.error) return screened.data?.status === 'approved' ? 'approved' : 'pending'
     // A 400 is the function rejecting the input: show its message. Anything
@@ -1195,6 +1198,7 @@ export const commentsRepository = {
       body,
       match_id: draft.matchId ?? null,
       story_id: draft.storyId ?? null,
+      season_id: draft.seasonId ?? null,
       status: 'pending',
     })
     if (error) {
@@ -1228,6 +1232,7 @@ function mapComment(row: Record<string, unknown>): Comment {
     body: String(row.body),
     matchId: row.match_id != null ? Number(row.match_id) : null,
     storyId: row.story_id != null ? Number(row.story_id) : null,
+    seasonId: row.season_id != null ? Number(row.season_id) : null,
     status: row.status as Comment['status'],
     createdAt: row.created_at
       ? new Intl.DateTimeFormat('en-GB', {

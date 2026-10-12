@@ -74,6 +74,7 @@ import {
   type Season,
   type SeasonGroupLeague,
   type SeasonLeague,
+  type SeasonStatus,
   type SeasonType,
   type Sponsor,
   type Story,
@@ -582,7 +583,7 @@ export function AdminPanel({
               canManage={can(profile.role, 'seasons')} onUpdateSeason={onUpdateSeason} onOpenBracket={setBracketSeason} />
           )}
 
-          {activeSection === 'Comments' && <CommentsManager />}
+          {activeSection === 'Comments' && <CommentsManager seasons={seasons} />}
 
           {activeSection === 'Media' && <MediaManager media={media} seasons={seasons} sponsors={sponsors} onRefresh={onRefresh} />}
 
@@ -942,6 +943,8 @@ function Overview({
   )
 }
 
+const SEASON_STATUS_LABEL: Record<SeasonStatus, string> = { draft: 'Draft', published: 'Published', archived: 'Archived' }
+
 function SeasonsManager({
   seasons,
   backend,
@@ -1110,11 +1113,11 @@ function SeasonsManager({
                     <span className="season-year-badge">{season.year}</span>
                   </td>
                   <td>
-                    {season.isActive ? (
-                      <span className="season-status-pill active">Active</span>
-                    ) : (
-                      <span className="season-status-pill archived">Archived</span>
-                    )}
+                    {/* Publication and "current" are separate: a current season can still be a draft. */}
+                    <span className={`season-status-pill ${(season.status ?? 'published') === 'published' ? 'active' : 'archived'}`}>
+                      {SEASON_STATUS_LABEL[season.status ?? 'published']}
+                    </span>
+                    {season.isActive ? <span className="season-status-pill active">Current</span> : null}
                   </td>
                   <td>
                     <div className="seasons-action-buttons">
@@ -1260,6 +1263,8 @@ function SeasonModal({
   const [openLeagueBuilder, setOpenLeagueBuilder] = useState(false)
   const [openGroupLeagueBuilder, setOpenGroupLeagueBuilder] = useState(false)
   const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  // New seasons start as drafts so they stay off the public site until ready.
+  const [status, setStatus] = useState<SeasonStatus>(initial?.status ?? (initial ? 'published' : 'draft'))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -1324,6 +1329,7 @@ function SeasonModal({
         league: seasonType === 'league' ? (league ?? { teamCount: 0, slots: [] }) : undefined,
         groupLeague: seasonType === 'group_league' ? (groupLeague ?? generateEmptyGroupLeague(groupCount)) : undefined,
         isActive,
+        status,
       })
       onClose()
     } catch (reason) {
@@ -1518,13 +1524,22 @@ function SeasonModal({
             </div>
           )}
 
+          <label className="span-2">
+            Visibility
+            <select value={status} onChange={(e) => setStatus(e.target.value as SeasonStatus)}>
+              <option value="draft">Draft — hidden from the public site</option>
+              <option value="published">Published — shown on the public site</option>
+              <option value="archived">Archived — hidden from the public site</option>
+            </select>
+          </label>
+
           <label className="checkbox-label span-2">
             <input
               type="checkbox"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
             />
-            <span>Mark as the current season</span>
+            <span>Mark as the current season (the public site opens on it when it is published)</span>
           </label>
 
           {saveError ? <div className="form-error span-2">{saveError}</div> : null}
@@ -2564,10 +2579,12 @@ const COMMENT_FILTERS: { key: Comment['status'] | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
 ]
 
-function CommentsManager() {
+function CommentsManager({ seasons }: { seasons: Season[] }) {
   const { confirm, confirmDialog } = useConfirm()
   const [comments, setComments] = useState<Comment[]>([])
   const [filter, setFilter] = useState<Comment['status'] | 'all'>('pending')
+  // Feedback is moderated per season; 'none' holds comments from before seasons were tracked.
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all' | 'none'>(() => defaultSeasonId(seasons) ?? 'all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -2601,8 +2618,15 @@ function CommentsManager() {
     }
   }
 
-  const visible = comments.filter((comment) => filter === 'all' || comment.status === filter)
-  const pendingCount = comments.filter((comment) => comment.status === 'pending').length
+  const scoped = comments.filter((comment) =>
+    seasonFilter === 'all' ? true : seasonFilter === 'none' ? comment.seasonId == null : comment.seasonId === seasonFilter,
+  )
+  const visible = scoped.filter((comment) => filter === 'all' || comment.status === filter)
+  const pendingCount = scoped.filter((comment) => comment.status === 'pending').length
+  const seasonName = (id?: number | null) => {
+    const season = seasons.find((item) => item.id === id)
+    return season ? seasonLabel(season) : 'No season'
+  }
 
   return (
     <section className="module-section">
@@ -2617,12 +2641,30 @@ function CommentsManager() {
         </div>
       </div>
 
+      <div className="filter-bar">
+        <div className="filter-group">
+          <span>Season:</span>
+          <select
+            value={seasonFilter}
+            onChange={(e) => setSeasonFilter(e.target.value === 'all' || e.target.value === 'none' ? e.target.value : Number(e.target.value))}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+            <option value="none">No season</option>
+          </select>
+        </div>
+      </div>
+
       <div className="filter-chips">
         {COMMENT_FILTERS.map((option) => {
           const count =
             option.key === 'all'
-              ? comments.length
-              : comments.filter((comment) => comment.status === option.key).length
+              ? scoped.length
+              : scoped.filter((comment) => comment.status === option.key).length
           return (
             <button
               key={option.key}
@@ -2649,6 +2691,7 @@ function CommentsManager() {
                 <div>
                   <strong>{comment.authorName}</strong>
                   {comment.createdAt ? <time>{comment.createdAt}</time> : null}
+                  {seasonFilter === 'all' ? <small>{seasonName(comment.seasonId)}</small> : null}
                 </div>
                 <span className={`status-chip status-${comment.status}`}>{comment.status}</span>
               </header>
@@ -3415,6 +3458,11 @@ function MatchTable({
                     )}
                     <span className={`status-dot ${match.matchStatus}`}></span>
                     <span className="status-text">{match.matchStatus}</span>
+                    {match.status === 'Draft' ? (
+                      <span className="status-chip status-pending" title="Not shown on the public site until published">
+                        Draft
+                      </span>
+                    ) : null}
                   </div>
                 </td>
                 <td>{match.stage}</td>

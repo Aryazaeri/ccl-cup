@@ -2,7 +2,7 @@
 //
 // Two calls, one screening path:
 //
-//   POST { authorName, body, matchId?, storyId? }   — public. Stores the
+//   POST { authorName, body, matchId?, storyId?, seasonId? }   — public. Stores the
 //        comment as `pending` first (so nothing is ever lost), screens it with
 //        TypeSafe, records the assessment, then applies the policy's action.
 //        Replies { id, status: 'approved' | 'pending' }. A rejection is
@@ -181,6 +181,16 @@ Deno.serve(async (request) => {
   if (body.length < 2) return json({ error: 'Please write a comment before sending.' }, 400)
   if (body.length > 2000) return json({ error: 'Comments are limited to 2000 characters.' }, 400)
 
+  // Feedback is filed under the season being viewed. The service role bypasses
+  // RLS, so check here that it is a published season, as the insert policy does.
+  const seasonId = optionalId(payload.seasonId)
+  if (payload.seasonId != null && !seasonId) return json({ error: 'Invalid season id' }, 400)
+  if (seasonId) {
+    const { data: season, error: seasonError } = await admin.from('seasons').select('status').eq('id', seasonId).maybeSingle()
+    if (seasonError) return json({ error: 'Could not check the season.' }, 500)
+    if (season?.status !== 'published') return json({ error: 'Feedback is only open for published seasons.' }, 400)
+  }
+
   // Stored before screening, as pending. The service role bypasses RLS, so
   // this line is what guarantees a new comment is never published unseen.
   const { data: inserted, error: insertError } = await admin
@@ -190,6 +200,7 @@ Deno.serve(async (request) => {
       body,
       match_id: optionalId(payload.matchId),
       story_id: optionalId(payload.storyId),
+      season_id: seasonId,
       status: 'pending',
     })
     .select('id')

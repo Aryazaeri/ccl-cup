@@ -411,13 +411,13 @@ section('11. withDerivedTeamTotals')
 section('Player pool totals follow event changes')
 {
   const player: Player = {
-    id: 501, fullName: 'MUHAMMET VEYİL', teamId: 77, teamName: 'ROKETSAN',
+    id: 501, fullName: 'MUHAMMET VEYİL', squads: [{ seasonId: 1, teamId: 77 }],
     position: 'forward', goals: 99, assists: 99,
   }
-  const match = played('ROKETSAN', 2, 'TUSAŞ', 1)
+  const match = { ...played('ROKETSAN', 2, 'TUSAŞ', 1), homeTeamId: 77 }
   match.events = [
-    { id: 1, matchId: match.id, teamName: player.teamName, playerName: player.fullName, eventType: 'goal', minute: 10 },
-    { id: 2, matchId: match.id, teamName: player.teamName, playerName: player.fullName, eventType: 'assist', minute: 20 },
+    { id: 1, matchId: match.id, teamName: 'ROKETSAN', playerName: player.fullName, eventType: 'goal', minute: 10 },
+    { id: 2, matchId: match.id, teamName: 'ROKETSAN', playerName: player.fullName, eventType: 'assist', minute: 20 },
   ]
   const totals = (matches: Match[]) => withDerivedPlayerTotals([player], matches).map((p) => [p.goals, p.assists])
   check('pool agrees with completed match events', totals([match]), [[1, 1]])
@@ -467,7 +467,7 @@ section('Stable club identities')
 
 section('Player identity after transfers and name changes')
 {
-  const player: Player = { id: 991, teamId: 2, teamName: 'NEW CLUB', fullName: 'New Name', position: 'forward', strongFoot: 'right', isCaptain: false, goals: 0, assists: 0 }
+  const player: Player = { id: 991, squads: [{ seasonId: 1, teamId: 2 }], fullName: 'New Name', position: 'forward', strongFoot: 'right', isCaptain: false, goals: 0, assists: 0 }
   const match: Match = { ...played('OLD CLUB', 1, 'OPPONENT', 0), events: [
     { id: 1, matchId: 1, playerId: 991, playerName: 'Old Name', teamName: 'OLD CLUB', eventType: 'goal', minute: 20 },
     { id: 2, matchId: 1, playerId: 991, playerName: 'Old Name', teamName: 'OLD CLUB', eventType: 'assist', minute: 30 },
@@ -477,7 +477,7 @@ section('Player identity after transfers and name changes')
   check('past assists survive a transfer and rename', totals.assists, 1)
   check('a linked player outside the current roster stays in the scorer list', computeTopScorers([], [match])[0].playerId, 991)
   const duplicate = { ...player, id: 992 }
-  const unlinked = { ...match, events: [{ ...match.events![0], playerId: undefined, playerName: player.fullName, teamName: player.teamName }] }
+  const unlinked = { ...match, events: [{ ...match.events![0], playerId: undefined, playerName: player.fullName, teamName: 'NEW CLUB' }] }
   check('same-name roster players are not merged', withDerivedPlayerTotals([player, duplicate], [unlinked]).map((p) => p.goals), [0, 0])
   check('ambiguous legacy goals remain visible as unlinked', computeTopScorers([player, duplicate], [unlinked])[0].playerId, undefined)
   const linkedDuplicate = { ...unlinked, events: [{ ...unlinked.events![0], playerId: 992 }] }

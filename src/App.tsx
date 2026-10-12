@@ -3,7 +3,7 @@ import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { PublicSite } from './components/PublicSite'
 import type { FixtureOptions } from './lib/fixtureUtils'
 import { withDerivedPlayerTotals, withDerivedTeamTotals } from './lib/standingsUtils'
-import { tournamentRepository, type TournamentData } from './services/tournamentRepository'
+import { tournamentRepository, type EntryRoster, type TournamentData } from './services/tournamentRepository'
 import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
 
 // Staff-only screens load on demand: the admin panel and its canvas editors
@@ -164,12 +164,13 @@ export default function App() {
         onAddSeason={(season: Season) => mutate(() => tournamentRepository.addSeason(season))}
         onUpdateSeason={(season: Season) => mutate(() => tournamentRepository.updateSeason(season))}
         onDeleteSeason={(id: number) => mutate(() => tournamentRepository.deleteSeason(id))}
-        onAddTeam={(team: Team) => mutate(() => tournamentRepository.addTeam(team))}
+        onAddTeam={(team: Team, roster: EntryRoster) => mutate(() => tournamentRepository.addTeam(team, roster))}
         onUpdateTeam={(team: Team) => mutate(() => tournamentRepository.updateTeam(team))}
         onDeleteTeam={(id: number) => mutate(() => tournamentRepository.deleteTeam(id))}
         onAddPlayer={(player: Player) => mutate(() => tournamentRepository.addPlayer(player))}
         onUpdatePlayer={(player: Player) => mutate(() => tournamentRepository.updatePlayer(player))}
         onDeletePlayer={(id: number) => mutate(() => tournamentRepository.deletePlayer(id))}
+        onSetSquad={(playerId: number, seasonId: number, teamId: number | null) => mutate(() => tournamentRepository.setSquad(playerId, seasonId, teamId))}
         onGenerateFixtures={(seasonId: number, options: FixtureOptions) => mutate(() => tournamentRepository.generateFixtures(seasonId, options))}
         onAddMatch={(match: Match) => mutate(() => tournamentRepository.addMatch(match))}
         onUpdateMatch={(match: Match) => mutate(() => tournamentRepository.updateMatch(match))}

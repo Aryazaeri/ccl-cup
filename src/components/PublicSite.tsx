@@ -28,6 +28,8 @@ import { TeamMark } from './TeamMark'
 import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
 import { bracketWithResults, tableStageMatches } from '../lib/qualificationUtils'
 import { KnockoutBracket } from './KnockoutBracket'
+import { isInTeam, latestSquad, matchSquad, playerTeamId, squadOf } from '../lib/squadUtils'
+import { assignedGroupName } from '../lib/groupLeagueUtils'
 
 /* ------------------------------------------------------------------ *
  * Site configuration
@@ -144,19 +146,6 @@ const MATCH_STATUS_LABELS: Record<string, string> = {
 
 function storyCategoryLabel(category?: string): string {
   return (category && STORY_CATEGORY_LABELS[category]) || 'Story'
-}
-
-/**
- * Is this player on the books for the given season?
- *
- * An empty or absent list means no season history was ever recorded, which is
- * treated as "still current" rather than "never played" — otherwise every
- * player imported before season membership existed would vanish from the site.
- */
-function playerActiveIn(player: Player, seasonId?: number): boolean {
-  if (seasonId == null) return true
-  const active = player.activeSeasonIds
-  return !active || active.length === 0 || active.includes(seasonId)
 }
 
 /** A sponsor logo cropped to its content, like the club badges. */
@@ -278,23 +267,11 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     )
   }, [matches, seasonTeams, activeSeason])
 
-  /**
-   * Squad members for the selected season.
-   *
-   * Two conditions, not one. The club must be in the season, and the player
-   * must be active in it — `activeSeasonIds` is what makes a roster
-   * historically valid, so a player who left before this season is excluded
-   * from its scorer lists even though their club still competes. A player with
-   * no season list at all has no history recorded and is treated as current.
-   */
+  /** Players in a squad of one of the selected season's club entries. */
   const seasonPlayers = useMemo(() => {
     if (!activeSeason || !seasonScopingAvailable) return players
     const ids = new Set(seasonTeams.map((team) => team.id))
-    const names = new Set(seasonTeams.map((team) => team.name))
-    return players.filter((player) => {
-      const inSeasonClub = ids.has(player.teamId) || (!!player.teamName && names.has(player.teamName))
-      return inSeasonClub && playerActiveIn(player, activeSeason.id)
-    })
+    return players.filter((player) => player.squads.some((entry) => ids.has(entry.teamId)))
   }, [players, seasonTeams, activeSeason, seasonScopingAvailable])
 
   /**
@@ -383,7 +360,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const playersByTeamId = useMemo(() => {
     const counts = new Map<number, number>()
     for (const player of seasonPlayers) {
-      counts.set(player.teamId, (counts.get(player.teamId) ?? 0) + 1)
+      for (const { teamId } of player.squads) counts.set(teamId, (counts.get(teamId) ?? 0) + 1)
     }
     return counts
   }, [seasonPlayers])
@@ -1036,7 +1013,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                         {country.flag} {country.name}
                       </span>
                       <small>
-                        {team.groupName ? `${team.groupName}, ` : ''}
+                        {assignedGroupName(activeSeason ?? undefined, team.id) ? `${assignedGroupName(activeSeason ?? undefined, team.id)}, ` : ''}
                         {squadSize} {squadSize === 1 ? 'player' : 'players'}
                       </small>
                     </button>
@@ -1199,11 +1176,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <TeamRosterModal
           team={selectedTeamRoster}
           seasons={seasons}
-          players={rosterPlayers.filter(
-            (p) =>
-              (p.teamId === selectedTeamRoster.id || p.teamName === selectedTeamRoster.name) &&
-              playerActiveIn(p, selectedTeamRoster.seasonId ?? activeSeason?.id),
-          )}
+          players={squadOf(rosterPlayers, selectedTeamRoster.id)}
           onOpenPlayer={(player) => openDetail({ kind: 'player', id: player.id })}
           onClose={closeDetail}
         />
@@ -1212,7 +1185,13 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       {activePlayer && (
         <PlayerDetailModal
           player={activePlayer}
-          team={teams.find((t) => t.id === activePlayer.teamId) ?? null}
+          team={
+            teams.find(
+              (t) =>
+                t.id ===
+                (playerTeamId(activePlayer, activeSeason?.id) ?? latestSquad(activePlayer, seasons.map((season) => season.id))?.teamId),
+            ) ?? null
+          }
           matches={seasonMatches}
           players={players}
           onClose={closeDetail}
@@ -1385,7 +1364,7 @@ function SearchOverlay({
     return {
       teams: teams.filter((team) => matchesText(team.name, team.shortName, team.countryName, team.managerName)).slice(0, 6),
       players: players
-        .filter((player) => matchesText(player.fullName, player.teamName, player.position))
+        .filter((player) => matchesText(player.fullName, teams.find((team) => isInTeam(player, team.id))?.name, player.position))
         .slice(0, 8),
       matches: matches.filter((match) => matchesText(match.home, match.away, match.venue, match.stage)).slice(0, 6),
       stories: stories.filter((story) => matchesText(story.title, story.summary)).slice(0, 5),
@@ -1457,7 +1436,7 @@ function SearchOverlay({
                       <span>
                         <strong>{player.fullName}</strong>
                         <small>
-                          {player.teamName} · {player.position.slice(0, 3).toUpperCase()}
+                          {teams.find((team) => isInTeam(player, team.id))?.name ?? 'Free agent'} · {player.position.slice(0, 3).toUpperCase()}
                         </small>
                       </span>
                       <ArrowRight size={16} />
@@ -1673,7 +1652,7 @@ function PlayerDetailModal({
           <div className="player-detail-meta">
             <h3>{player.fullName}</h3>
             <p className="player-detail-club">
-              {team ? team.name : player.teamName} · {country.flag} {country.name}
+              {team ? team.name : 'Free agent'} · {country.flag} {country.name}
             </p>
             <div className="player-detail-tags">
               <span className={`position-tag ${player.position}`}>
@@ -1716,8 +1695,10 @@ function MatchDetailsModal({
   const awayCountry = getCountry(awayTeam?.countryCode)
   const shootout = shootoutLine(match)
 
-  const homeSquad = players.filter((p) => p.teamName === match.home || (homeTeam && p.teamId === homeTeam.id))
-  const awaySquad = players.filter((p) => p.teamName === match.away || (awayTeam && p.teamId === awayTeam.id))
+  // The squads recorded when the match was completed, so later transfers do not rewrite it.
+  const homeSquad = matchSquad(match, match.homeTeamId ?? homeTeam?.id, players)
+  const awaySquad = matchSquad(match, match.awayTeamId ?? awayTeam?.id, players)
+  const positionOf = (playerId?: number) => players.find((p) => p.id === playerId)?.position
 
   const hasScore = match.homeScore != null && match.awayScore != null
   const events = match.events ?? []
@@ -1840,10 +1821,10 @@ function MatchDetailsModal({
             <div className="squad-column">
               <h5>{match.home} squad</h5>
               {homeSquad.map((p) => (
-                <div key={p.id} className="player-row-simple">
+                <div key={p.playerId ?? p.playerName} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
-                  <span>{p.fullName}</span>
-                  <span className="pos-badge">{p.position.slice(0, 3).toUpperCase()}</span>
+                  <span>{p.playerName}</span>
+                  <span className="pos-badge">{positionOf(p.playerId)?.slice(0, 3).toUpperCase() ?? ''}</span>
                 </div>
               ))}
             </div>
@@ -1851,10 +1832,10 @@ function MatchDetailsModal({
             <div className="squad-column">
               <h5>{match.away} squad</h5>
               {awaySquad.map((p) => (
-                <div key={p.id} className="player-row-simple">
+                <div key={p.playerId ?? p.playerName} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
-                  <span>{p.fullName}</span>
-                  <span className="pos-badge">{p.position.slice(0, 3).toUpperCase()}</span>
+                  <span>{p.playerName}</span>
+                  <span className="pos-badge">{positionOf(p.playerId)?.slice(0, 3).toUpperCase() ?? ''}</span>
                 </div>
               ))}
             </div>
@@ -2024,6 +2005,7 @@ function TeamRosterModal({
   onClose: () => void
 }) {
   const country = getCountry(team.countryCode)
+  const groupName = assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id)
 
   return (
     <Modal title="Club and squad" className="modal-team-roster" onClose={onClose}>
@@ -2039,7 +2021,8 @@ function TeamRosterModal({
           <div>
             <h3>{team.name}</h3>
             <span>
-              {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'} ({team.groupName ?? 'Group A'})
+              {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'}
+              {groupName ? ` (${groupName})` : ''}
             </span>
             {team.managerName && (
               <small style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>

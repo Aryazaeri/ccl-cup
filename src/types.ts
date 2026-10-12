@@ -108,9 +108,14 @@ export const HOST_CITIES = [
   'Paris',
 ]
 
+/**
+ * A club's entry in one season. Matches, events and standings point at this
+ * id; `clubId` is the lasting identity shared by the club's entries.
+ */
 export type Team = {
   id: number
   seasonId?: number
+  clubId?: number
   name: string
   shortName?: string
   countryCode: string
@@ -132,10 +137,13 @@ export type Team = {
 export type PlayerPosition = 'goalkeeper' | 'defender' | 'midfielder' | 'forward'
 export type StrongFoot = 'left' | 'right' | 'both'
 
+/** A player's place in one club entry's squad; at most one per season. */
+export type SquadEntry = { seasonId: number; teamId: number }
+
+/** One person across seasons. Which club they play for is per season, in `squads`. */
 export type Player = {
   id: number
-  teamId: number
-  teamName: string
+  squads: SquadEntry[]
   fullName: string
   shirtNumber?: number
   position: PlayerPosition
@@ -143,13 +151,7 @@ export type Player = {
   birthYear?: number
   nationality?: string
   isCaptain?: boolean
-  /**
-   * Seasons this player is registered for, by season id.
-   *
-   * Replaces the previous string[] of display labels, which broke whenever a
-   * season was renamed — the live data had already drifted into two different
-   * labels for the same season.
-   */
+  /** Seasons the player has a squad place in, derived from `squads`. Read-only. */
   activeSeasonIds?: number[]
   goals?: number
   assists?: number
@@ -231,6 +233,9 @@ export type MatchEvent = {
 
 export type MatchStatus = 'scheduled' | 'live' | 'completed' | 'postponed'
 
+/** A player as registered for one side of a completed match. */
+export type MatchSquadPlayer = { teamId: number; playerId?: number; playerName: string; shirtNumber?: number }
+
 export type Match = {
   id: number
   home: string
@@ -254,6 +259,8 @@ export type Match = {
   /** The season this fixture belongs to. Stored, not inferred from its clubs. */
   seasonId?: number
   matchStatus: MatchStatus
+  /** Squads recorded when the match was completed; absent for unplayed matches. */
+  squads?: MatchSquadPlayer[]
   status: 'Scheduled' | 'Draft'
   /**
    * External broadcast link (YouTube or similar). When a match is live and

@@ -56,7 +56,7 @@ export const initialSeasons: Season[] = [
   },
 ]
 
-export const initialTeams: Team[] = [
+const seedTeams: Omit<Team, 'seasonId'>[] = [
   {
     id: 1,
     name: 'NOVA FC',
@@ -167,52 +167,62 @@ export const initialTeams: Team[] = [
   },
 ]
 
-export const initialPlayers: Player[] = [
+// All seed clubs are entered in season 1.
+export const initialTeams: Team[] = seedTeams.map((team) => ({ ...team, seasonId: 1, clubId: team.id }))
+
+// Seed players list their club entry.
+type SeedPlayer = Omit<Player, 'squads' | 'activeSeasonIds'> & { teamId: number }
+const seedPlayers: SeedPlayer[] = [
   // NOVA FC (5 players)
-  { id: 101, teamId: 1, teamName: 'NOVA FC', fullName: 'Emre Yılmaz', shirtNumber: 10, position: 'forward', birthYear: 1996, nationality: 'TR', isCaptain: true, activeSeasonIds: [1, 4], goals: 4, assists: 2 },
-  { id: 102, teamId: 1, teamName: 'NOVA FC', fullName: 'Can Demir', shirtNumber: 7, position: 'midfielder', birthYear: 1998, nationality: 'TR', activeSeasonIds: [1], goals: 2, assists: 3 },
-  { id: 103, teamId: 1, teamName: 'NOVA FC', fullName: 'Burak Kaya', shirtNumber: 4, position: 'defender', birthYear: 1995, nationality: 'TR', activeSeasonIds: [1, 3], goals: 0, assists: 1 },
-  { id: 104, teamId: 1, teamName: 'NOVA FC', fullName: 'Mert Aksoy', shirtNumber: 1, position: 'goalkeeper', birthYear: 1997, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 105, teamId: 1, teamName: 'NOVA FC', fullName: 'Sarp Güven', shirtNumber: 8, position: 'midfielder', birthYear: 1999, nationality: 'TR', activeSeasonIds: [1], goals: 1, assists: 1 },
+  { id: 101, teamId: 1, fullName: 'Emre Yılmaz', shirtNumber: 10, position: 'forward', birthYear: 1996, nationality: 'TR', isCaptain: true, goals: 4, assists: 2 },
+  { id: 102, teamId: 1, fullName: 'Can Demir', shirtNumber: 7, position: 'midfielder', birthYear: 1998, nationality: 'TR', goals: 2, assists: 3 },
+  { id: 103, teamId: 1, fullName: 'Burak Kaya', shirtNumber: 4, position: 'defender', birthYear: 1995, nationality: 'TR', goals: 0, assists: 1 },
+  { id: 104, teamId: 1, fullName: 'Mert Aksoy', shirtNumber: 1, position: 'goalkeeper', birthYear: 1997, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 105, teamId: 1, fullName: 'Sarp Güven', shirtNumber: 8, position: 'midfielder', birthYear: 1999, nationality: 'TR', goals: 1, assists: 1 },
 
   // MARMARA (5 players)
-  { id: 201, teamId: 2, teamName: 'MARMARA', fullName: 'Tolga Çelik', shirtNumber: 9, position: 'forward', birthYear: 1994, nationality: 'TR', isCaptain: true, activeSeasonIds: [1, 3, 4], goals: 3, assists: 1 },
-  { id: 202, teamId: 2, teamName: 'MARMARA', fullName: 'Oğuzhan Kurt', shirtNumber: 8, position: 'midfielder', birthYear: 1999, nationality: 'TR', activeSeasonIds: [1], goals: 1, assists: 2 },
-  { id: 203, teamId: 2, teamName: 'MARMARA', fullName: 'Serdar Şahin', shirtNumber: 3, position: 'defender', birthYear: 1993, nationality: 'TR', activeSeasonIds: [1, 3], goals: 0, assists: 0 },
-  { id: 204, teamId: 2, teamName: 'MARMARA', fullName: 'Alican Polat', shirtNumber: 1, position: 'goalkeeper', birthYear: 2000, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 205, teamId: 2, teamName: 'MARMARA', fullName: 'Kadir Baran', shirtNumber: 5, position: 'defender', birthYear: 1996, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
+  { id: 201, teamId: 2, fullName: 'Tolga Çelik', shirtNumber: 9, position: 'forward', birthYear: 1994, nationality: 'TR', isCaptain: true, goals: 3, assists: 1 },
+  { id: 202, teamId: 2, fullName: 'Oğuzhan Kurt', shirtNumber: 8, position: 'midfielder', birthYear: 1999, nationality: 'TR', goals: 1, assists: 2 },
+  { id: 203, teamId: 2, fullName: 'Serdar Şahin', shirtNumber: 3, position: 'defender', birthYear: 1993, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 204, teamId: 2, fullName: 'Alican Polat', shirtNumber: 1, position: 'goalkeeper', birthYear: 2000, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 205, teamId: 2, fullName: 'Kadir Baran', shirtNumber: 5, position: 'defender', birthYear: 1996, nationality: 'TR', goals: 0, assists: 0 },
 
   // UNION (5 players)
-  { id: 301, teamId: 3, teamName: 'UNION', fullName: 'Kerem Aydın', shirtNumber: 11, position: 'forward', birthYear: 1997, nationality: 'DE', isCaptain: true, activeSeasonIds: [1, 2], goals: 2, assists: 0 },
-  { id: 302, teamId: 3, teamName: 'UNION', fullName: 'Sinan Öztürk', shirtNumber: 6, position: 'midfielder', birthYear: 1995, nationality: 'DE', activeSeasonIds: [1], goals: 1, assists: 1 },
-  { id: 303, teamId: 3, teamName: 'UNION', fullName: 'Hakan Koç', shirtNumber: 5, position: 'defender', birthYear: 1992, nationality: 'DE', activeSeasonIds: [1, 4], goals: 0, assists: 0 },
-  { id: 304, teamId: 3, teamName: 'UNION', fullName: 'Markus Weber', shirtNumber: 1, position: 'goalkeeper', birthYear: 1994, nationality: 'DE', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 305, teamId: 3, teamName: 'UNION', fullName: 'Felix Schneider', shirtNumber: 4, position: 'defender', birthYear: 1998, nationality: 'DE', activeSeasonIds: [1], goals: 0, assists: 0 },
+  { id: 301, teamId: 3, fullName: 'Kerem Aydın', shirtNumber: 11, position: 'forward', birthYear: 1997, nationality: 'DE', isCaptain: true, goals: 2, assists: 0 },
+  { id: 302, teamId: 3, fullName: 'Sinan Öztürk', shirtNumber: 6, position: 'midfielder', birthYear: 1995, nationality: 'DE', goals: 1, assists: 1 },
+  { id: 303, teamId: 3, fullName: 'Hakan Koç', shirtNumber: 5, position: 'defender', birthYear: 1992, nationality: 'DE', goals: 0, assists: 0 },
+  { id: 304, teamId: 3, fullName: 'Markus Weber', shirtNumber: 1, position: 'goalkeeper', birthYear: 1994, nationality: 'DE', goals: 0, assists: 0 },
+  { id: 305, teamId: 3, fullName: 'Felix Schneider', shirtNumber: 4, position: 'defender', birthYear: 1998, nationality: 'DE', goals: 0, assists: 0 },
 
   // NORTHSIDE (5 players)
-  { id: 401, teamId: 4, teamName: 'NORTHSIDE', fullName: 'Deniz Arslan', shirtNumber: 10, position: 'midfielder', birthYear: 1998, nationality: 'GB', isCaptain: true, activeSeasonIds: [1], goals: 1, assists: 1 },
-  { id: 402, teamId: 4, teamName: 'NORTHSIDE', fullName: 'Alper Yıldız', shirtNumber: 9, position: 'forward', birthYear: 1996, nationality: 'GB', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 403, teamId: 4, teamName: 'NORTHSIDE', fullName: 'James Wilson', shirtNumber: 1, position: 'goalkeeper', birthYear: 1995, nationality: 'GB', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 404, teamId: 4, teamName: 'NORTHSIDE', fullName: 'Harry Davies', shirtNumber: 3, position: 'defender', birthYear: 1997, nationality: 'GB', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 405, teamId: 4, teamName: 'NORTHSIDE', fullName: 'Oliver Brown', shirtNumber: 7, position: 'forward', birthYear: 1999, nationality: 'GB', activeSeasonIds: [1], goals: 0, assists: 0 },
+  { id: 401, teamId: 4, fullName: 'Deniz Arslan', shirtNumber: 10, position: 'midfielder', birthYear: 1998, nationality: 'GB', isCaptain: true, goals: 1, assists: 1 },
+  { id: 402, teamId: 4, fullName: 'Alper Yıldız', shirtNumber: 9, position: 'forward', birthYear: 1996, nationality: 'GB', goals: 0, assists: 0 },
+  { id: 403, teamId: 4, fullName: 'James Wilson', shirtNumber: 1, position: 'goalkeeper', birthYear: 1995, nationality: 'GB', goals: 0, assists: 0 },
+  { id: 404, teamId: 4, fullName: 'Harry Davies', shirtNumber: 3, position: 'defender', birthYear: 1997, nationality: 'GB', goals: 0, assists: 0 },
+  { id: 405, teamId: 4, fullName: 'Oliver Brown', shirtNumber: 7, position: 'forward', birthYear: 1999, nationality: 'GB', goals: 0, assists: 0 },
 
   // ATLAS SK (5 players)
-  { id: 501, teamId: 5, teamName: 'ATLAS SK', fullName: 'Volkan Karaca', shirtNumber: 10, position: 'forward', birthYear: 1995, nationality: 'NL', isCaptain: true, activeSeasonIds: [1, 3], goals: 2, assists: 1 },
-  { id: 502, teamId: 5, teamName: 'ATLAS SK', fullName: 'Cem Güler', shirtNumber: 8, position: 'midfielder', birthYear: 1997, nationality: 'NL', activeSeasonIds: [1], goals: 1, assists: 1 },
-  { id: 503, teamId: 5, teamName: 'ATLAS SK', fullName: 'Lars de Jong', shirtNumber: 1, position: 'goalkeeper', birthYear: 1996, nationality: 'NL', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 504, teamId: 5, teamName: 'ATLAS SK', fullName: 'Daan Meijer', shirtNumber: 4, position: 'defender', birthYear: 1994, nationality: 'NL', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 505, teamId: 5, teamName: 'ATLAS SK', fullName: 'Bram Bakker', shirtNumber: 6, position: 'midfielder', birthYear: 1998, nationality: 'NL', activeSeasonIds: [1], goals: 0, assists: 0 },
+  { id: 501, teamId: 5, fullName: 'Volkan Karaca', shirtNumber: 10, position: 'forward', birthYear: 1995, nationality: 'NL', isCaptain: true, goals: 2, assists: 1 },
+  { id: 502, teamId: 5, fullName: 'Cem Güler', shirtNumber: 8, position: 'midfielder', birthYear: 1997, nationality: 'NL', goals: 1, assists: 1 },
+  { id: 503, teamId: 5, fullName: 'Lars de Jong', shirtNumber: 1, position: 'goalkeeper', birthYear: 1996, nationality: 'NL', goals: 0, assists: 0 },
+  { id: 504, teamId: 5, fullName: 'Daan Meijer', shirtNumber: 4, position: 'defender', birthYear: 1994, nationality: 'NL', goals: 0, assists: 0 },
+  { id: 505, teamId: 5, fullName: 'Bram Bakker', shirtNumber: 6, position: 'midfielder', birthYear: 1998, nationality: 'NL', goals: 0, assists: 0 },
 
   // BOSPHORUS (5 players)
-  { id: 601, teamId: 6, teamName: 'BOSPHORUS', fullName: 'Kaan Tekin', shirtNumber: 9, position: 'forward', birthYear: 1996, nationality: 'TR', isCaptain: true, activeSeasonIds: [1], goals: 1, assists: 0 },
-  { id: 602, teamId: 6, teamName: 'BOSPHORUS', fullName: 'Onur Eren', shirtNumber: 4, position: 'defender', birthYear: 1994, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 603, teamId: 6, teamName: 'BOSPHORUS', fullName: 'Tayfun Balcı', shirtNumber: 1, position: 'goalkeeper', birthYear: 1995, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 604, teamId: 6, teamName: 'BOSPHORUS', fullName: 'Murat Doğan', shirtNumber: 7, position: 'midfielder', birthYear: 1997, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
-  { id: 605, teamId: 6, teamName: 'BOSPHORUS', fullName: 'Eren Can', shirtNumber: 11, position: 'forward', birthYear: 1999, nationality: 'TR', activeSeasonIds: [1], goals: 0, assists: 0 },
+  { id: 601, teamId: 6, fullName: 'Kaan Tekin', shirtNumber: 9, position: 'forward', birthYear: 1996, nationality: 'TR', isCaptain: true, goals: 1, assists: 0 },
+  { id: 602, teamId: 6, fullName: 'Onur Eren', shirtNumber: 4, position: 'defender', birthYear: 1994, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 603, teamId: 6, fullName: 'Tayfun Balcı', shirtNumber: 1, position: 'goalkeeper', birthYear: 1995, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 604, teamId: 6, fullName: 'Murat Doğan', shirtNumber: 7, position: 'midfielder', birthYear: 1997, nationality: 'TR', goals: 0, assists: 0 },
+  { id: 605, teamId: 6, fullName: 'Eren Can', shirtNumber: 11, position: 'forward', birthYear: 1999, nationality: 'TR', goals: 0, assists: 0 },
 ]
 
+export const initialPlayers: Player[] = seedPlayers.map(({ teamId, ...player }) => ({
+  ...player,
+  squads: [{ seasonId: 1, teamId }],
+  activeSeasonIds: [1],
+}))
 
-export const initialMatches: Match[] = [
+const seedMatches: Match[] = [
   {
     id: 1,
     home: 'NOVA FC',
@@ -278,6 +288,13 @@ export const initialMatches: Match[] = [
     events: [],
   },
 ]
+
+// Fixtures link clubs by id, like the database's home_team_id / away_team_id.
+export const initialMatches: Match[] = seedMatches.map((match) => ({
+  ...match,
+  homeTeamId: initialTeams.find((team) => team.name === match.home)?.id,
+  awayTeamId: initialTeams.find((team) => team.name === match.away)?.id,
+}))
 
 export const initialStories: Story[] = [
   {

@@ -444,6 +444,26 @@ export type PlayerStatLine = {
 
 const GOAL_EVENTS: MatchEvent['eventType'][] = ['goal', 'penalty_scored']
 
+/**
+ * The score after adding (step 1) or removing (step -1) one event. Mirrors
+ * public.apply_goal_event: goals and scored penalties move their club's score
+ * by one, an own goal counts for the other club, and other events change
+ * nothing. Adjusting rather than recounting keeps results entered without a
+ * full event log.
+ */
+export function scoreAfterEvent(match: Match, event: MatchEvent, step: 1 | -1): Pick<Match, 'homeScore' | 'awayScore'> {
+  const unchanged = { homeScore: match.homeScore, awayScore: match.awayScore }
+  const kind: string = event.eventType
+  if (!['goal', 'penalty_scored', 'own_goal'].includes(kind)) return unchanged
+  const side = event.teamId != null
+    ? event.teamId === match.homeTeamId ? 'home' : event.teamId === match.awayTeamId ? 'away' : null
+    : event.teamName === match.home ? 'home' : event.teamName === match.away ? 'away' : null
+  if (!side) return unchanged
+  const homeScores = kind === 'own_goal' ? side === 'away' : side === 'home'
+  const bump = (score: number | undefined, scores: boolean) => Math.max((score ?? 0) + (scores ? step : 0), 0)
+  return { homeScore: bump(match.homeScore, homeScores), awayScore: bump(match.awayScore, !homeScores) }
+}
+
 /** Every event across the countable matches, flattened. */
 function countableEvents(matches: Match[]): MatchEvent[] {
   const events: MatchEvent[] = []

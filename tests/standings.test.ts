@@ -5,11 +5,12 @@ import {
   computePlayerStats,
   computeStandings,
   computeTopScorers,
+  scoreAfterEvent,
   shootoutLine,
   withDerivedTeamTotals,
   withDerivedPlayerTotals,
 } from '../src/lib/standingsUtils'
-import type { Match, Player, Season, Team } from '../src/types'
+import type { Match, MatchEvent, Player, Season, Team } from '../src/types'
 import { findContentBox, logoFit } from '../src/lib/imageTrimmer'
 
 let passed = 0
@@ -483,6 +484,22 @@ section('Player identity after transfers and name changes')
   const linkedDuplicate = { ...unlinked, events: [{ ...unlinked.events![0], playerId: 992 }] }
   check('IDs distinguish same-name teammates', withDerivedPlayerTotals([player, duplicate], [linkedDuplicate]).map((p) => p.goals), [0, 1])
   check('removing an event clears transferred totals', withDerivedPlayerTotals([player], [{ ...match, events: [] }])[0].goals, 0)
+}
+
+section('Goal events move the score (item 9)')
+{
+  const fixture: Match = { ...played('HOME FC', 3, 'AWAY FC', 1), homeTeamId: 1, awayTeamId: 2 }
+  // own_goal exists in the database, not in the app's event picker.
+  const ev = (eventType: string, teamId: number): MatchEvent => ({ id: 1, matchId: fixture.id, teamId, teamName: '', playerName: 'P', eventType: eventType as MatchEvent['eventType'], minute: 10 })
+  const score = (m: Pick<Match, 'homeScore' | 'awayScore'>) => [m.homeScore, m.awayScore]
+  check('home goal adds one to a typed-in 3-1', score(scoreAfterEvent(fixture, ev('goal', 1), 1)), [4, 1])
+  check('scored penalty counts for its club', score(scoreAfterEvent(fixture, ev('penalty_scored', 2), 1)), [3, 2])
+  check('own goal counts for the other club', score(scoreAfterEvent(fixture, ev('own_goal', 2), 1)), [4, 1])
+  check('removing a goal takes it back off', score(scoreAfterEvent(fixture, ev('goal', 1), -1)), [2, 1])
+  check('cards and missed penalties leave the score', [score(scoreAfterEvent(fixture, ev('yellow_card', 1), 1)), score(scoreAfterEvent(fixture, ev('penalty_missed', 1), 1))], [[3, 1], [3, 1]])
+  check('first goal of an unplayed match starts from 0-0', score(scoreAfterEvent({ ...fixture, homeScore: undefined, awayScore: undefined }, ev('goal', 2), 1)), [0, 1])
+  check('a score never goes below zero', score(scoreAfterEvent({ ...fixture, homeScore: 0, awayScore: 0 }, ev('goal', 1), -1)), [0, 0])
+  check('a club outside the fixture changes nothing', score(scoreAfterEvent(fixture, ev('goal', 9), 1)), [3, 1])
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

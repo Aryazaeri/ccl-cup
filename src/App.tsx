@@ -48,6 +48,7 @@ export default function App() {
     setStories(data.stories)
     setMedia(data.media ?? [])
     setSponsors(data.sponsors ?? [])
+    setDataError(data.loadWarning ?? '')
   }, [])
 
   const refresh = useCallback(async () => {

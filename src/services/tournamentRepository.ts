@@ -25,6 +25,8 @@ export type TournamentData = {
   stories: Story[]
   media: MediaAsset[]
   sponsors: Sponsor[]
+  /** Set when an optional section failed to load, so the UI can say so instead of showing it empty. */
+  loadWarning?: string
 }
 
 const storageKey = 'ccl-cup:data:v7'
@@ -271,6 +273,8 @@ async function loadRemote(): Promise<TournamentData> {
   if (matchesRes.error) throw matchesRes.error
   if (storiesRes.error) throw storiesRes.error
   if (playersRes.error) throw playersRes.error
+  // Media and sponsors are optional sections: keep the rest of the site up, but say what is missing.
+  const missing = [mediaRes.error && 'media', sponsorsRes.error && 'sponsors'].filter(Boolean)
 
   const seasonsList: Season[] = (seasonsRes.data ?? []).map((s: Record<string, unknown>) => ({
     id: Number(s.id),
@@ -435,6 +439,7 @@ async function loadRemote(): Promise<TournamentData> {
     stories,
     media,
     sponsors,
+    loadWarning: missing.length ? `Could not load ${missing.join(' and ')}; those sections may look empty. Reload to retry.` : undefined,
   }
 }
 

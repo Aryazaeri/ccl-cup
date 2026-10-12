@@ -4907,6 +4907,10 @@ function MatchEventsModal({
               <input name="notes" placeholder="Optional notes" />
             </label>
 
+            <small className="field-hint span-2">
+              Goals and scored penalties add one to the club&rsquo;s score; deleting them takes it back off.
+            </small>
+
             <div className="form-actions span-2">
               <button className="button button-admin" type="submit" disabled={saving}>
                 {saving ? 'Adding…' : 'Add Event to Timeline'}

@@ -2,6 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { initialMatches, initialPlayers, initialSeasons, initialStories, initialTeams } from '../data'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { planFixtures, type FixtureOptions } from '../lib/fixtureUtils'
+import { scoreAfterEvent } from '../lib/standingsUtils'
 import { saveWithAsset, type UploadedAsset } from '../lib/assetSaveUtils'
 import { discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
 import type {
@@ -928,7 +929,7 @@ export const tournamentRepository = {
         matches: data.matches.map((m) => {
           if (m.id !== matchId) return m
           const currentEvents = m.events ?? []
-          return { ...m, events: [...currentEvents, linkedEvent] }
+          return { ...m, ...scoreAfterEvent(m, linkedEvent, 1), events: [...currentEvents, linkedEvent] }
         }),
       })
     }
@@ -979,7 +980,8 @@ export const tournamentRepository = {
         matches: data.matches.map((m) => {
           if (m.id !== matchId) return m
           const currentEvents = m.events ?? []
-          return { ...m, events: currentEvents.filter((ev) => ev.id !== eventId) }
+          const removed = currentEvents.find((ev) => ev.id === eventId)
+          return { ...m, ...(removed ? scoreAfterEvent(m, removed, -1) : {}), events: currentEvents.filter((ev) => ev.id !== eventId) }
         }),
       })
     }

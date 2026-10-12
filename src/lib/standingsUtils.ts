@@ -472,15 +472,23 @@ export function computePlayerStats(players: Player[], matches: Match[]): PlayerS
   const legacyKey = (playerName: string, teamName: string) =>
     `${normalizeName(playerName)}::${normalizeName(teamName)}`
   const legacyPlayers = new Map<string, Player[]>()
+  // A player's club here is their squad entry among the clubs in these matches.
+  const clubNames = new Map<number, string>()
+  for (const match of matches) {
+    if (match.homeTeamId != null) clubNames.set(match.homeTeamId, match.home)
+    if (match.awayTeamId != null) clubNames.set(match.awayTeamId, match.away)
+  }
 
   for (const player of players) {
-    const key = legacyKey(player.fullName, player.teamName)
+    const teamId = player.squads.find((entry) => clubNames.has(entry.teamId))?.teamId
+    const teamName = teamId != null ? clubNames.get(teamId)! : ''
+    const key = legacyKey(player.fullName, teamName)
     legacyPlayers.set(key, [...(legacyPlayers.get(key) ?? []), player])
     lines.set(`player:${player.id}`, {
       playerId: player.id,
       playerName: player.fullName,
-      teamName: player.teamName,
-      teamId: player.teamId,
+      teamName,
+      teamId,
       goals: 0,
       assists: 0,
       yellowCards: 0,

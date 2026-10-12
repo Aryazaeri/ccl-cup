@@ -10,6 +10,7 @@
  * Imported only behind `import.meta.env.DEV`, so none of it ships.
  */
 import type { TournamentData } from '../services/tournamentRepository'
+import { isInTeam } from '../lib/squadUtils'
 
 export type FixtureKind = 'worst' | 'empty' | 'one'
 
@@ -52,7 +53,7 @@ function worst(base: TournamentData): TournamentData {
   const players = base.players.map((p, i) => {
     const fullName = i < PLAYER_NAMES.length ? PLAYER_NAMES[i] : p.fullName
     renamed.set(p.fullName, fullName)
-    return { ...p, teamName: club(p.teamName), fullName }
+    return { ...p, fullName }
   })
 
   let completedSeen = 0
@@ -96,7 +97,7 @@ function empty(base: TournamentData): TournamentData {
 
 function one(base: TournamentData): TournamentData {
   const [home, away] = base.teams
-  const players = base.players.filter((p) => p.teamId === home.id).slice(0, 1)
+  const players = base.players.filter((p) => isInTeam(p, home.id)).slice(0, 1)
   const scorer = players[0]
   const match = {
     ...base.matches.find((m) => m.matchStatus === 'completed')!,

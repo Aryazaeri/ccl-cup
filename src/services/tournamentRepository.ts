@@ -12,10 +12,17 @@ import type {
   MediaAsset,
   Player,
   Season,
+  SquadEntry,
   Sponsor,
   Story,
   Team,
 } from '../types'
+import { MIN_SQUAD, isInTeam, seasonIdsOf, shrinkError, squadOf, withSquad } from '../lib/squadUtils'
+
+/** A player created together with a new club entry. */
+export type NewSquadPlayer = Pick<Player, 'fullName' | 'shirtNumber' | 'position' | 'nationality' | 'birthYear'>
+/** The squad a club entry is created with: existing players plus new ones. */
+export type EntryRoster = { playerIds: number[]; newPlayers: NewSquadPlayer[] }
 
 export type TournamentData = {
   seasons: Season[]
@@ -29,7 +36,8 @@ export type TournamentData = {
   loadWarning?: string
 }
 
-const storageKey = 'ccl-cup:data:v7'
+// v8: players carry per-season squads instead of a single teamId.
+const storageKey = 'ccl-cup:data:v8'
 
 const initialData = (): TournamentData => ({
   seasons: initialSeasons.map((season) => ({ ...season })),
@@ -253,19 +261,20 @@ async function currentSeasonId(): Promise<number | null> {
 async function loadRemote(): Promise<TournamentData> {
   if (!supabase) throw new Error('Supabase is not configured.')
 
-  const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes] = await Promise.all([
+  const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes, squadsRes] = await Promise.all([
     supabase.from('seasons').select('*').order('created_at', { ascending: false }),
     supabase.from('teams').select('*').order('name'),
     supabase
       .from('matches')
       .select(
-        '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players(full_name))',
+        '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players(full_name)), match_squads(team_id, player_id, player_name, shirt_number)',
       )
       .order('kickoff_at', { ascending: true }),
     supabase.from('articles').select('*').order('published_at', { ascending: false }),
-    supabase.from('players').select('*, team:teams(name)').order('full_name'),
+    supabase.from('players').select('*').order('full_name'),
     supabase.from('media_assets').select('*').order('created_at', { ascending: false }),
     supabase.from('sponsors').select('*').order('display_order', { ascending: true }),
+    supabase.from('squad_memberships').select('player_id, team_id, season_id'),
   ])
 
   if (teamsRes.error) throw teamsRes.error
@@ -273,6 +282,7 @@ async function loadRemote(): Promise<TournamentData> {
   if (matchesRes.error) throw matchesRes.error
   if (storiesRes.error) throw storiesRes.error
   if (playersRes.error) throw playersRes.error
+  if (squadsRes.error) throw squadsRes.error
   // Media and sponsors are optional sections: keep the rest of the site up, but say what is missing.
   const missing = [mediaRes.error && 'media', sponsorsRes.error && 'sponsors'].filter(Boolean)
 
@@ -298,6 +308,7 @@ async function loadRemote(): Promise<TournamentData> {
     // left every team season-less on the client and made a season filter
     // impossible to build.
     seasonId: t.season_id != null ? Number(t.season_id) : undefined,
+    clubId: t.club_id != null ? Number(t.club_id) : undefined,
     name: String(t.name),
     shortName: String(t.short_name || String(t.name).slice(0, 3).toUpperCase()),
     countryCode: String(t.country_code || 'TR'),
@@ -316,10 +327,15 @@ async function loadRemote(): Promise<TournamentData> {
     isActive: true,
   }))
 
+  const squadsByPlayer = new Map<number, SquadEntry[]>()
+  for (const row of squadsRes.data ?? []) {
+    const entry = { seasonId: Number(row.season_id), teamId: Number(row.team_id) }
+    squadsByPlayer.set(Number(row.player_id), [...(squadsByPlayer.get(Number(row.player_id)) ?? []), entry])
+  }
+
   const players: Player[] = (playersRes.data ?? []).map((p: Record<string, unknown>) => ({
     id: Number(p.id),
-    teamId: p.team_id ? Number(p.team_id) : 0,
-    teamName: (p.team as { name: string } | null)?.name ?? 'Free Agent',
+    squads: squadsByPlayer.get(Number(p.id)) ?? [],
     fullName: String(p.full_name),
     shirtNumber: p.shirt_number ? Number(p.shirt_number) : undefined,
     position: (p.position as Player['position']) || 'forward',
@@ -327,7 +343,7 @@ async function loadRemote(): Promise<TournamentData> {
     birthYear: p.birth_year != null ? Number(p.birth_year) : p.birth_date ? new Date(String(p.birth_date)).getFullYear() : undefined,
     nationality: p.nationality ? String(p.nationality) : 'TR',
     isCaptain: Boolean(p.is_captain),
-    activeSeasonIds: Array.isArray(p.active_season_ids) ? (p.active_season_ids as unknown[]).map(Number) : [],
+    activeSeasonIds: seasonIdsOf(squadsByPlayer.get(Number(p.id)) ?? []),
     goals: Number(p.goals || 0),
     assists: Number(p.assists || 0),
     photoUrl: p.photo_url ? String(p.photo_url) : undefined,
@@ -366,6 +382,12 @@ async function loadRemote(): Promise<TournamentData> {
       time: formatKickoffTime(m.kickoff_at),
       venue: (m.venue as { name: string } | null)?.name ?? '—',
       matchStatus: (m.match_status as Match['matchStatus']) || 'scheduled',
+      squads: ((m.match_squads as Record<string, unknown>[] | null) ?? []).map((row) => ({
+        teamId: Number(row.team_id),
+        playerId: row.player_id != null ? Number(row.player_id) : undefined,
+        playerName: String(row.player_name),
+        shirtNumber: row.shirt_number != null ? Number(row.shirt_number) : undefined,
+      })),
       homeScore: m.home_score != null ? Number(m.home_score) : undefined,
       awayScore: m.away_score != null ? Number(m.away_score) : undefined,
       homePenalties: m.home_penalties != null ? Number(m.home_penalties) : undefined,
@@ -556,31 +578,60 @@ export const tournamentRepository = {
   },
 
   // TEAMS CRUD
-  async addTeam(team: Team): Promise<TournamentData> {
+  /**
+   * Enters a club in a season with its squad: a new club, or an existing one
+   * (`team.clubId`) entering another season. The entry and squad are written
+   * in one transaction, so the five-player minimum holds from the start.
+   */
+  async addTeam(team: Team, roster: EntryRoster): Promise<TournamentData> {
+    const size = new Set(roster.playerIds).size + roster.newPlayers.length
+    if (size < MIN_SQUAD) throw new Error(`Register at least ${MIN_SQUAD} players with ${team.name || 'the club'} (${size} so far).`)
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, teams: [...data.teams, team] })
+      const seasonId = team.seasonId ?? data.seasons[0]?.id ?? 1
+      // Same rules as the database: a club (matched by name) enters a season once.
+      const sameClub = (t: Team) => (team.clubId != null && t.clubId === team.clubId) || t.name.trim().toLowerCase() === team.name.trim().toLowerCase()
+      if (data.teams.some((t) => t.seasonId === seasonId && sameClub(t))) throw new Error(`${team.name} is already entered in this season.`)
+      const entry = { ...team, id: Date.now(), seasonId, clubId: team.clubId ?? data.teams.find(sameClub)?.clubId ?? Date.now() }
+      const created = roster.newPlayers.map((player, index) => ({ ...player, id: Date.now() + index + 1, squads: [] as SquadEntry[] }))
+      const ids = new Set([...roster.playerIds, ...created.map((player) => player.id)])
+      const players = [...data.players, ...created].map((player) => {
+        if (!ids.has(player.id)) return player
+        const squads = withSquad(player.squads, seasonId, entry.id)
+        return { ...player, squads, activeSeasonIds: seasonIdsOf(squads) }
+      })
+      return saveLocal({ ...data, teams: [...data.teams, entry], players })
     }
-    const fallbackSeasonId = await currentSeasonId()
-    const finalSeasonId = team.seasonId ?? fallbackSeasonId
+    const seasonId = team.seasonId ?? (await currentSeasonId())
     const uniqueSlug = `${slugify(team.name)}-${Date.now().toString(36)}`
 
     await saveWithAsset(() => prepareUploadedAsset(team.logoUrl, 'logos'), async (logoUrl) => {
-      const { error } = await supabase!.from('teams').insert({
-        season_id: finalSeasonId,
-        name: team.name,
-        slug: uniqueSlug,
-        short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
-        country_code: team.countryCode || 'TR',
-        country_name: team.countryName || 'Turkey',
-        primary_color: team.color,
-        secondary_color: team.secondaryColor || '#071525',
-        logo_url: logoUrl || null,
-        manager_name: team.managerName || null,
-        coach_name: team.coachName || null,
-        biography: team.bio || null,
-        tournament_format: team.tournamentFormat || 'Champions Cup',
-        group_name: team.groupName || null,
+      const { error } = await supabase!.rpc('create_season_entry', {
+        entry: {
+          season_id: seasonId,
+          club_id: team.clubId ?? null,
+          name: team.name,
+          slug: uniqueSlug,
+          short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
+          country_code: team.countryCode || 'TR',
+          country_name: team.countryName || 'Turkey',
+          primary_color: team.color,
+          secondary_color: team.secondaryColor || '#071525',
+          logo_url: logoUrl || null,
+          manager_name: team.managerName || null,
+          coach_name: team.coachName || null,
+          biography: team.bio || null,
+          tournament_format: team.tournamentFormat || 'Champions Cup',
+          group_name: team.groupName || null,
+        },
+        player_ids: [...new Set(roster.playerIds)],
+        new_players: roster.newPlayers.map((player) => ({
+          full_name: player.fullName.trim(),
+          shirt_number: player.shirtNumber ?? null,
+          position: player.position,
+          nationality: player.nationality ?? 'TR',
+          birth_year: player.birthYear ?? null,
+        })),
       })
       if (error) throw clubSaveError(error, team.name)
     }, discardUnusedClubCrest)
@@ -590,15 +641,14 @@ export const tournamentRepository = {
   async updateTeam(team: Team): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      const updatedTeams = data.teams.map((t) => (t.id === team.id ? team : t))
-      const updatedPlayers = data.players.map((p) => (p.teamId === team.id ? { ...p, teamName: team.name } : p))
-      return saveLocal({ ...data, teams: updatedTeams, players: updatedPlayers })
+      return saveLocal({ ...data, teams: data.teams.map((t) => (t.id === team.id ? { ...team, seasonId: t.seasonId } : t)) })
     }
     await saveWithAsset(() => prepareUploadedAsset(team.logoUrl, 'logos'), async (logoUrl) => {
       const { error } = await supabase!
         .from('teams')
+        // The season is fixed: squads and results belong to this entry. A club
+        // plays another season through a new entry (addTeam with clubId).
         .update({
-          season_id: team.seasonId ?? null,
           name: team.name,
           short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
           country_code: team.countryCode || 'TR',
@@ -614,6 +664,12 @@ export const tournamentRepository = {
         })
         .eq('id', team.id)
       if (error) throw clubSaveError(error, team.name)
+      // Renaming the entry renames the lasting club too, so the next season's
+      // entry starts from the current name.
+      if (team.clubId != null) {
+        const { error: clubError } = await supabase!.from('clubs').update({ name: team.name.trim() }).eq('id', team.clubId)
+        if (clubError) throw clubSaveError(clubError, team.name)
+      }
     }, discardUnusedClubCrest)
     return reloadAfterClubSave()
   },
@@ -624,7 +680,10 @@ export const tournamentRepository = {
       return saveLocal({
         ...data,
         teams: data.teams.filter((t) => t.id !== id),
-        players: data.players.filter((p) => p.teamId !== id),
+        players: data.players.map((p) => {
+          const squads = p.squads.filter((entry) => entry.teamId !== id)
+          return { ...p, squads, activeSeasonIds: seasonIdsOf(squads) }
+        }),
       })
     }
     const { error } = await supabase.from('teams').delete().eq('id', id)
@@ -633,45 +692,49 @@ export const tournamentRepository = {
   },
 
   // PLAYERS CRUD
+  /** Creates the person; `player.squads` (at most one per season) become their squad places. */
   async addPlayer(player: Player): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, players: [...data.players, player] })
+      return saveLocal({ ...data, players: [...data.players, { ...player, activeSeasonIds: seasonIdsOf(player.squads) }] })
     }
-    const { error } = await supabase.from('players').insert({
-      team_id: player.teamId && Number(player.teamId) > 0 ? Number(player.teamId) : null,
+    const { data: created, error } = await supabase.from('players').insert({
       full_name: player.fullName,
       shirt_number: player.shirtNumber ?? null,
       position: player.position,
       strong_foot: player.strongFoot ?? 'right',
       nationality: player.nationality ?? 'TR',
       is_captain: player.isCaptain ?? false,
-      active_season_ids: player.activeSeasonIds ?? [],
       goals: player.goals ?? 0,
       assists: player.assists ?? 0,
       photo_url: player.photoUrl ?? null,
       birth_year: player.birthYear ?? null,
-    })
+    }).select('id').single()
     if (error) throw error
+    if (player.squads.length > 0) {
+      const { error: squadError } = await supabase.from('squad_memberships').insert(
+        player.squads.map((entry) => ({ player_id: created.id, team_id: entry.teamId, season_id: entry.seasonId })),
+      )
+      if (squadError) throw new Error(`${player.fullName} was saved as a free agent, but could not join the squad: ${squadError.message}`)
+    }
     return loadRemote()
   },
 
   async updatePlayer(player: Player): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, players: data.players.map((p) => (p.id === player.id ? player : p)) })
+      return saveLocal({ ...data, players: data.players.map((p) => (p.id === player.id ? { ...player, squads: p.squads } : p)) })
     }
     const { error } = await supabase
       .from('players')
+      // Person fields only; squad places change through setSquad.
       .update({
-        team_id: player.teamId && Number(player.teamId) > 0 ? Number(player.teamId) : null,
         full_name: player.fullName,
         shirt_number: player.shirtNumber ?? null,
         position: player.position,
         strong_foot: player.strongFoot ?? 'right',
         nationality: player.nationality ?? 'TR',
         is_captain: player.isCaptain ?? false,
-        active_season_ids: player.activeSeasonIds ?? [],
         goals: player.goals ?? 0,
         assists: player.assists ?? 0,
         photo_url: player.photoUrl ?? null,
@@ -682,13 +745,46 @@ export const tournamentRepository = {
     return loadRemote()
   },
 
+  /**
+   * Puts a player in a club entry's squad for its season (a transfer if they
+   * were with another club that season), or releases them from the season
+   * when `teamId` is null. A squad may not drop below the minimum.
+   */
+  async setSquad(playerId: number, seasonId: number, teamId: number | null): Promise<TournamentData> {
+    if (!supabase) {
+      const data = loadLocal()
+      const player = data.players.find((p) => p.id === playerId)
+      if (!player) throw new Error('This player no longer exists.')
+      const leaving = player.squads.find((entry) => entry.seasonId === seasonId && entry.teamId !== teamId)
+      const from = leaving && data.teams.find((t) => t.id === leaving.teamId)
+      const blocked = from ? shrinkError(from, squadOf(data.players, from.id).length) : ''
+      if (blocked) throw new Error(blocked)
+      const squads = withSquad(player.squads, seasonId, teamId)
+      return saveLocal({ ...data, players: data.players.map((p) => (p.id === playerId ? { ...p, squads, activeSeasonIds: seasonIdsOf(squads) } : p)) })
+    }
+    const { error } = teamId == null
+      ? await supabase.from('squad_memberships').delete().eq('player_id', playerId).eq('season_id', seasonId)
+      : await supabase.from('squad_memberships').upsert(
+          { player_id: playerId, team_id: teamId, season_id: seasonId },
+          { onConflict: 'player_id,season_id' },
+        )
+    if (error) throw new Error(error.message)
+    return loadRemote()
+  },
+
   async deletePlayer(id: number): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
+      const player = data.players.find((p) => p.id === id)
+      for (const entry of player?.squads ?? []) {
+        const team = data.teams.find((t) => t.id === entry.teamId)
+        const blocked = team ? shrinkError(team, squadOf(data.players, team.id).length) : ''
+        if (blocked) throw new Error(blocked)
+      }
       return saveLocal({ ...data, players: data.players.filter((p) => p.id !== id) })
     }
     const { error } = await supabase.from('players').delete().eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(error.message)
     return loadRemote()
   },
 
@@ -824,7 +920,7 @@ export const tournamentRepository = {
       const fixture = data.matches.find((match) => match.id === matchId)
       if (!fixture || ![fixture.home, fixture.away].includes(event.teamName)) throw new Error('Choose a club in this fixture.')
       const teamId = event.teamId ?? (event.teamName === fixture.home ? fixture.homeTeamId : fixture.awayTeamId)
-      const candidates = data.players.filter((player) => (teamId != null ? player.teamId === teamId : player.teamName === event.teamName) && (event.playerId != null ? player.id === event.playerId : player.fullName === event.playerName))
+      const candidates = data.players.filter((player) => teamId != null && isInTeam(player, teamId) && (event.playerId != null ? player.id === event.playerId : player.fullName === event.playerName))
       if (event.playerId != null && candidates.length !== 1) throw new Error('This player is no longer on the selected club. Select a current player.')
       const linkedEvent = { ...event, teamId, playerId: candidates.length === 1 ? candidates[0].id : undefined }
       return saveLocal({
@@ -850,13 +946,14 @@ export const tournamentRepository = {
     const teamId = team.id
     let playerId: number | null = event.playerId ?? null
     if (playerId != null) {
-      const { data: player, error } = await supabase.from('players').select('id').eq('id', playerId).eq('team_id', teamId).maybeSingle()
+      const { data: player, error } = await supabase.from('squad_memberships').select('player_id').eq('player_id', playerId).eq('team_id', teamId).maybeSingle()
       if (error) throw error
       if (!player) throw new Error('This player is no longer on the selected club. Select a current player.')
     } else {
-      const { data: players, error } = await supabase.from('players').select('id').eq('team_id', teamId).eq('full_name', event.playerName.trim())
+      const { data: members, error } = await supabase.from('squad_memberships')
+        .select('player_id, player:players!inner(full_name)').eq('team_id', teamId).eq('player.full_name', event.playerName.trim())
       if (error) throw error
-      if (players?.length === 1) playerId = Number(players[0].id)
+      if (members?.length === 1) playerId = Number(members[0].player_id)
     }
 
     // `match_events.id` is GENERATED ALWAYS — see addMatch.

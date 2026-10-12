@@ -1,4 +1,4 @@
-import type { SeasonGroup, SeasonGroupLeague, Team } from '../types'
+import type { Season, SeasonGroup, SeasonGroupLeague, Team } from '../types'
 
 const GROUP_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
 
@@ -67,4 +67,12 @@ export function autoSeedGroupLeague(
 
 export function clearGroupLeagueSlots(groupCount: number): SeasonGroupLeague {
   return generateEmptyGroupLeague(groupCount)
+}
+
+/**
+ * The group a club entry is drawn into in its season's saved layout. Badges
+ * read this rather than the club's own group field, which the draw never updated.
+ */
+export function assignedGroupName(season: Season | undefined, teamId: number): string | undefined {
+  return season?.groupLeague?.groups.find((group) => group.slots.some((slot) => slot.teamId === teamId))?.name
 }

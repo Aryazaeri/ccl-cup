@@ -45,7 +45,7 @@ import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
 import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
-import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
+import { assignedGroupName, generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import { qualificationOptions, tableStageMatches } from '../lib/qualificationUtils'
 import type { FixtureOptions } from '../lib/fixtureUtils'
 import { FixtureGenerator } from './FixtureGenerator'
@@ -99,6 +99,8 @@ import { TeamLogoPicker } from './TeamLogoPicker'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, shrinkError, squadOf } from '../lib/squadUtils'
+import type { EntryRoster, NewSquadPlayer } from '../services/tournamentRepository'
 
 type Props = {
   seasons: Season[]
@@ -114,12 +116,14 @@ type Props = {
   onAddSeason: (season: Season) => Promise<void>
   onUpdateSeason: (season: Season) => Promise<void>
   onDeleteSeason: (id: number) => Promise<void>
-  onAddTeam: (team: Team) => Promise<void>
+  onAddTeam: (team: Team, roster: EntryRoster) => Promise<void>
   onUpdateTeam: (team: Team) => Promise<void>
   onDeleteTeam: (id: number) => Promise<void>
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
+  /** Join `teamId`'s squad for the season (transferring if needed), or leave the season when null. */
+  onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onGenerateFixtures: (seasonId: number, options: FixtureOptions) => Promise<void>
   onAddMatch: (match: Match) => Promise<void>
   onUpdateMatch: (match: Match) => Promise<void>
@@ -176,6 +180,7 @@ export function AdminPanel({
   onAddPlayer,
   onUpdatePlayer,
   onDeletePlayer,
+  onSetSquad,
   onGenerateFixtures,
   onAddMatch,
   onUpdateMatch,
@@ -225,6 +230,8 @@ export function AdminPanel({
     ? teams.find((t) => t.name === createdClub.name && (createdClub.seasonId == null || t.seasonId === createdClub.seasonId)) ?? null
     : null
   const teamInModal = editingTeam ?? createdTeam
+  // Registering a club that already exists for another season, from its latest entry.
+  const [enteringClub, setEnteringClub] = useState<{ team: Team; squadIds: number[] } | null>(null)
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -238,51 +245,12 @@ export function AdminPanel({
    * keys rather than assumed.
    * ---------------------------------------------------------------- */
 
-  /**
-   * Moving a club to another season is allowed, but its fixtures stay behind:
-   * matches reference the club by id and carry their own season, so the club
-   * would be playing in a season it no longer belongs to. The database does
-   * not stop this — only deletes are RESTRICTed — so the panel asks first.
-   */
-  const confirmUpdateTeam = async (team: Team) => {
-    const before = teams.find((item) => item.id === team.id)
-    const movedSeason =
-      before?.seasonId != null && team.seasonId != null && before.seasonId !== team.seasonId
-
-    if (movedSeason) {
-      const fixtures = matches.filter((m) => m.home === before.name || m.away === before.name)
-      if (fixtures.length > 0) {
-        const from = seasons.find((x) => x.id === before.seasonId)
-        const to = seasons.find((x) => x.id === team.seasonId)
-        const ok = await confirm({
-          title: 'Move club to another season?',
-          body: (
-            <>
-              <strong>{team.name}</strong> already appears in {fixtures.length} fixture
-              {fixtures.length === 1 ? '' : 's'}
-              {from ? ` in ${seasonLabel(from)}` : ''}.
-            </>
-          ),
-          consequences: [
-            `Those fixtures stay in ${from ? seasonLabel(from) : 'the previous season'}`,
-            `The club moves to ${to ? seasonLabel(to) : 'the new season'} and will appear in its tables`,
-            'The results already recorded still count towards the old season’s standings',
-          ],
-          confirmLabel: 'Move club',
-        })
-        if (!ok) return
-      }
-    }
-
-    await onUpdateTeam(team)
-  }
 
   const confirmDeleteSeason = async (id: number) => {
     const season = seasons.find((item) => item.id === id)
     const label = season ? `${season.year} ${season.name}` : 'this season'
     const seasonTeams = teams.filter((team) => team.seasonId === id)
-    const teamNames = new Set(seasonTeams.map((team) => team.name))
-    const seasonPlayers = players.filter((player) => teamNames.has(player.teamName))
+    const seasonPlayers = players.filter((player) => player.squads.some((entry) => entry.seasonId === id))
 
     // Only state counts when clubs actually carry a season. Browser-local data
     // has no seasonId, and reporting "0 clubs will be deleted" while clubs
@@ -316,7 +284,7 @@ export function AdminPanel({
   const confirmDeleteTeam = async (id: number) => {
     const team = teams.find((item) => item.id === id)
     const label = team?.name ?? 'this club'
-    const squad = players.filter((player) => player.teamId === id || player.teamName === team?.name)
+    const squad = squadOf(players, id)
     const fixtures = matches.filter((match) => match.home === team?.name || match.away === team?.name)
 
     // matches.home_team_id / away_team_id are ON DELETE RESTRICT, so the
@@ -345,7 +313,7 @@ export function AdminPanel({
         </>
       ),
       consequences: [
-        `${squad.length} registered player${squad.length === 1 ? '' : 's'} will be deleted with the club`,
+        `${squad.length} player${squad.length === 1 ? '' : 's'} leave${squad.length === 1 ? 's' : ''} this season's squad; their profiles and other seasons stay`,
         'Squad and group assignments are removed',
       ],
       confirmLabel: 'Delete club',
@@ -359,7 +327,7 @@ export function AdminPanel({
       title: 'Delete player',
       body: (
         <>
-          Delete <strong>{player?.fullName ?? 'this player'}</strong> from {player?.teamName ?? 'the roster'}?
+          Delete <strong>{player?.fullName ?? 'this player'}</strong> and their squad places in every season?
         </>
       ),
       consequences: [
@@ -540,7 +508,13 @@ export function AdminPanel({
           {activeSection === 'Teams' && (
             <TeamsManager
               teams={teams}
+              seasons={seasons}
               players={players}
+              onEnterClub={(team, seasonId) => {
+                setEditingTeam(null)
+                setEnteringClub({ team: { ...team, seasonId }, squadIds: squadOf(players, team.id).map((p) => p.id) })
+                setModal('team')
+              }}
               onDelete={confirmDeleteTeam}
               onEdit={(team) => {
                 setEditingTeam(team)
@@ -550,6 +524,7 @@ export function AdminPanel({
               onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
               onAdd={() => {
                 setEditingTeam(null)
+                setEnteringClub(null)
                 setModal('team')
               }}
             />
@@ -716,25 +691,29 @@ export function AdminPanel({
 
       {modal === 'team' && (
         <TeamModal
+          key={teamInModal?.id ?? enteringClub?.team.id ?? 'new'}
           initial={teamInModal}
+          template={teamInModal ? undefined : enteringClub ?? undefined}
           seasons={seasons}
+          teams={teams}
           allPlayers={players}
-          players={teamInModal ? players.filter((p) => p.teamId === teamInModal.id) : []}
+          players={teamInModal ? squadOf(players, teamInModal.id) : []}
           onClose={() => {
             setModal(null)
             setEditingTeam(null)
             setCreatedClub(null)
+            setEnteringClub(null)
           }}
-          onSave={async (team) => {
+          onSave={async (team, roster) => {
             if (teamInModal) {
-              await confirmUpdateTeam({ ...team, id: teamInModal.id })
+              await onUpdateTeam({ ...team, id: teamInModal.id })
             } else {
-              await onAddTeam(team)
+              await onAddTeam(team, roster ?? { playerIds: [], newPlayers: [] })
               setCreatedClub({ name: team.name, seasonId: team.seasonId })
             }
           }}
           onAddPlayer={onAddPlayer}
-          onUpdatePlayer={onUpdatePlayer}
+          onSetSquad={onSetSquad}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -743,11 +722,12 @@ export function AdminPanel({
         <QuickSquadModal
           team={squadTeam}
           seasons={seasons}
+          teams={teams}
           allPlayers={players}
-          players={players.filter((p) => p.teamId === squadTeam.id || p.teamName === squadTeam.name)}
+          players={squadOf(players, squadTeam.id)}
           onClose={() => setSquadTeam(null)}
           onAddPlayer={onAddPlayer}
-          onUpdatePlayer={onUpdatePlayer}
+          onSetSquad={onSetSquad}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
@@ -755,30 +735,19 @@ export function AdminPanel({
       {canvasSquadTeam && (
         <SquadCanvasModal
           team={canvasSquadTeam}
-          teamPlayers={players.filter((p) => p.teamId === canvasSquadTeam.id || p.teamName === canvasSquadTeam.name)}
+          teamPlayers={squadOf(players, canvasSquadTeam.id)}
           onClose={() => setCanvasSquadTeam(null)}
           onSaveSquad={async (assignedIds, unassignedIds) => {
-            // Assign players to this team
+            const seasonId = canvasSquadTeam.seasonId
+            if (seasonId == null) return
+            // Joins first, so the squad never dips below the minimum mid-save.
             for (const id of assignedIds) {
               const p = players.find((item) => item.id === id)
-              if (p && (p.teamId !== canvasSquadTeam.id || p.teamName !== canvasSquadTeam.name)) {
-                await onUpdatePlayer({
-                  ...p,
-                  teamId: canvasSquadTeam.id,
-                  teamName: canvasSquadTeam.name,
-                })
-              }
+              if (p && !isInTeam(p, canvasSquadTeam.id)) await onSetSquad(id, seasonId, canvasSquadTeam.id)
             }
-            // Release unassigned players to pool
             for (const id of unassignedIds) {
               const p = players.find((item) => item.id === id)
-              if (p && (p.teamId === canvasSquadTeam.id || p.teamName === canvasSquadTeam.name)) {
-                await onUpdatePlayer({
-                  ...p,
-                  teamId: 0,
-                  teamName: 'Free Agent',
-                })
-              }
+              if (p && isInTeam(p, canvasSquadTeam.id)) await onSetSquad(id, seasonId, null)
             }
           }}
         />
@@ -797,6 +766,7 @@ export function AdminPanel({
             if (editingPlayer) await onUpdatePlayer(player)
             else await onAddPlayer(player)
           }}
+          onSetSquad={onSetSquad}
         />
       )}
 
@@ -1608,8 +1578,10 @@ function SeasonModal({
 }
 
 function TeamsManager({
-  teams,
+  teams: allTeams,
+  seasons,
   players,
+  onEnterClub,
   onDelete,
   onEdit,
   onManageSquad,
@@ -1617,7 +1589,10 @@ function TeamsManager({
   onAdd,
 }: {
   teams: Team[]
+  seasons: Season[]
   players: Player[]
+  /** Register a club from another season (its latest entry) in `seasonId`. */
+  onEnterClub: (latestEntry: Team, seasonId: number) => void
   onDelete: (id: number) => Promise<void>
   onEdit: (team: Team) => void
   onManageSquad: (team: Team) => void
@@ -1625,6 +1600,14 @@ function TeamsManager({
   onAdd: () => void
 }) {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
+  // Each season has its own club entries; the same club can appear once per season.
+  const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => defaultSeasonId(seasons) ?? 'all')
+  const teams = seasonFilter === 'all' ? allTeams : allTeams.filter((team) => team.seasonId === seasonFilter)
+  const enterable = seasonFilter === 'all' ? [] : clubsToEnter(allTeams, seasonFilter, seasons.map((season) => season.id))
+  const seasonName = (id?: number) => {
+    const season = seasons.find((item) => item.id === id)
+    return season ? seasonLabel(season) : ''
+  }
   const [searchTerm, setSearchTerm] = useState('')
   const [countryFilter, setCountryFilter] = useState('All')
   const [formatFilter, setFormatFilter] = useState('All')
@@ -1645,14 +1628,49 @@ function TeamsManager({
           <h2>Teams & Participating Clubs ({teams.length})</h2>
           <p>The foundational data entry point: manage club branding, logos, country flags, and rosters.</p>
         </div>
-        <button className="button button-admin" onClick={onAdd}>
-          <Plus />
-          Register New Club
-        </button>
+        <div className="manager-head-actions">
+          {enterable.length > 0 && seasonFilter !== 'all' ? (
+            <select
+              aria-label="Enter a club from another season"
+              value=""
+              onChange={(e) => {
+                const team = enterable.find((item) => item.id === Number(e.target.value))
+                if (team) onEnterClub(team, seasonFilter)
+              }}
+            >
+              <option value="">Enter an existing club in this season…</option>
+              {enterable.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name} · last in {seasonName(team.seasonId)}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <button className="button button-admin" onClick={onAdd}>
+            <Plus />
+            Register New Club
+          </button>
+        </div>
       </div>
 
       {/* FILTER & SEARCH BAR */}
       <div className="filter-bar">
+        <div className="filter-group">
+          <CalendarDays size={16} />
+          <span>Season:</span>
+          <select
+            value={seasonFilter}
+            onChange={(e) => setSeasonFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          >
+            <option value="all">All seasons</option>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="filter-group search-group">
           <Search size={16} />
           <input
@@ -1723,9 +1741,9 @@ function TeamsManager({
             </thead>
             <tbody>
               {filteredTeams.map((team) => {
-                const squad = players.filter((p) => p.teamId === team.id || p.teamName === team.name)
+                const squad = squadOf(players, team.id)
                 const country = getCountry(team.countryCode)
-                const isComplete = squad.length >= 5
+                const isComplete = squad.length >= MIN_SQUAD
 
                 return (
                   <tr key={team.id}>
@@ -1740,6 +1758,9 @@ function TeamsManager({
                         <div className="team-cell-text">
                           <strong>{team.name}</strong>
                           {team.shortName && <span className="short-code">{team.shortName}</span>}
+                          {seasonFilter === 'all' && team.seasonId != null ? (
+                            <span className="short-code">{seasonName(team.seasonId)}</span>
+                          ) : null}
                         </div>
                       </span>
                     </td>
@@ -1752,7 +1773,7 @@ function TeamsManager({
                     <td>
                       <div className="tournament-tag-group">
                         <span className="tournament-pill">{team.tournamentFormat ?? 'Champions Cup'}</span>
-                        <span className="group-pill">{team.groupName ?? 'Group A'}</span>
+                        <span className="group-pill">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? 'Not drawn'}</span>
                       </div>
                     </td>
                     <td>
@@ -1836,9 +1857,9 @@ function TeamsManager({
         /* GRID CARDS VIEW */
         <div className="teams-grid-layout">
           {filteredTeams.map((team) => {
-            const squad = players.filter((p) => p.teamId === team.id || p.teamName === team.name)
+            const squad = squadOf(players, team.id)
             const country = getCountry(team.countryCode)
-            const isComplete = squad.length >= 5
+            const isComplete = squad.length >= MIN_SQUAD
 
             return (
               <div className="team-admin-card" key={team.id}>
@@ -1865,7 +1886,7 @@ function TeamsManager({
                     />
                     <div>
                       <h3>{team.name}</h3>
-                      <span className="card-group-label">{team.groupName ?? 'Group A'}</span>
+                      <span className="card-group-label">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? 'Not drawn'}</span>
                     </div>
                   </div>
 
@@ -1940,19 +1961,26 @@ function PlayersManager({
   const [selectedTeam, setSelectedTeam] = useState<string>('All')
   const [selectedPos, setSelectedPos] = useState<string>('All')
   const [searchPlayer, setSearchPlayer] = useState('')
+  // A season-less list shows each player's most recent club (seasons are newest first).
+  const seasonOrder = useMemo(() => seasons.map((season) => season.id), [seasons])
+  const currentClub = (p: Player) => {
+    const entry = latestSquad(p, seasonOrder)
+    return entry ? teams.find((team) => team.id === entry.teamId) : undefined
+  }
+  const clubNames = [...new Set(teams.map((team) => team.name))].sort((a, b) => a.localeCompare(b, 'tr'))
 
   const filtered = useMemo(() => {
     return players.filter((p) => {
       if (searchPlayer && !p.fullName.toLowerCase().includes(searchPlayer.toLowerCase())) return false
       if (selectedTeam === 'Free Agent') {
-        if (p.teamId && p.teamId > 0 && p.teamName !== 'Free Agent') return false
-      } else if (selectedTeam !== 'All' && p.teamName !== selectedTeam) {
+        if (p.squads.length > 0) return false
+      } else if (selectedTeam !== 'All' && !p.squads.some((entry) => teams.find((team) => team.id === entry.teamId)?.name === selectedTeam)) {
         return false
       }
       if (selectedPos !== 'All' && p.position !== selectedPos.toLowerCase()) return false
       return true
     })
-  }, [players, selectedTeam, selectedPos, searchPlayer])
+  }, [players, teams, selectedTeam, selectedPos, searchPlayer])
 
   return (
     <section className="manager-view">
@@ -1984,9 +2012,9 @@ function PlayersManager({
           <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="All">All Teams</option>
             <option value="Free Agent">Free agents</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.name}
+            {clubNames.map((clubName) => (
+              <option key={clubName} value={clubName}>
+                {clubName}
               </option>
             ))}
           </select>
@@ -2029,14 +2057,14 @@ function PlayersManager({
                   </div>
                 </td>
                 <td>
-                  {player.teamId && player.teamId > 0 && player.teamName !== 'Free Agent' ? (
+                  {currentClub(player) ? (
                     <span className="team-cell-small">
                       <TeamMark
-                        name={player.teamName}
-                        logoUrl={teams.find((team) => team.id === player.teamId)?.logoUrl}
-                        color={teams.find((team) => team.id === player.teamId)?.color}
+                        name={currentClub(player)!.name}
+                        logoUrl={currentClub(player)!.logoUrl}
+                        color={currentClub(player)!.color}
                       />
-                      <span>{player.teamName}</span>
+                      <span>{currentClub(player)!.name}</span>
                     </span>
                   ) : (
                     <span className="free-agent-badge">Free agent</span>
@@ -3426,40 +3454,49 @@ function MatchTable({
 // COMPREHENSIVE TEAM MODAL (Tabbed)
 function TeamModal({
   initial,
+  template,
   players,
   allPlayers = [],
+  teams,
   seasons,
   onClose,
   onSave,
   onAddPlayer,
-  onUpdatePlayer,
+  onSetSquad,
   onOpenSquadCanvas,
 }: {
+  /** The season entry being edited; null when registering. */
   initial: Team | null
+  /** When registering an existing club for another season: its latest entry, copied as the starting point. */
+  template?: { team: Team; squadIds: number[] }
   players: Player[]
   allPlayers?: Player[]
+  teams: Team[]
   seasons: Season[]
   onClose: () => void
-  onSave: (team: Team) => Promise<void>
+  onSave: (team: Team, roster?: EntryRoster) => Promise<void>
   onAddPlayer: (player: Player) => Promise<void>
-  onUpdatePlayer?: (player: Player) => Promise<void>
+  onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
+  const base = initial ?? template?.team ?? null
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
   // Form State for Live Preview
-  const [name, setName] = useState(initial?.name ?? '')
-  const [shortName, setShortName] = useState(initial?.shortName ?? '')
-  const [countryCode, setCountryCode] = useState(initial?.countryCode ?? '')
-  const [logoUrl, setLogoUrl] = useState(initial?.logoUrl ?? '')
-  const [color, setColor] = useState(initial?.color ?? '#63e35b')
-  const [secondaryColor, setSecondaryColor] = useState(initial?.secondaryColor ?? '#071525')
+  const [name, setName] = useState(base?.name ?? '')
+  const [shortName, setShortName] = useState(base?.shortName ?? '')
+  const [countryCode, setCountryCode] = useState(base?.countryCode ?? '')
+  const [logoUrl, setLogoUrl] = useState(base?.logoUrl ?? '')
+  const [color, setColor] = useState(base?.color ?? '#63e35b')
+  const [secondaryColor, setSecondaryColor] = useState(base?.secondaryColor ?? '#071525')
 
   // Real-time Season & Group Selection State
   const [selectedSeasonId, setSelectedSeasonId] = useState<number>(() => {
     if (initial?.seasonId) return initial.seasonId
+    // A club entering again starts on the season the caller chose for it.
+    if (template?.team.seasonId) return template.team.seasonId
     const active = seasons.find((s) => s.isActive)
     return active?.id ?? seasons[0]?.id ?? 1
   })
@@ -3491,25 +3528,34 @@ function TeamModal({
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newPlayerNumber, setNewPlayerNumber] = useState('')
   const [newPlayerPosition, setNewPlayerPosition] = useState<PlayerPosition>('forward')
-  const [newPlayerSeasonId, setNewPlayerSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
   const [addingPlayer, setAddingPlayer] = useState(false)
 
-  // Filter pool players: players that are NOT already in this team
-  const availablePoolPlayers = useMemo(() => {
-    if (!initial) return []
-    return allPlayers.filter((p) => p.teamId !== initial.id && p.teamName !== initial.name)
-  }, [allPlayers, initial])
+  // A new entry's squad is staged here and saved with the club in one step,
+  // so it never exists below the minimum.
+  const [stagedIds, setStagedIds] = useState<number[]>(() => template?.squadIds ?? [])
+  const [stagedNew, setStagedNew] = useState<NewSquadPlayer[]>([])
+  const squadSize = initial ? players.length : stagedIds.length + stagedNew.length
+  const squadPlayers = initial ? players : allPlayers.filter((p) => stagedIds.includes(p.id))
 
-  const filteredPoolPlayers = useMemo(() => {
+  // Anyone not already in this squad. Joining moves them from another club this season.
+  const availablePoolPlayers = useMemo(() => {
+    if (initial) return allPlayers.filter((p) => !isInTeam(p, initial.id))
+    return allPlayers.filter((p) => !stagedIds.includes(p.id))
+  }, [allPlayers, initial, stagedIds])
+  const clubThisSeason = (p: Player) =>
+    teams.find((team) => team.id === playerTeamId(p, initial?.seasonId ?? selectedSeasonId))?.name
+
+  // A plain filter: cheap, and it reads the current season's club names.
+  const filteredPoolPlayers = (() => {
     if (!poolPlayerSearch.trim()) return availablePoolPlayers
     const q = poolPlayerSearch.toLowerCase()
     return availablePoolPlayers.filter(
       (p) =>
         p.fullName.toLowerCase().includes(q) ||
-        p.teamName.toLowerCase().includes(q) ||
+        (clubThisSeason(p) ?? '').toLowerCase().includes(q) ||
         p.position.toLowerCase().includes(q)
     )
-  }, [availablePoolPlayers, poolPlayerSearch])
+  })()
 
   const selectedCountry = getCountry(countryCode)
 
@@ -3540,10 +3586,18 @@ function TeamModal({
         return
       }
 
+      if (!initial && squadSize < MIN_SQUAD) {
+        setSaveError(`Add at least ${MIN_SQUAD} players in the Squad tab before registering (${squadSize} so far).`)
+        setTab('squad')
+        setSaving(false)
+        return
+      }
+
       // The repository uploads the crest and cleans it up if the row is rejected.
       await onSave({
         id: initial?.id ?? Date.now(),
-        seasonId: selectedSeasonId,
+        seasonId: initial?.seasonId ?? selectedSeasonId,
+        clubId: base?.clubId,
         name: String(data.get('name')).toUpperCase(),
         shortName: text('shortName')?.toUpperCase(),
         countryCode,
@@ -3560,7 +3614,7 @@ function TeamModal({
         goalDifference: initial?.goalDifference ?? 0,
         points: initial?.points ?? 0,
         isActive: data.get('isActive') === 'on',
-      })
+      }, initial ? undefined : { playerIds: stagedIds, newPlayers: stagedNew })
     } catch (reason: unknown) {
       console.error('Club save failed:', reason)
       let msg = 'Unable to save club.'
@@ -3579,18 +3633,19 @@ function TeamModal({
 
   const handleAssignPoolPlayer = () =>
     guard(undefined, async () => {
-    if (!selectedPoolPlayerId || !initial || !onUpdatePlayer) return
+    if (!selectedPoolPlayerId) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolPlayerId))
     if (!targetPlayer) return
+    if (!initial) {
+      setStagedIds((ids) => [...ids, targetPlayer.id])
+      setSelectedPoolPlayerId('')
+      return
+    }
 
     setAssigningPoolPlayer(true)
     setSquadActionError('')
     try {
-      await onUpdatePlayer({
-        ...targetPlayer,
-        teamId: initial.id,
-        teamName: initial.name,
-      })
+      await onSetSquad(targetPlayer.id, initial.seasonId ?? selectedSeasonId, initial.id)
       setSelectedPoolPlayerId('')
       setPoolPlayerSearch('')
     } catch (err: unknown) {
@@ -3610,26 +3665,32 @@ function TeamModal({
   const handleInlineAddPlayer = () =>
     guard(undefined, async () => {
     if (!newPlayerName.trim()) return
-    if (!initial) {
-      setSaveError('Please save the club first before adding squad members.')
-      return
-    }
     if (newPlayerNumber && !validShirtNumber(newPlayerNumber)) {
       setSquadActionError('Shirt numbers run from 1 to 99.')
+      return
+    }
+    if (!initial) {
+      setStagedNew((list) => [...list, {
+        fullName: newPlayerName.trim(),
+        shirtNumber: newPlayerNumber ? Number(newPlayerNumber) : undefined,
+        position: newPlayerPosition,
+        nationality: countryCode || 'TR',
+      }])
+      setNewPlayerName('')
+      setNewPlayerNumber('')
       return
     }
     setAddingPlayer(true)
     setSquadActionError('')
     try {
+      // A player created here joins this entry, so their season is the club's.
       await onAddPlayer({
         id: Date.now(),
-        teamId: initial.id,
-        teamName: initial.name,
+        squads: [{ seasonId: initial.seasonId ?? selectedSeasonId, teamId: initial.id }],
         fullName: newPlayerName.trim(),
         shirtNumber: newPlayerNumber ? Number(newPlayerNumber) : undefined,
         position: newPlayerPosition,
         nationality: countryCode,
-        activeSeasonIds: newPlayerSeasonId ? [newPlayerSeasonId] : [],
       })
       setNewPlayerName('')
       setNewPlayerNumber('')
@@ -3648,7 +3709,7 @@ function TeamModal({
   })
 
   return (
-    <Modal title={initial ? `Manage Club: ${initial.name}` : 'Register New Club'} onClose={onClose}>
+    <Modal title={initial ? `Manage Club: ${initial.name}` : template ? `Enter ${template.team.name} in a season` : 'Register New Club'} onClose={onClose}>
       <div className="tabbed-modal-container">
         <div className="modal-tabs-header">
           <button
@@ -3672,15 +3733,13 @@ function TeamModal({
           >
             3. Tournament & Group
           </button>
-          {initial && (
-            <button
-              type="button"
-              className={tab === 'squad' ? 'active' : ''}
-              onClick={() => setTab('squad')}
-            >
-              4. Squad Roster ({players.length})
-            </button>
-          )}
+          <button
+            type="button"
+            className={tab === 'squad' ? 'active' : ''}
+            onClick={() => setTab('squad')}
+          >
+            4. Squad Roster ({squadSize}{initial ? '' : `/${MIN_SQUAD}+`})
+          </button>
         </div>
 
         {/* LIVE CLUB BRANDING PREVIEW STRIP */}
@@ -3705,10 +3764,10 @@ function TeamModal({
             </span>
           </div>
           <div className="preview-squad-status">
-            {players.length >= 5 ? (
-              <span className="squad-badge complete">✅ Squad Complete ({players.length}/5 min)</span>
+            {squadSize >= MIN_SQUAD ? (
+              <span className="squad-badge complete">✅ Squad Complete ({squadSize}/{MIN_SQUAD} min)</span>
             ) : (
-              <span className="squad-badge incomplete">⚠️ {players.length}/5 (Min 5 players needed)</span>
+              <span className="squad-badge incomplete">⚠️ {squadSize}/{MIN_SQUAD} (Min {MIN_SQUAD} players needed)</span>
             )}
           </div>
         </div>
@@ -3806,7 +3865,7 @@ function TeamModal({
                 Manager / Director Name
                 <input
                   name="managerName"
-                  defaultValue={initial?.managerName ?? ''}
+                  defaultValue={base?.managerName ?? ''}
                   placeholder="e.g. Ahmet Yılmaz"
                 />
               </label>
@@ -3815,7 +3874,7 @@ function TeamModal({
                 Head Coach Name
                 <input
                   name="coachName"
-                  defaultValue={initial?.coachName ?? ''}
+                  defaultValue={base?.coachName ?? ''}
                   placeholder="e.g. Roberto Mancini"
                 />
               </label>
@@ -3825,7 +3884,7 @@ function TeamModal({
                 <textarea
                   name="bio"
                   rows={4}
-                  defaultValue={initial?.bio ?? ''}
+                  defaultValue={base?.bio ?? ''}
                   placeholder="Brief description of the club, corporate background, and history..."
                 />
               </label>
@@ -3836,8 +3895,10 @@ function TeamModal({
                 Season *
                 <select
                   name="seasonId"
-                  value={selectedSeasonId}
+                  value={initial?.seasonId ?? selectedSeasonId}
                   onChange={(e) => setSelectedSeasonId(Number(e.target.value))}
+                  // An entry's squad and results belong to its season; enter the club again for another season.
+                  disabled={!!initial}
                 >
                   {seasons.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -3867,11 +3928,11 @@ function TeamModal({
               </label>
           </div>
 
-          {tab === 'squad' && initial && (
+          {tab === 'squad' && (
             <div className="span-2 in-modal-squad-container">
               {/* SQUAD ADD MODE SWITCHER */}
               <div className="squad-add-mode-toggle">
-                {onOpenSquadCanvas && (
+                {initial && onOpenSquadCanvas && (
                   <button
                     type="button"
                     className="mode-btn"
@@ -3902,7 +3963,7 @@ function TeamModal({
 
               {squadAddMode === 'pool' ? (
                 <div className="inline-add-player-box">
-                  <h4>Move an existing player to {initial.name}</h4>
+                  <h4>Add an existing player to {initial?.name ?? (name || 'this club')}</h4>
                   <div className="inline-player-fields">
                     <input
                       type="text"
@@ -3923,7 +3984,7 @@ function TeamModal({
                       </option>
                       {filteredPoolPlayers.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.fullName} ({p.position.toUpperCase()}) · Current club: {p.teamName || 'Free agent'}
+                          {p.fullName} ({p.position.toUpperCase()}) · This season: {clubThisSeason(p) ?? 'free agent'}
                         </option>
                       ))}
                     </select>
@@ -3940,7 +4001,7 @@ function TeamModal({
                 </div>
               ) : (
                 <div className="inline-add-player-box">
-                  <h4>Register a new player for {initial.name}</h4>
+                  <h4>Register a new player for {initial?.name ?? (name || 'this club')}</h4>
                   <div className="inline-player-fields">
                     <input
                       placeholder="Player full name *"
@@ -3965,16 +4026,6 @@ function TeamModal({
                       <option value="midfielder">⚙️ Midfielder</option>
                       <option value="forward">⚡ Forward</option>
                     </select>
-                    <select
-                      value={newPlayerSeasonId ?? ''}
-                      onChange={(e) => setNewPlayerSeasonId(Number(e.target.value) || undefined)}
-                    >
-                      {seasons.map((season) => (
-                        <option key={season.id} value={season.id}>
-                          📅 {seasonLabel(season)}
-                        </option>
-                      ))}
-                    </select>
                     <button
                       type="button"
                       className="button button-admin"
@@ -3991,7 +4042,8 @@ function TeamModal({
               {/* SQUAD BY POSITION */}
               <div className="modal-squad-grouped">
                 {(['goalkeeper', 'defender', 'midfielder', 'forward'] as PlayerPosition[]).map((pos) => {
-                  const posPlayers = players.filter((p) => p.position === pos)
+                  const posPlayers = squadPlayers.filter((p) => p.position === pos)
+                  const posNew = initial ? [] : stagedNew.filter((p) => p.position === pos)
                   const posLabels = {
                     goalkeeper: '🧤 Goalkeepers',
                     defender: '🛡️ Defenders',
@@ -4002,9 +4054,9 @@ function TeamModal({
                   return (
                     <div key={pos} className="pos-group-section">
                       <h5>
-                        {posLabels[pos]} ({posPlayers.length})
+                        {posLabels[pos]} ({posPlayers.length + posNew.length})
                       </h5>
-                      {posPlayers.length === 0 ? (
+                      {posPlayers.length + posNew.length === 0 ? (
                         <p className="no-pos-players">No {pos}s registered yet.</p>
                       ) : (
                         <div className="pos-players-list">
@@ -4021,16 +4073,40 @@ function TeamModal({
                               <button
                                 type="button"
                                 className="delete-player-inline-btn"
+                                disabled={!!initial && squadSize <= MIN_SQUAD}
+                                aria-label={`Remove ${p.fullName} from the squad`}
                                 onClick={() => {
-                                  if (onUpdatePlayer) {
-                                    void onUpdatePlayer({
-                                      ...p,
-                                      teamId: 0,
-                                      teamName: 'Free Agent',
-                                    })
+                                  if (!initial) {
+                                    setStagedIds((ids) => ids.filter((id) => id !== p.id))
+                                    return
                                   }
+                                  setSquadActionError('')
+                                  onSetSquad(p.id, initial.seasonId ?? selectedSeasonId, null).catch((reason: unknown) =>
+                                    setSquadActionError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
+                                  )
                                 }}
-                                title="Remove from squad (keeps the player in the pool)"
+                                title={
+                                  initial && squadSize <= MIN_SQUAD
+                                    ? shrinkError(initial, squadSize)
+                                    : 'Remove from squad (keeps the player in the pool)'
+                                }
+                              >
+                                <UserMinus size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          {posNew.map((p) => (
+                            <div key={`new-${p.fullName}-${p.shirtNumber ?? ''}`} className="squad-player-item">
+                              <span className="shirt-badge">{p.shirtNumber ?? '-'}</span>
+                              <div className="squad-player-meta">
+                                <strong>{p.fullName}</strong>
+                                <span>New player · saved with the club</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="delete-player-inline-btn"
+                                aria-label={`Remove ${p.fullName}`}
+                                onClick={() => setStagedNew((list) => list.filter((item) => item !== p))}
                               >
                                 <UserMinus size={14} />
                               </button>
@@ -4066,21 +4142,24 @@ function QuickSquadModal({
   team,
   players,
   allPlayers = [],
+  teams,
   seasons,
   onClose,
   onAddPlayer,
-  onUpdatePlayer,
+  onSetSquad,
   onOpenSquadCanvas,
 }: {
   team: Team
   players: Player[]
   allPlayers?: Player[]
+  teams: Team[]
   seasons: Season[]
   onClose: () => void
   onAddPlayer: (player: Player) => Promise<void>
-  onUpdatePlayer?: (player: Player) => Promise<void>
+  onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
+  const seasonId = team.seasonId ?? defaultSeasonId(seasons) ?? 1
   const [squadMode, setSquadMode] = useState<'pool' | 'new'>('pool')
   const [name, setName] = useState('')
   const [number, setNumber] = useState('')
@@ -4092,39 +4171,34 @@ function QuickSquadModal({
   const [poolSearch, setPoolSearch] = useState('')
   const [assigning, setAssigning] = useState(false)
 
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
   const [adding, setAdding] = useState(false)
 
-  const availablePoolPlayers = useMemo(() => {
-    return allPlayers.filter((p) => p.teamId !== team.id && p.teamName !== team.name)
-  }, [allPlayers, team])
+  const availablePoolPlayers = useMemo(() => allPlayers.filter((p) => !isInTeam(p, team.id)), [allPlayers, team])
+  const clubThisSeason = (p: Player) => teams.find((entry) => entry.id === playerTeamId(p, seasonId))?.name
 
-  const filteredPoolPlayers = useMemo(() => {
+  // A plain filter: cheap, and it reads the current season's club names.
+  const filteredPoolPlayers = (() => {
     if (!poolSearch.trim()) return availablePoolPlayers
     const q = poolSearch.toLowerCase()
     return availablePoolPlayers.filter(
       (p) =>
         p.fullName.toLowerCase().includes(q) ||
-        p.teamName.toLowerCase().includes(q) ||
+        (clubThisSeason(p) ?? '').toLowerCase().includes(q) ||
         p.position.toLowerCase().includes(q)
     )
-  }, [availablePoolPlayers, poolSearch])
+  })()
 
   const guard = useSingleFlight()
   const handleAssignPool = () =>
     guard(undefined, async () => {
-    if (!selectedPoolId || !onUpdatePlayer) return
+    if (!selectedPoolId) return
     const targetPlayer = allPlayers.find((p) => p.id === Number(selectedPoolId))
     if (!targetPlayer) return
 
     setAssigning(true)
     setAddError('')
     try {
-      await onUpdatePlayer({
-        ...targetPlayer,
-        teamId: team.id,
-        teamName: team.name,
-      })
+      await onSetSquad(targetPlayer.id, seasonId, team.id)
       setSelectedPoolId('')
       setPoolSearch('')
     } catch (err: unknown) {
@@ -4153,13 +4227,11 @@ function QuickSquadModal({
     try {
       await onAddPlayer({
         id: Date.now(),
-        teamId: team.id,
-        teamName: team.name,
+        squads: [{ seasonId, teamId: team.id }],
         fullName: name.trim(),
         shirtNumber: number ? Number(number) : undefined,
         position: pos,
         nationality: team.countryCode,
-        activeSeasonIds: selectedSeasonId ? [selectedSeasonId] : [],
       })
       setName('')
       setNumber('')
@@ -4178,6 +4250,7 @@ function QuickSquadModal({
   })
 
   const country = getCountry(team.countryCode)
+  const groupName = assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id)
 
   return (
     <Modal title={`Squad Roster Hub: ${team.name}`} onClose={onClose}>
@@ -4193,7 +4266,8 @@ function QuickSquadModal({
           <div>
             <h3>{team.name}</h3>
             <span>
-              {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'} ({team.groupName ?? 'Group A'})
+              {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'}
+              {groupName ? ` (${groupName})` : ''}
             </span>
           </div>
           <div className="header-status">
@@ -4259,7 +4333,7 @@ function QuickSquadModal({
                 </option>
                 {filteredPoolPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.fullName} ({p.position.toUpperCase()}) · Current club: {p.teamName || 'Free agent'}
+                    {p.fullName} ({p.position.toUpperCase()}) · This season: {clubThisSeason(p) ?? 'free agent'}
                   </option>
                 ))}
               </select>
@@ -4297,16 +4371,6 @@ function QuickSquadModal({
                 <option value="defender">🛡️ Defender</option>
                 <option value="midfielder">⚙️ Midfielder</option>
                 <option value="forward">⚡ Forward</option>
-              </select>
-              <select
-                value={selectedSeasonId ?? ''}
-                onChange={(e) => setSelectedSeasonId(Number(e.target.value) || undefined)}
-              >
-                {seasons.map((season) => (
-                  <option key={season.id} value={season.id}>
-                    📅 {seasonLabel(season)}
-                  </option>
-                ))}
               </select>
               <button
                 type="button"
@@ -4359,16 +4423,14 @@ function QuickSquadModal({
                   <td>
                     <button
                       className="row-action danger"
+                      disabled={players.length <= MIN_SQUAD}
                       onClick={() => {
-                        if (onUpdatePlayer) {
-                          void onUpdatePlayer({
-                            ...p,
-                            teamId: 0,
-                            teamName: 'Free Agent',
-                          })
-                        }
+                        setAddError('')
+                        onSetSquad(p.id, seasonId, null).catch((reason: unknown) =>
+                          setAddError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
+                        )
                       }}
-                      title="Remove from squad (keeps the player in the pool)"
+                      title={players.length <= MIN_SQUAD ? shrinkError(team, players.length) : 'Remove from squad (keeps the player in the pool)'}
                     >
                       <UserMinus size={14} /> Remove
                     </button>
@@ -4733,8 +4795,8 @@ function MatchEventsModal({
   const selectedTeamId = selectedTeam === match.home ? match.homeTeamId : match.awayTeamId
 
   const matchPlayers = useMemo(() => {
-    return players.filter((p) => selectedTeamId != null ? p.teamId === selectedTeamId : p.teamName === selectedTeam)
-  }, [players, selectedTeam, selectedTeamId])
+    return selectedTeamId != null ? squadOf(players, selectedTeamId) : []
+  }, [players, selectedTeamId])
 
   const guard = useSingleFlight()
   const submitEvent = (event: FormEvent<HTMLFormElement>) =>
@@ -4890,36 +4952,25 @@ function PlayerForm({
   seasons,
   onClose,
   onSave,
+  onSetSquad,
 }: {
   initial: Player | null
   teams: Team[]
   seasons: Season[]
   onClose: () => void
   onSave: (player: Player) => Promise<void>
+  onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const availableSeasonNames = useMemo(() => {
-    return seasons
-  }, [seasons])
-
-  // A player must belong to at least one season, so the last chip cannot be
-  // unselected.
-  const [selectedSeasonIds, setSelectedSeasonIds] = useState<number[]>(() => {
-    if (initial?.activeSeasonIds && initial.activeSeasonIds.length > 0) return initial.activeSeasonIds
-    const fallback = defaultSeasonId(seasons)
-    return fallback ? [fallback] : []
+  // The club picked here is for one season; other seasons keep their squads.
+  const [squadSeasonId, setSquadSeasonId] = useState<number>(() => {
+    const latest = initial ? latestSquad(initial, seasons.map((season) => season.id)) : undefined
+    return latest?.seasonId ?? defaultSeasonId(seasons) ?? seasons[0]?.id ?? 1
   })
-
-  const toggleSeason = (seasonId: number) => {
-    if (selectedSeasonIds.includes(seasonId)) {
-      if (selectedSeasonIds.length === 1) return
-      setSelectedSeasonIds(selectedSeasonIds.filter((id) => id !== seasonId))
-    } else {
-      setSelectedSeasonIds([...selectedSeasonIds, seasonId])
-    }
-  }
+  const seasonClubs = teams.filter((team) => team.seasonId === squadSeasonId)
+  const currentTeamId = initial ? playerTeamId(initial, squadSeasonId) : undefined
 
   const guard = useSingleFlight()
   const submit = (event: FormEvent<HTMLFormElement>) =>
@@ -4928,15 +4979,13 @@ function PlayerForm({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
-    const teamIdVal = data.get('teamId')
-    const teamId = teamIdVal && Number(teamIdVal) > 0 ? Number(teamIdVal) : 0
-    const foundTeam = teamId > 0 ? teams.find((t) => t.id === teamId) : undefined
+    const teamId = Number(data.get('teamId')) || undefined
+    const foundTeam = teams.find((t) => t.id === teamId)
 
     try {
       await onSave({
         id: initial?.id ?? Date.now(),
-        teamId: teamId > 0 ? teamId : 0,
-        teamName: foundTeam ? foundTeam.name : 'Free Agent',
+        squads: initial?.squads ?? (teamId ? [{ seasonId: squadSeasonId, teamId }] : []),
         fullName: String(data.get('fullName')),
         shirtNumber: data.get('shirtNumber') ? Number(data.get('shirtNumber')) : undefined,
         position: String(data.get('position')) as PlayerPosition,
@@ -4944,8 +4993,9 @@ function PlayerForm({
         nationality: String(data.get('nationality')) || foundTeam?.countryCode || 'TR',
         photoUrl: String(data.get('photoUrl')).trim() || undefined,
         isCaptain: data.get('isCaptain') === 'on',
-        activeSeasonIds: selectedSeasonIds,
       })
+      // Joining, transferring or leaving changes squads; the database keeps each above the minimum.
+      if (initial && teamId !== currentTeamId) await onSetSquad(initial.id, squadSeasonId, teamId ?? null)
       onClose()
     } catch (reason: unknown) {
       console.error('Player save failed:', reason)
@@ -4970,10 +5020,21 @@ function PlayerForm({
         </label>
 
         <label>
-          Assigned Club / Team
-          <select name="teamId" defaultValue={initial?.teamId ? String(initial.teamId) : ''}>
-            <option value="">No club (free agent)</option>
-            {teams.map((t) => (
+          Season
+          <select value={squadSeasonId} onChange={(e) => setSquadSeasonId(Number(e.target.value))}>
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {seasonLabel(season)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Club this season
+          <select name="teamId" key={squadSeasonId} defaultValue={currentTeamId ? String(currentTeamId) : ''}>
+            <option value="">No club this season</option>
+            {seasonClubs.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({getCountry(t.countryCode).flag})
               </option>
@@ -5034,25 +5095,21 @@ function PlayerForm({
           defaultValue={initial?.photoUrl ?? ''}
           hint="A background-free PNG works best — it is layered over the player's flag on roster cards."
         />
-        {/* PLAYED SEASONS PICKER */}
-        <div className="span-2 season-picker-field">
-          <span className="field-label">Played Seasons of Year * (Select all that apply)</span>
-          <div className="season-picker-chips">
-            {availableSeasonNames.map((season) => {
-              const isSelected = selectedSeasonIds.includes(season.id)
-              return (
-                <button
-                  key={season.id}
-                  type="button"
-                  className={`season-chip-btn ${isSelected ? 'active' : ''}`}
-                  onClick={() => toggleSeason(season.id)}
-                >
-                  {isSelected ? '✓ ' : '+ '} {seasonLabel(season)}
-                </button>
-              )
-            })}
+        {initial && initial.squads.length > 0 ? (
+          <div className="span-2 season-picker-field">
+            <span className="field-label">Squads by season</span>
+            <div className="season-picker-chips">
+              {initial.squads.map((entry) => {
+                const season = seasons.find((item) => item.id === entry.seasonId)
+                return (
+                  <span key={entry.seasonId} className="season-chip-btn active">
+                    {season ? seasonLabel(season) : 'Season'} · {teams.find((team) => team.id === entry.teamId)?.name ?? 'Club'}
+                  </span>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <label className="checkbox-label span-2">
           <input

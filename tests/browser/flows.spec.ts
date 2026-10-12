@@ -1,14 +1,19 @@
 import { test, expect, type Page } from '@playwright/test'
 import { autoSeedBracket, generateEmptyBracket } from '../../src/lib/bracketUtils'
-import type { Season, Team } from '../../src/types'
+import type { Player, Season, Team } from '../../src/types'
 
 const clubs: Team[] = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA'].map((name, index) => ({ id: index + 1, seasonId: 1, name, countryCode: 'TR', color: '#63e35b', played: 0, goalDifference: 0, points: 0 }))
 const base: Season = { id: 1, city: 'Antalya', year: 2026, name: 'Browser QA', fullName: 'Browser QA', isActive: true, seasonType: 'league', league: { teamCount: 4, slots: clubs.map((club, index) => ({ position: index + 1, teamId: club.id })) } }
 
+// ALPHA has six players, so one can transfer out without breaking the five-player minimum.
+const alphaSquad: Player[] = [
+  { id: 100, squads: [{ seasonId: 1, teamId: 1 }], fullName: 'Test Striker', position: 'forward', strongFoot: 'right', isCaptain: false, shirtNumber: 9, activeSeasonIds: [1], goals: 0, assists: 0 },
+  ...[1, 2, 3, 4, 5].map((n): Player => ({ id: 100 + n, squads: [{ seasonId: 1, teamId: 1 }], fullName: `Alpha Player ${n}`, position: 'defender', activeSeasonIds: [1] })),
+]
 async function seed(page: Page, season: Season = base) {
   await page.addInitScript((data) => {
-    if (!localStorage.getItem('ccl-cup:data:v7')) localStorage.setItem('ccl-cup:data:v7', JSON.stringify(data))
-  }, { seasons: [season], teams: clubs, players: [{ id: 100, teamId: 1, teamName: 'ALPHA', fullName: 'Test Striker', position: 'forward', strongFoot: 'right', isCaptain: false, shirtNumber: 9, activeSeasonIds: [1], goals: 0, assists: 0 }], matches: [], stories: [], media: [], sponsors: [] })
+    if (!localStorage.getItem('ccl-cup:data:v8')) localStorage.setItem('ccl-cup:data:v8', JSON.stringify(data))
+  }, { seasons: [season], teams: clubs, players: alphaSquad, matches: [], stories: [], media: [], sponsors: [] })
 }
 async function login(page: Page, route = 'matches') {
   await page.goto(`/#admin/${route}`)
@@ -68,7 +73,7 @@ for (const grouped of [false, true]) {
     await page.evaluate(() => {
       const original = Storage.prototype.setItem
       Storage.prototype.setItem = function (key, value) {
-        if (key === 'ccl-cup:data:v7') throw new Error('Test storage unavailable')
+        if (key === 'ccl-cup:data:v8') throw new Error('Test storage unavailable')
         return original.call(this, key, value)
       }
       Object.assign(window, { restoreStorage: () => { Storage.prototype.setItem = original } })
@@ -168,7 +173,7 @@ test('an event remains attached to the same player after transfer and rename', a
   await page.getByRole('button', { name: 'Edit player Test Striker', exact: true }).click()
   const player = page.getByRole('dialog')
   await player.getByLabel('Full Name *', { exact: true }).fill('Renamed Striker')
-  await player.getByRole('combobox', { name: 'Assigned Club / Team', exact: true }).selectOption('2')
+  await player.getByRole('combobox', { name: 'Club this season', exact: true }).selectOption('2')
   await player.getByRole('button', { name: /Save/ }).click()
   const row = page.getByRole('row').filter({ hasText: 'Renamed Striker' })
   await expect(row).toContainText('BRAVO')
@@ -185,14 +190,14 @@ test('a changed draw cannot create fixtures that were not reviewed', async ({ pa
   await expect(dialog.getByRole('heading', { name: '2 new fixtures · 0 existing games kept' })).toBeVisible()
   // Simulate another staff session reseeding the draw after this preview.
   await page.evaluate(() => {
-    const data = JSON.parse(localStorage.getItem('ccl-cup:data:v7')!)
+    const data = JSON.parse(localStorage.getItem('ccl-cup:data:v8')!)
     const ties = data.seasons[0].bracket.rounds[0].matches
     const firstAway = ties[0].slot2
     ties[0].slot2 = { ...ties[1].slot1, slotId: ties[0].slot2.slotId }
     ties[1].slot1 = { ...firstAway, slotId: ties[1].slot1.slotId }
-    localStorage.setItem('ccl-cup:data:v7', JSON.stringify(data))
+    localStorage.setItem('ccl-cup:data:v8', JSON.stringify(data))
   })
   await dialog.getByRole('button', { name: 'Create 2 fixtures', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('The table or draw changed')
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ccl-cup:data:v7')!).matches.length)).toBe(0)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ccl-cup:data:v8')!).matches.length)).toBe(0)
 })

@@ -1,5 +1,6 @@
 import type { Match, Season, Team } from '../types'
 import { bracketWithResults } from './qualificationUtils'
+import { seasonLabel } from './seasonLabels'
 import { hasFixtureTeams, knockoutFixtureKey, knockoutRoundSize, tableStageMatches } from './matchStages'
 
 export type FixtureOptions = {
@@ -51,7 +52,8 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
   const pool = teams.filter((team) => team.seasonId == null || team.seasonId === season.id)
   const club = (id: number | null | undefined): Team => {
     const team = pool.find((item) => item.id === id)
-    if (!team) throw new Error('An assigned club no longer belongs to this season. Update the table or draw first.')
+    // Name the season: the planner opens on the current season, which may not be the one being worked on.
+    if (!team) throw new Error(`${seasonLabel(season)}: a club in its table or draw is not entered in this season. Re-save that table or draw, or choose another season.`)
     return team
   }
   const existing = matches.filter((match) => match.seasonId === season.id || (match.seasonId == null && pool.some((team) => team.name === match.home) && pool.some((team) => team.name === match.away)))

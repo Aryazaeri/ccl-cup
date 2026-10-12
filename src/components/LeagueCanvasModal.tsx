@@ -10,7 +10,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
-import { useMemo, useState, type DragEvent } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
 import { autoSeedLeague, clearLeagueSlots } from '../lib/leagueUtils'
 import type { LeagueSlot, SeasonLeague, Team } from '../types'
@@ -22,7 +22,7 @@ type Props = {
   teams: Team[]
   initialLeague?: SeasonLeague
   onClose: () => void
-  onSave: (league: SeasonLeague) => void
+  onSave: (league: SeasonLeague) => void | Promise<void>
 }
 
 export function LeagueCanvasModal({
@@ -39,6 +39,10 @@ export function LeagueCanvasModal({
       .filter((s) => s.teamId != null)
       .map((s, idx) => ({ ...s, position: idx + 1 }))
   })
+
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const savingRef = useRef(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
@@ -155,13 +159,24 @@ export function LeagueCanvasModal({
     setPlacedSlots(reindexed)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    setSaveError('')
     const leagueData: SeasonLeague = {
       teamCount: placedSlots.length,
       slots: placedSlots,
     }
-    onSave(leagueData)
-    onClose()
+    try {
+      await onSave(leagueData)
+      onClose()
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'The league table could not be saved.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   // Next +1 position for the dynamic slot at the end
@@ -170,7 +185,7 @@ export function LeagueCanvasModal({
   return (
     <Modal
       title={`⚽ ${seasonTitle || 'League'} - League table`}
-      onClose={onClose}
+      onClose={() => { if (!savingRef.current) onClose() }}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
       <div className="bracket-builder-shell">
@@ -184,10 +199,10 @@ export function LeagueCanvasModal({
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Add all clubs">
+            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title="Add all clubs">
               <Dices size={16} /> Add all clubs
             </button>
-            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear table">
+            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title="Clear table">
               <RotateCcw size={16} /> Clear
             </button>
             <button
@@ -198,14 +213,15 @@ export function LeagueCanvasModal({
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
-            <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Save league table ({placedSlots.length} teams)
+            <button type="button" className="toolbar-btn primary" disabled={saving} onClick={() => void handleSave()}>
+              <Check size={16} /> {saving ? 'Saving…' : `Save league table (${placedSlots.length} teams)`}
             </button>
           </div>
         </header>
+        {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
 
         {/* WORKSPACE GRID: SIDEBAR + SINGLE FILE LEAGUE CANVAS */}
-        <div className="bracket-workspace-grid">
+        <div className="bracket-workspace-grid" inert={saving}>
           {/* AVAILABLE CLUBS SIDEBAR */}
           <aside className="bracket-teams-sidebar">
             <div className="sidebar-search-box">

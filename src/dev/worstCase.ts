@@ -125,7 +125,7 @@ export function mountToggle() {
   const bar = document.createElement('nav')
   bar.setAttribute('aria-label', 'Dev data fixture')
   bar.style.cssText =
-    'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;display:flex;gap:2px;padding:3px;border-radius:999px;background:#d4d4d4;font:500 12px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.2)'
+    'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:50;display:flex;gap:2px;padding:3px;border-radius:999px;background:#d4d4d4;font:500 12px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.2)'
   for (const kind of ['demo', ...FIXTURE_KINDS]) {
     const link = document.createElement('a')
     const url = new URL(location.href)

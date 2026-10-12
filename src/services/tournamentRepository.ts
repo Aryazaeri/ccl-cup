@@ -1,6 +1,9 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { initialMatches, initialPlayers, initialSeasons, initialStories, initialTeams } from '../data'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { planFixtures, type FixtureOptions } from '../lib/fixtureUtils'
+import { saveWithAsset, type UploadedAsset } from '../lib/assetSaveUtils'
+import { discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
 import type {
   AdminUser,
   Comment,
@@ -102,6 +105,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * operator entering a fixture means.
  */
 function toKickoffIso(date: string, time: string, seasonYear?: number): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return `${date}T${time}:00${ISTANBUL_OFFSET}`
   const [dayPart, monthPart] = String(date ?? '').trim().split(/\s+/)
   const monthIndex = MONTHS.findIndex((m) => m.toLowerCase() === String(monthPart ?? '').toLowerCase().slice(0, 3))
   const [hours, minutes] = String(time ?? '').split(':').map((value) => Number(value))
@@ -159,11 +163,11 @@ async function resolveVenueId(venueName: string, cityName: string): Promise<numb
   const name = venueName?.trim()
   if (!name) return null
 
-  const existing = await supabase.from('venues').select('id').ilike('name', name).limit(1).maybeSingle()
-  if (existing.data?.id) return Number(existing.data.id)
-
   const cityId = await resolveCityId(cityName || 'Antalya')
   if (!cityId) return null
+  const existing = await supabase.from('venues').select('id').eq('city_id', cityId).ilike('name', name).limit(1).maybeSingle()
+  if (existing.error) throw existing.error
+  if (existing.data?.id) return Number(existing.data.id)
 
   const created = await supabase.from('venues').insert({ name, city_id: cityId }).select('id').single()
   if (created.error) throw created.error
@@ -176,11 +180,12 @@ async function resolveVenueId(venueName: string, cityName: string): Promise<numb
  * field for both ("Group A", "Semi-finals"), so it is split on the way in and
  * rejoined on the way out.
  */
-const STAGE_VALUES = ['group', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final'] as const
+const STAGE_VALUES = ['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final'] as const
 type DbStage = (typeof STAGE_VALUES)[number]
 
 const STAGE_LABELS: Record<DbStage, string> = {
   group: 'Group Stage',
+  round_of_32: 'Round of 32',
   round_of_16: 'Round of 16',
   quarter_final: 'Quarter-final',
   semi_final: 'Semi-final',
@@ -191,6 +196,7 @@ const STAGE_LABELS: Record<DbStage, string> = {
 function toDbStage(stage: string): DbStage {
   const value = String(stage ?? '').trim().toLowerCase()
   if (STAGE_VALUES.includes(value as DbStage)) return value as DbStage
+  if (value.includes('32')) return 'round_of_32'
   if (value.includes('16') || value.includes('son 16')) return 'round_of_16'
   if (value.startsWith('quarter') || value.includes('çeyrek') || value.includes('ceyrek')) return 'quarter_final'
   if (value.startsWith('semi') || value.includes('yarı') || value.includes('yari')) return 'semi_final'
@@ -230,23 +236,6 @@ async function resolveGroupId(stage: string, seasonId: number | null): Promise<n
   return Number(created.data.id)
 }
 
-/** Resolves an event's player to a roster id where one exists. */
-async function resolvePlayerId(playerName: string, teamId?: number | null): Promise<number | null> {
-  if (!supabase) return null
-  const name = playerName?.trim()
-  if (!name) return null
-
-  let query = supabase.from('players').select('id').ilike('full_name', name).limit(1)
-  if (teamId && teamId > 0) query = query.eq('team_id', teamId)
-
-  const { data } = await query.maybeSingle()
-  if (data?.id) return Number(data.id)
-
-  // Fall back to a name match on any club before giving up.
-  const anyTeam = await supabase.from('players').select('id').ilike('full_name', name).limit(1).maybeSingle()
-  return anyTeam.data?.id ? Number(anyTeam.data.id) : null
-}
-
 async function currentSeasonId(): Promise<number | null> {
   if (!supabase) return null
   try {
@@ -278,6 +267,7 @@ async function loadRemote(): Promise<TournamentData> {
   ])
 
   if (teamsRes.error) throw teamsRes.error
+  if (seasonsRes.error) throw seasonsRes.error
   if (matchesRes.error) throw matchesRes.error
   if (storiesRes.error) throw storiesRes.error
   if (playersRes.error) throw playersRes.error
@@ -344,6 +334,7 @@ async function loadRemote(): Promise<TournamentData> {
     const events: MatchEvent[] = rawEvents.map((ev) => ({
       id: Number(ev.id),
       matchId: Number(ev.match_id),
+      playerId: ev.player_id != null ? Number(ev.player_id) : undefined,
       teamId: ev.team_id ? Number(ev.team_id) : undefined,
       teamName: (ev.team as { name: string } | null)?.name ?? '',
       // Registered players resolve through the join; `player_name` carries
@@ -359,6 +350,10 @@ async function loadRemote(): Promise<TournamentData> {
       id: Number(m.id),
       home: (m.home as { name: string } | null)?.name ?? 'Unknown',
       away: (m.away as { name: string } | null)?.name ?? 'Unknown',
+      homeTeamId: Number(m.home_team_id),
+      awayTeamId: Number(m.away_team_id),
+      kickoffAt: m.kickoff_at ? String(m.kickoff_at) : undefined,
+      fixtureKey: m.fixture_key ? String(m.fixture_key) : undefined,
       // Prefer the group's own name ("Group A") over the generic phase label.
       stage:
         (m.group as { name: string } | null)?.name ??
@@ -447,6 +442,20 @@ async function loadRemote(): Promise<TournamentData> {
 function clubSaveError(error: { code?: string; message: string }, name: string): Error {
   if (error.code === '23505') return new Error(`A club called "${name}" is already registered for this season.`)
   return new Error(error.message)
+}
+
+// A lost HTTP response may still mean a committed row. Verify it is unused
+// before removing a fresh upload; keep the image if that verification fails.
+async function discardUnusedClubCrest(asset: UploadedAsset): Promise<void> {
+  if (!supabase || !asset.path) return
+  const { data, error } = await supabase.from('teams').select('id').eq('logo_url', asset.url!).limit(1)
+  if (error) throw error
+  if (!data?.length) await discardUploadedAsset(asset)
+}
+
+async function reloadAfterClubSave(): Promise<TournamentData> {
+  try { return await loadRemote() }
+  catch { throw new Error('Club saved, but the data could not be refreshed. Reload before trying to save again.') }
 }
 
 export const tournamentRepository = {
@@ -551,24 +560,26 @@ export const tournamentRepository = {
     const finalSeasonId = team.seasonId ?? fallbackSeasonId
     const uniqueSlug = `${slugify(team.name)}-${Date.now().toString(36)}`
 
-    const { error } = await supabase.from('teams').insert({
-      season_id: finalSeasonId,
-      name: team.name,
-      slug: uniqueSlug,
-      short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
-      country_code: team.countryCode || 'TR',
-      country_name: team.countryName || 'Turkey',
-      primary_color: team.color,
-      secondary_color: team.secondaryColor || '#071525',
-      logo_url: team.logoUrl || null,
-      manager_name: team.managerName || null,
-      coach_name: team.coachName || null,
-      biography: team.bio || null,
-      tournament_format: team.tournamentFormat || 'Champions Cup',
-      group_name: team.groupName || null,
-    })
-    if (error) throw clubSaveError(error, team.name)
-    return loadRemote()
+    await saveWithAsset(() => prepareUploadedAsset(team.logoUrl, 'logos'), async (logoUrl) => {
+      const { error } = await supabase!.from('teams').insert({
+        season_id: finalSeasonId,
+        name: team.name,
+        slug: uniqueSlug,
+        short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
+        country_code: team.countryCode || 'TR',
+        country_name: team.countryName || 'Turkey',
+        primary_color: team.color,
+        secondary_color: team.secondaryColor || '#071525',
+        logo_url: logoUrl || null,
+        manager_name: team.managerName || null,
+        coach_name: team.coachName || null,
+        biography: team.bio || null,
+        tournament_format: team.tournamentFormat || 'Champions Cup',
+        group_name: team.groupName || null,
+      })
+      if (error) throw clubSaveError(error, team.name)
+    }, discardUnusedClubCrest)
+    return reloadAfterClubSave()
   },
 
   async updateTeam(team: Team): Promise<TournamentData> {
@@ -578,26 +589,28 @@ export const tournamentRepository = {
       const updatedPlayers = data.players.map((p) => (p.teamId === team.id ? { ...p, teamName: team.name } : p))
       return saveLocal({ ...data, teams: updatedTeams, players: updatedPlayers })
     }
-    const { error } = await supabase
-      .from('teams')
-      .update({
-        season_id: team.seasonId ?? null,
-        name: team.name,
-        short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
-        country_code: team.countryCode || 'TR',
-        country_name: team.countryName || 'Turkey',
-        primary_color: team.color,
-        secondary_color: team.secondaryColor || '#071525',
-        logo_url: team.logoUrl || null,
-        manager_name: team.managerName || null,
-        coach_name: team.coachName || null,
-        biography: team.bio || null,
-        tournament_format: team.tournamentFormat || 'Champions Cup',
-        group_name: team.groupName || null,
-      })
-      .eq('id', team.id)
-    if (error) throw clubSaveError(error, team.name)
-    return loadRemote()
+    await saveWithAsset(() => prepareUploadedAsset(team.logoUrl, 'logos'), async (logoUrl) => {
+      const { error } = await supabase!
+        .from('teams')
+        .update({
+          season_id: team.seasonId ?? null,
+          name: team.name,
+          short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
+          country_code: team.countryCode || 'TR',
+          country_name: team.countryName || 'Turkey',
+          primary_color: team.color,
+          secondary_color: team.secondaryColor || '#071525',
+          logo_url: logoUrl || null,
+          manager_name: team.managerName || null,
+          coach_name: team.coachName || null,
+          biography: team.bio || null,
+          tournament_format: team.tournamentFormat || 'Champions Cup',
+          group_name: team.groupName || null,
+        })
+        .eq('id', team.id)
+      if (error) throw clubSaveError(error, team.name)
+    }, discardUnusedClubCrest)
+    return reloadAfterClubSave()
   },
 
   async deleteTeam(id: number): Promise<TournamentData> {
@@ -675,19 +688,51 @@ export const tournamentRepository = {
   },
 
   // MATCHES CRUD
+  async generateFixtures(seasonId: number, options: FixtureOptions): Promise<TournamentData> {
+    const data = supabase ? await loadRemote() : loadLocal()
+    const season = data.seasons.find((item) => item.id === seasonId)
+    if (!season) throw new Error('This season no longer exists. Refresh and choose a season.')
+    const plan = planFixtures(season, data.teams, data.matches, options)
+    if (options.expectedKeys && plan.fixtures.some((match) => !options.expectedKeys!.includes(match.fixtureKey!))) throw new Error('The table or draw changed while you reviewed the schedule. Reload and preview the fixtures again before saving.')
+    if (!plan.fixtures.length) return data
+    if (!supabase) {
+      const nextId = Math.max(0, ...data.matches.map((match) => match.id)) + 1
+      return saveLocal({ ...data, matches: [...data.matches, ...plan.fixtures.map((match, index) => ({ ...match, id: nextId + index }))] })
+    }
+    const venueId = await resolveVenueId(options.venue, season.city)
+    const groupIds = new Map(await Promise.all([...new Set(plan.fixtures.map((match) => match.stage))].map(async (stage) =>
+      [stage, await resolveGroupId(stage, seasonId)] as const)))
+    const rows = plan.fixtures.map((match) => ({
+        season_id: seasonId, home_team_id: match.homeTeamId, away_team_id: match.awayTeamId,
+        fixture_key: match.fixtureKey, stage: toDbStage(match.stage), group_id: groupIds.get(match.stage),
+        venue_id: venueId, kickoff_at: match.kickoffAt, match_status: 'scheduled',
+        publication_status: match.status === 'Scheduled' ? 'published' : 'draft',
+    }))
+    // One statement: no half-created schedule, and retries never overwrite scores.
+    const { error } = await supabase.from('matches').upsert(rows, { onConflict: 'season_id,fixture_key', ignoreDuplicates: true })
+    if (error) {
+      if (error.code === 'PGRST204' || error.code === '42703' || error.code === '42P10') throw new Error('Fixture generation needs the latest database migration (202610120001_generated_fixtures.sql).')
+      throw error
+    }
+    try { return await loadRemote() } catch {
+      throw new Error('Fixtures were saved, but the data could not be refreshed. Reload to see them; generating again will keep existing games.')
+    }
+  },
+
   async addMatch(match: Match): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, matches: [match, ...data.matches] })
+      const clubs = data.teams.filter((team) => team.seasonId == null || team.seasonId === match.seasonId)
+      return saveLocal({ ...data, matches: [{ ...match, homeTeamId: clubs.find((team) => team.name === match.home)?.id, awayTeamId: clubs.find((team) => team.name === match.away)?.id }, ...data.matches] })
     }
     // The form now carries a season; currentSeasonId is only the fallback for
     // callers that predate the field.
     const seasonId = match.seasonId ?? (await currentSeasonId())
     if (!seasonId) throw new Error('No season exists yet. Create a season before adding fixtures.')
 
-    const { data: teams } = await supabase.from('teams').select('id, name')
-    const homeTeam = (teams ?? []).find((t: { name: string }) => t.name === match.home)
-    const awayTeam = (teams ?? []).find((t: { name: string }) => t.name === match.away)
+    const { data: teams } = await supabase.from('teams').select('id, name').eq('season_id', seasonId)
+    const homeTeam = (teams ?? []).find((t: { id: number; name: string }) => match.homeTeamId != null ? Number(t.id) === match.homeTeamId : t.name === match.home)
+    const awayTeam = (teams ?? []).find((t: { id: number; name: string }) => match.awayTeamId != null ? Number(t.id) === match.awayTeamId : t.name === match.away)
     if (!homeTeam || !awayTeam) throw new Error('Selected teams do not exist.')
 
     const { data: season } = await supabase.from('seasons').select('year, city').eq('id', seasonId).maybeSingle()
@@ -742,7 +787,7 @@ export const tournamentRepository = {
         stage: toDbStage(match.stage),
         group_id: await resolveGroupId(match.stage, seasonId),
         venue_id: venueId,
-        kickoff_at: toKickoffIso(match.date, match.time, season?.year ? Number(season.year) : undefined),
+        kickoff_at: toKickoffIso(match.kickoffAt && formatKickoffDate(match.kickoffAt) === match.date ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(match.kickoffAt)) : match.date, match.time, season?.year ? Number(season.year) : undefined),
         match_status: match.matchStatus,
         publication_status: match.status === 'Scheduled' ? 'published' : 'draft',
         home_score: match.homeScore ?? null,
@@ -771,27 +816,43 @@ export const tournamentRepository = {
   async addMatchEvent(matchId: number, event: MatchEvent): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
+      const fixture = data.matches.find((match) => match.id === matchId)
+      if (!fixture || ![fixture.home, fixture.away].includes(event.teamName)) throw new Error('Choose a club in this fixture.')
+      const teamId = event.teamId ?? (event.teamName === fixture.home ? fixture.homeTeamId : fixture.awayTeamId)
+      const candidates = data.players.filter((player) => (teamId != null ? player.teamId === teamId : player.teamName === event.teamName) && (event.playerId != null ? player.id === event.playerId : player.fullName === event.playerName))
+      if (event.playerId != null && candidates.length !== 1) throw new Error('This player is no longer on the selected club. Select a current player.')
+      const linkedEvent = { ...event, teamId, playerId: candidates.length === 1 ? candidates[0].id : undefined }
       return saveLocal({
         ...data,
         matches: data.matches.map((m) => {
           if (m.id !== matchId) return m
           const currentEvents = m.events ?? []
-          return { ...m, events: [...currentEvents, event] }
+          return { ...m, events: [...currentEvents, linkedEvent] }
         }),
       })
     }
-    // Events are stored relationally. The team always resolves (it is one of
-    // the two clubs in the fixture); the player may not, if the scorer is not
-    // on a roster — that case keeps the typed name in `player_name`.
-    const { data: teamRow } = await supabase
-      .from('teams')
-      .select('id')
-      .ilike('name', event.teamName?.trim() || '')
-      .limit(1)
-      .maybeSingle()
-
-    const teamId = teamRow?.id ? Number(teamRow.id) : null
-    const playerId = await resolvePlayerId(event.playerName, teamId)
+    // Resolve the team from the fixture, never from a global name search.
+    const { data: fixture, error: fixtureError } = await supabase.from('matches')
+      .select('home_team_id, away_team_id, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name)')
+      .eq('id', matchId).single()
+    if (fixtureError) throw fixtureError
+    const sides = [
+      { id: Number(fixture.home_team_id), name: (fixture.home as unknown as { name: string }).name },
+      { id: Number(fixture.away_team_id), name: (fixture.away as unknown as { name: string }).name },
+    ]
+    const team = sides.find((side) => event.teamId != null ? side.id === event.teamId : side.name === event.teamName)
+    if (!team) throw new Error('The event team must be one of the clubs in this fixture.')
+    const teamId = team.id
+    let playerId: number | null = event.playerId ?? null
+    if (playerId != null) {
+      const { data: player, error } = await supabase.from('players').select('id').eq('id', playerId).eq('team_id', teamId).maybeSingle()
+      if (error) throw error
+      if (!player) throw new Error('This player is no longer on the selected club. Select a current player.')
+    } else {
+      const { data: players, error } = await supabase.from('players').select('id').eq('team_id', teamId).eq('full_name', event.playerName.trim())
+      if (error) throw error
+      if (players?.length === 1) playerId = Number(players[0].id)
+    }
 
     // `match_events.id` is GENERATED ALWAYS — see addMatch.
     const { error } = await supabase.from('match_events').insert({

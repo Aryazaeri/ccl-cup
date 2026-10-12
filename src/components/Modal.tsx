@@ -59,12 +59,12 @@ export function Modal({
         className={`modal ${className}`.trim()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-label={title}
         tabIndex={-1}
         onKeyDown={onKeyDown}
       >
         <div className="modal-head">
-          <h2 id="modal-title">{title}</h2>
+          <h2>{title}</h2>
           <button aria-label="Close" onClick={onClose}>
             <X size={20} aria-hidden="true" />
           </button>

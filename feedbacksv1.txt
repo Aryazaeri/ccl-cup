@@ -36,7 +36,7 @@ ready for review; these changes have not yet been merged or deployed.
    -> DONE. Sponsors has its own section and heading directly after Highlights, and a menu
       link when the season has sponsors.
 2.5. inconsistency between players and teams and matches table , like there are not working and wired to the same database e.g. when a player scored a goal in match , its only shown from the match section but their stats are not updated from the players section pool
-   -> IMPLEMENTED (pending merge). Player goals and assists now come from completed match events
+   -> DONE (merged in PR #9). Player goals and assists now come from completed match events
       in the admin pool, public rosters, and scorer lists. Club points, played,
       and goal difference use the same standings engine, scoped to the club's season.
       For league/group formats, knockout results do not inflate table statistics.
@@ -44,13 +44,15 @@ ready for review; these changes have not yet been merged or deployed.
       event changes in the isolated demo. Regression tests cover recalculation.
 
 2.6. type of a league where tables are then taken into a bracket , but first it starts from table or tables then the brackets for elimination phases after the group stages
-   -> IMPLEMENTED (pending merge). Added "League → Knockout" and "Groups → Knockout" formats.
+   -> DONE (merged in PR #9). Added "League → Knockout" and "Groups → Knockout" formats.
       Choose qualifiers per table/group (2, 4, 8 or 16 total qualifiers), assign
       clubs to the tables, and enter the table-stage fixtures/results in Matches.
       In Standings, select the season and use "Generate knockout draw" once all
       entered table fixtures are published/completed and every club has played.
       Pairings use table ranks; grouped draws pair clubs from different groups.
-      Enter knockout fixtures with Round of 16 / Quarter-final / Semi-final / Final.
+      In Matches, "Plan fixtures" now previews missing league/group games (once or home/away)
+      and knockout ties with known opponents. Fixtures are saved together and retries
+      keep existing scores. Manual entry is also supported for each knockout round.
       Completed scores and shootouts advance winners into the next round and
       select the champion. The public page shows qualification and the saved draw.
       Regenerating a draw requires confirmation and clears saved bracket winners.
@@ -59,5 +61,12 @@ ready for review; these changes have not yet been merged or deployed.
       unchanged group points, and a mobile bracket with horizontal scrolling.
 
 Known leftovers (not in this feedback):
-- a club save that fails after the crest uploads leaves an unused image in storage
-- IMPLEMENTED (pending merge): old error banners clear when changing admin/public routes
+- IMPLEMENTED: rejected club writes remove their new crest after checking that no club references it. Existing crests and committed saves are kept.
+- DONE (merged in PR #9): old error banners clear when changing admin/public routes
+
+Follow-up reliability work (implemented; awaiting PR review):
+- League and group editors await persistence, retain assignments on failure, and allow retry.
+- Match events carry player IDs so goals/assists survive transfers and name changes.
+- Qualification checks for missing table pairings; generated schedules skip existing games.
+- PR checks run unit tests, lint, build and desktop/mobile browser flows.
+- Official social/contact details and organisation copy deferred at the user’s request.

@@ -5211,3 +5211,14 @@ main:focus,
 @media (hover: hover) and (pointer: fine) {
   a.pg-presented:hover strong { text-decoration: underline; }
 }
+/* Fixture preview stays usable in the mobile admin drawer layout. */
+.fixture-generator { margin-bottom: 20px; }
+.fixture-generator h3 { display: flex; align-items: center; gap: 8px; }
+.fixture-fields { grid-column: 1 / -1; border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; min-width: 0; }
+.fixture-preview { margin-top: 20px; }
+.fixture-modal .fixture-preview { padding: 0 20px 24px; }
+.fixture-modal .form-actions > .button-admin { background: #249f34; color: #fff; }
+.fixture-preview-scroll { overflow: auto; max-height: 360px; }
+.fixture-preview table { width: 100%; border-collapse: collapse; text-align: left; }
+.fixture-preview th, .fixture-preview td { padding: 10px; border-bottom: 1px solid var(--border, #dce3e8); white-space: nowrap; }
+@media (max-width: 600px) { .fixture-fields { grid-template-columns: 1fr; } .fixture-generator .admin-panel-head { align-items: stretch; flex-direction: column; } }

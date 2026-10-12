@@ -1,6 +1,7 @@
 import { initialMatches, initialPlayers, initialTeams } from '../src/data'
 import {
   computeGroupStandings,
+  headToHead,
   computePlayerStats,
   computeStandings,
   computeTopScorers,
@@ -452,6 +453,37 @@ section('Logo badges')
 }
 
 /* ---------------- summary ---------------- */
+
+section('Stable club identities')
+{
+  const clubs = [team('RENAMED', { id: 900 }), team('BRAVO', { id: 901 })]
+  const result = { ...played('Old club name', 2, 'BRAVO', 1), homeTeamId: 900, awayTeamId: 901 }
+  const rows = computeStandings(clubs, [result])
+  check('renamed clubs retain standings results by ID', rows[0].points, 3)
+  const outside = { ...result, home: 'RENAMED', homeTeamId: 999 }
+  check('a matching name cannot attach a different club ID to the table', computeStandings(clubs, [outside]).map((row) => row.played), [0, 0])
+  check('head-to-head ignores IDs outside its mini-table', [...headToHead(rows, [outside], { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 }).values()].map((row) => row.points), [0, 0])
+}
+
+section('Player identity after transfers and name changes')
+{
+  const player: Player = { id: 991, teamId: 2, teamName: 'NEW CLUB', fullName: 'New Name', position: 'forward', strongFoot: 'right', isCaptain: false, goals: 0, assists: 0 }
+  const match: Match = { ...played('OLD CLUB', 1, 'OPPONENT', 0), events: [
+    { id: 1, matchId: 1, playerId: 991, playerName: 'Old Name', teamName: 'OLD CLUB', eventType: 'goal', minute: 20 },
+    { id: 2, matchId: 1, playerId: 991, playerName: 'Old Name', teamName: 'OLD CLUB', eventType: 'assist', minute: 30 },
+  ] }
+  const totals = withDerivedPlayerTotals([player], [match])[0]
+  check('past goals survive a transfer and rename', totals.goals, 1)
+  check('past assists survive a transfer and rename', totals.assists, 1)
+  check('a linked player outside the current roster stays in the scorer list', computeTopScorers([], [match])[0].playerId, 991)
+  const duplicate = { ...player, id: 992 }
+  const unlinked = { ...match, events: [{ ...match.events![0], playerId: undefined, playerName: player.fullName, teamName: player.teamName }] }
+  check('same-name roster players are not merged', withDerivedPlayerTotals([player, duplicate], [unlinked]).map((p) => p.goals), [0, 0])
+  check('ambiguous legacy goals remain visible as unlinked', computeTopScorers([player, duplicate], [unlinked])[0].playerId, undefined)
+  const linkedDuplicate = { ...unlinked, events: [{ ...unlinked.events![0], playerId: 992 }] }
+  check('IDs distinguish same-name teammates', withDerivedPlayerTotals([player, duplicate], [linkedDuplicate]).map((p) => p.goals), [0, 1])
+  check('removing an event clears transferred totals', withDerivedPlayerTotals([player], [{ ...match, events: [] }])[0].goals, 0)
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

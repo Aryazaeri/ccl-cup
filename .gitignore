@@ -13,3 +13,6 @@ scripts/
 .claude/
 supabase/.temp/
 SESSION_LOG_*.md
+
+playwright-report/
+test-results/

@@ -10,7 +10,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
-import { useMemo, useState, type DragEvent } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
 import { autoSeedGroupLeague, clearGroupLeagueSlots, generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import type { LeagueSlot, SeasonGroup, SeasonGroupLeague, Team } from '../types'
@@ -23,7 +23,7 @@ type Props = {
   initialGroupLeague?: SeasonGroupLeague
   initialGroupCount?: number
   onClose: () => void
-  onSave: (groupLeague: SeasonGroupLeague) => void
+  onSave: (groupLeague: SeasonGroupLeague) => void | Promise<void>
 }
 
 export function GroupLeagueCanvasModal({
@@ -43,6 +43,10 @@ export function GroupLeagueCanvasModal({
     }
     return generateEmptyGroupLeague(initialGroupCount).groups
   })
+
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const savingRef = useRef(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null)
@@ -192,13 +196,24 @@ export function GroupLeagueCanvasModal({
     setGroups(updated)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    setSaveError('')
     const data: SeasonGroupLeague = {
       groupCount: groups.length,
       groups,
     }
-    onSave(data)
-    onClose()
+    try {
+      await onSave(data)
+      onClose()
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'The groups could not be saved.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   const groupCountOptions = [2, 3, 4, 5, 6, 8]
@@ -206,7 +221,7 @@ export function GroupLeagueCanvasModal({
   return (
     <Modal
       title={`🗂️ ${seasonTitle || 'Group league'} - Group tables`}
-      onClose={onClose}
+      onClose={() => { if (!savingRef.current) onClose() }}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
       <div className="bracket-builder-shell">
@@ -215,7 +230,7 @@ export function GroupLeagueCanvasModal({
           <div className="toolbar-left">
             <span className="toolbar-label">Groups:</span>
             <select
-              className="league-count-select"
+              className="league-count-select" disabled={saving}
               value={groupCount}
               onChange={(e) => handleGroupCountChange(Number(e.target.value))}
             >
@@ -232,10 +247,10 @@ export function GroupLeagueCanvasModal({
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" onClick={handleAutoSeed} title="Random draw">
+            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title="Random draw">
               <Dices size={16} /> Auto draw
             </button>
-            <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title="Clear all groups">
+            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title="Clear all groups">
               <RotateCcw size={16} /> Clear
             </button>
             <button
@@ -246,14 +261,15 @@ export function GroupLeagueCanvasModal({
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
-            <button type="button" className="toolbar-btn primary" onClick={handleSave}>
-              <Check size={16} /> Save groups ({totalPlacedCount} teams)
+            <button type="button" className="toolbar-btn primary" disabled={saving} onClick={() => void handleSave()}>
+              <Check size={16} /> {saving ? 'Saving…' : `Save groups (${totalPlacedCount} teams)`}
             </button>
           </div>
         </header>
+        {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
 
         {/* WORKSPACE GRID: SIDEBAR + MULTI GROUP CANVAS */}
-        <div className="bracket-workspace-grid">
+        <div className="bracket-workspace-grid" inert={saving}>
           {/* AVAILABLE CLUBS SIDEBAR */}
           <aside className="bracket-teams-sidebar">
             <div className="sidebar-search-box">

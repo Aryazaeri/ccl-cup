@@ -42,12 +42,13 @@ import {
 } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
-import { ensureUploaded } from '../lib/assetStorage'
 import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
 import { qualificationOptions, tableStageMatches } from '../lib/qualificationUtils'
+import type { FixtureOptions } from '../lib/fixtureUtils'
+import { FixtureGenerator } from './FixtureGenerator'
 import { QualificationPanel } from './QualificationPanel'
 import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
 import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
@@ -119,6 +120,7 @@ type Props = {
   onAddPlayer: (player: Player) => Promise<void>
   onUpdatePlayer: (player: Player) => Promise<void>
   onDeletePlayer: (id: number) => Promise<void>
+  onGenerateFixtures: (seasonId: number, options: FixtureOptions) => Promise<void>
   onAddMatch: (match: Match) => Promise<void>
   onUpdateMatch: (match: Match) => Promise<void>
   onDeleteMatch: (id: number) => Promise<void>
@@ -174,6 +176,7 @@ export function AdminPanel({
   onAddPlayer,
   onUpdatePlayer,
   onDeletePlayer,
+  onGenerateFixtures,
   onAddMatch,
   onUpdateMatch,
   onDeleteMatch,
@@ -570,6 +573,8 @@ export function AdminPanel({
           )}
 
           {activeSection === 'Matches' && (
+            <>
+            <FixtureGenerator seasons={seasons} teams={teams} matches={matches} onGenerate={onGenerateFixtures} />
             <MatchesManager
               matches={matches}
               seasons={seasons}
@@ -578,6 +583,7 @@ export function AdminPanel({
               onManageEvents={(match) => setEventMatch(match)}
               onAdd={() => setModal('match')}
             />
+            </>
           )}
 
           {activeSection === 'Content' && (
@@ -3534,11 +3540,7 @@ function TeamModal({
         return
       }
 
-      // The picker hands back a base64 data URL for a freshly chosen file.
-      // Push the bytes into storage and keep only the URL — a crest inlined
-      // into the row would be re-sent to every visitor of the public site.
-      const storedLogoUrl = await ensureUploaded(String(data.get('logoUrl')) || undefined, 'logos')
-
+      // The repository uploads the crest and cleans it up if the row is rejected.
       await onSave({
         id: initial?.id ?? Date.now(),
         seasonId: selectedSeasonId,
@@ -3546,7 +3548,7 @@ function TeamModal({
         shortName: text('shortName')?.toUpperCase(),
         countryCode,
         countryName: selectedCountry.name,
-        logoUrl: storedLogoUrl,
+        logoUrl: String(data.get('logoUrl')) || undefined,
         color: String(data.get('color')),
         secondaryColor: text('secondaryColor'),
         managerName: text('managerName'),
@@ -4723,10 +4725,12 @@ function MatchEventsModal({
 }) {
   const [saving, setSaving] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<string>(match.home)
+  const [error, setError] = useState('')
+  const selectedTeamId = selectedTeam === match.home ? match.homeTeamId : match.awayTeamId
 
   const matchPlayers = useMemo(() => {
-    return players.filter((p) => p.teamName === selectedTeam)
-  }, [players, selectedTeam])
+    return players.filter((p) => selectedTeamId != null ? p.teamId === selectedTeamId : p.teamName === selectedTeam)
+  }, [players, selectedTeam, selectedTeamId])
 
   const guard = useSingleFlight()
   const submitEvent = (event: FormEvent<HTMLFormElement>) =>
@@ -4734,18 +4738,24 @@ function MatchEventsModal({
     event.preventDefault()
     const form = event.currentTarget
     setSaving(true)
+    setError('')
     const data = new FormData(form)
     try {
+      const player = matchPlayers.find((p) => p.id === Number(data.get('playerId')))
       await onAddEvent({
         id: Date.now(),
         matchId: match.id,
         teamName: selectedTeam,
-        playerName: String(data.get('playerName')),
+        teamId: selectedTeamId,
+        playerId: player?.id,
+        playerName: player?.fullName ?? String(data.get('playerName') ?? '').trim(),
         eventType: String(data.get('eventType')) as MatchEventType,
         minute: Number(data.get('minute')),
         notes: String(data.get('notes')) || undefined,
       })
       form.reset()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The event could not be saved.')
     } finally {
       setSaving(false)
     }
@@ -4784,6 +4794,7 @@ function MatchEventsModal({
 
         <div className="add-event-section">
           <h3>Log New Event</h3>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
           <form className="admin-form" onSubmit={submitEvent}>
             <label>
               Team
@@ -4796,9 +4807,9 @@ function MatchEventsModal({
             <label>
               Player
               {matchPlayers.length > 0 ? (
-                <select name="playerName" required>
+                <select key={selectedTeam} name="playerId" required>
                   {matchPlayers.map((p) => (
-                    <option key={p.id} value={p.fullName}>
+                    <option key={p.id} value={p.id}>
                       #{p.shirtNumber ?? '-'} {p.fullName}
                     </option>
                   ))}

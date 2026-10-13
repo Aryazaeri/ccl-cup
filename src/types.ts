@@ -328,5 +328,5 @@ export type Story = {
 }
 
 export type View = 'site' | 'admin'
-export type AdminSection = 'Overview' | 'Seasons' | 'Teams' | 'Players' | 'Matches' | 'Standings' | 'Content' | 'Comments' | 'Media' | 'Sponsors' | 'Users'
+export type AdminSection = 'Overview' | 'Seasons' | 'Teams' | 'Players' | 'Matches' | 'Standings' | 'Content' | 'Comments' | 'Media' | 'Sponsors' | 'Users' | 'Settings'
 

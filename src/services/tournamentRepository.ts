@@ -3,6 +3,7 @@ import { initialMatches, initialPlayers, initialSeasons, initialStories, initial
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { planFixtures, type FixtureOptions } from '../lib/fixtureUtils'
 import { scoreAfterEvent } from '../lib/standingsUtils'
+import { DEFAULT_SITE_SETTINGS, cleanSiteSettings, type SiteSettings } from '../lib/siteSettings'
 import { saveWithAsset, type UploadedAsset } from '../lib/assetSaveUtils'
 import { discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
 import type {
@@ -1370,6 +1371,64 @@ export const sponsorsRepository = {
     const client = requireSupabase('Sponsors')
     const { error } = await client.from('sponsors').update({ is_active: isActive }).eq('id', id)
     if (error) throw error
+  },
+}
+
+const siteSettingsKey = 'ccl-cup:site-settings:v1'
+
+export const siteSettingsRepository = {
+  /** The site settings row, or the defaults when it cannot be read. Never throws. */
+  async get(): Promise<SiteSettings> {
+    if (!supabase) {
+      try {
+        const stored = localStorage.getItem(siteSettingsKey)
+        return stored ? { ...DEFAULT_SITE_SETTINGS, ...(JSON.parse(stored) as Partial<SiteSettings>) } : DEFAULT_SITE_SETTINGS
+      } catch {
+        return DEFAULT_SITE_SETTINGS
+      }
+    }
+    const { data, error } = await supabase.from('site_settings').select('*').eq('id', true).maybeSingle()
+    if (error || !data) {
+      if (error) console.warn('Site settings unavailable; showing defaults:', error)
+      return DEFAULT_SITE_SETTINGS
+    }
+    return {
+      aboutIntro: String(data.about_intro ?? ''),
+      aboutHistory: String(data.about_history ?? ''),
+      aboutVision: String(data.about_vision ?? ''),
+      rules: Array.isArray(data.rules) ? data.rules.map(String) : [],
+      venueNote: String(data.venue_note ?? ''),
+      instagramUrl: String(data.instagram_url ?? ''),
+      youtubeUrl: String(data.youtube_url ?? ''),
+      linkedinUrl: String(data.linkedin_url ?? ''),
+      whatsappNumber: String(data.whatsapp_number ?? ''),
+      whatsappMessage: String(data.whatsapp_message ?? ''),
+    }
+  },
+
+  /** Validates, then saves; returns what was stored. */
+  async save(input: SiteSettings): Promise<SiteSettings> {
+    const { settings, error } = cleanSiteSettings(input)
+    if (error) throw new Error(error)
+    if (!supabase) {
+      localStorage.setItem(siteSettingsKey, JSON.stringify(settings))
+      return settings
+    }
+    const { error: saveError } = await supabase.from('site_settings').upsert({
+      id: true,
+      about_intro: settings.aboutIntro,
+      about_history: settings.aboutHistory,
+      about_vision: settings.aboutVision,
+      rules: settings.rules,
+      venue_note: settings.venueNote,
+      instagram_url: settings.instagramUrl,
+      youtube_url: settings.youtubeUrl,
+      linkedin_url: settings.linkedinUrl,
+      whatsapp_number: settings.whatsappNumber,
+      whatsapp_message: settings.whatsappMessage,
+    })
+    if (saveError) throw new Error(saveError.message)
+    return settings
   },
 }
 

@@ -100,7 +100,7 @@ export async function uploadAsset(file: File, folder: AssetFolder): Promise<stri
   return (await uploadAssetReceipt(file, folder)).url!
 }
 
-async function uploadAssetReceipt(file: File, folder: AssetFolder): Promise<UploadedAsset> {
+export async function uploadAssetReceipt(file: File, folder: AssetFolder): Promise<UploadedAsset> {
   const invalid = validateAssetFile(file)
   if (invalid) throw new AssetUploadError(invalid)
 

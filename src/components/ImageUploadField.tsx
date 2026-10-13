@@ -1,6 +1,7 @@
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
-import { useId, useRef, useState, type ChangeEvent } from 'react'
-import { uploadAsset, validateAssetFile, type AssetFolder } from '../lib/assetStorage'
+import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
+import { discardUploadedAsset, uploadAssetReceipt, validateAssetFile, type AssetFolder } from '../lib/assetStorage'
+import type { UploadedAsset } from '../lib/assetSaveUtils'
 
 /**
  * An image field that accepts a file or a URL.
@@ -14,6 +15,11 @@ import { uploadAsset, validateAssetFile, type AssetFolder } from '../lib/assetSt
  * The upload happens on selection rather than on submit: a five-megabyte file
  * on a slow connection should not look like a frozen Save button, and a
  * rejected file should be reported while the user is still looking at it.
+ *
+ * Because of that, it also cleans up after itself when its form closes: if
+ * the form was never submitted, every file it uploaded is removed; if it was,
+ * only files that were replaced before saving are. Images from a previous
+ * save (the default value) are never touched.
  */
 export function ImageUploadField({
   name,
@@ -35,6 +41,32 @@ export function ImageUploadField({
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const fieldId = useId()
+  // Files this field uploaded while open, and whether its form was submitted.
+  const uploads = useRef<UploadedAsset[]>([])
+  const submitted = useRef(false)
+  const current = useRef(value)
+  useEffect(() => {
+    current.current = value
+  }, [value])
+
+  useEffect(() => {
+    const form = inputRef.current?.closest('form')
+    const uploaded = uploads.current // the same array for the field's lifetime
+    const onSubmit = () => {
+      submitted.current = true
+    }
+    form?.addEventListener('submit', onSubmit)
+    return () => {
+      form?.removeEventListener('submit', onSubmit)
+      // ponytail: a submit whose save then fails still counts as submitted, so
+      // cancelling after a failed save keeps its last upload. Tracking the
+      // save result would need every form to report back.
+      const stale = uploaded.filter((asset) => !submitted.current || asset.url !== current.current)
+      for (const asset of stale) {
+        discardUploadedAsset(asset).catch((reason) => console.warn('Could not remove an unused upload:', reason))
+      }
+    }
+  }, [])
 
   const pick = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -51,7 +83,9 @@ export function ImageUploadField({
     setBusy(true)
     setError('')
     try {
-      setValue(await uploadAsset(file, folder))
+      const receipt = await uploadAssetReceipt(file, folder)
+      uploads.current.push(receipt)
+      setValue(receipt.url ?? '')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'That image could not be uploaded.')
     } finally {

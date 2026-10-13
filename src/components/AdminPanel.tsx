@@ -266,9 +266,17 @@ export function AdminPanel({
     const cascadeLines = countsAreKnown
       ? [
           `${seasonTeams.length} club${seasonTeams.length === 1 ? '' : 's'} will be deleted`,
-          `${seasonPlayers.length} player${seasonPlayers.length === 1 ? '' : 's'} will be deleted with those clubs`,
+          `${seasonPlayers.length} player${seasonPlayers.length === 1 ? '' : 's'} leave this season's squads; their profiles and other seasons stay`,
         ]
-      : ['Every club in this season is deleted, and its players with it']
+      : ['Every club entry in this season is deleted; players keep their profiles']
+    // The database unpublishes these before the delete, so they do not turn into content shown in every season.
+    const seasonStories = stories.filter((story) => story.seasonId === id).length
+    const seasonMedia = media.filter((asset) => asset.seasonId === id).length
+    if (seasonStories + seasonMedia > 0) {
+      cascadeLines.push(
+        `${seasonStories} article${seasonStories === 1 ? '' : 's'} and ${seasonMedia} media item${seasonMedia === 1 ? '' : 's'} are kept as unpublished drafts with no season`,
+      )
+    }
 
     const ok = await confirm({
       title: 'Delete season',

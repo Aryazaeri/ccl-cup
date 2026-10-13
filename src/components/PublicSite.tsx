@@ -31,6 +31,7 @@ import { bracketWithResults, tableStageMatches } from '../lib/qualificationUtils
 import { KnockoutBracket } from './KnockoutBracket'
 import { isInTeam, latestSquad, matchSquad, playerTeamId, squadOf } from '../lib/squadUtils'
 import { assignedGroupName } from '../lib/groupLeagueUtils'
+import { FORMATIONS, resolveLineup } from '../lib/formations'
 
 /* ------------------------------------------------------------------ *
  * Routing
@@ -1975,6 +1976,8 @@ function TeamRosterModal({
   onClose: () => void
 }) {
   const country = getCountry(team.countryCode)
+  // The lineup saved in the squad canvas, against the current squad.
+  const lineup = resolveLineup(team.lineup, players)
   const groupName = assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id)
 
   return (
@@ -2007,6 +2010,34 @@ function TeamRosterModal({
             {team.bio}
           </p>
         )}
+
+        {lineup ? (
+          <div className="match-lineups-grid">
+            <div className="squad-column">
+              <h5>Lineup · {FORMATIONS[lineup.formation].name}</h5>
+              {FORMATIONS[lineup.formation].slots
+                .filter((slot) => lineup.starters[slot.id])
+                .map((slot) => (
+                  <div key={slot.id} className="player-row-simple">
+                    <span className="num">{slot.roleName}</span>
+                    <span>{lineup.starters[slot.id].fullName}</span>
+                    <span className="pos-badge">#{lineup.starters[slot.id].shirtNumber ?? '-'}</span>
+                  </div>
+                ))}
+            </div>
+            <div className="squad-column">
+              <h5>Bench</h5>
+              {lineup.bench.length === 0 ? <p className="empty-text">No substitutes named.</p> : null}
+              {lineup.bench.map((player) => (
+                <div key={player.id} className="player-row-simple">
+                  <span className="num">#{player.shirtNumber ?? '-'}</span>
+                  <span>{player.fullName}</span>
+                  <span className="pos-badge">{player.position.slice(0, 3).toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {players.length > 0 && (
           <div className="squad-cutout-grid">

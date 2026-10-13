@@ -4,6 +4,7 @@ import { PublicSite } from './components/PublicSite'
 import type { FixtureOptions } from './lib/fixtureUtils'
 import { withDerivedPlayerTotals, withDerivedTeamTotals } from './lib/standingsUtils'
 import { tournamentRepository, type EntryRoster, type TournamentData } from './services/tournamentRepository'
+import type { Lineup } from './lib/formations'
 import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
 
 // Staff-only screens load on demand: the admin panel and its canvas editors
@@ -170,6 +171,7 @@ export default function App() {
         onAddPlayer={(player: Player) => mutate(() => tournamentRepository.addPlayer(player))}
         onUpdatePlayer={(player: Player) => mutate(() => tournamentRepository.updatePlayer(player))}
         onDeletePlayer={(id: number) => mutate(() => tournamentRepository.deletePlayer(id))}
+        onSaveLineup={(teamId: number, lineup: Lineup) => mutate(() => tournamentRepository.saveLineup(teamId, lineup))}
         onSetSquad={(playerId: number, seasonId: number, teamId: number | null) => mutate(() => tournamentRepository.setSquad(playerId, seasonId, teamId))}
         onGenerateFixtures={(seasonId: number, options: FixtureOptions) => mutate(() => tournamentRepository.generateFixtures(seasonId, options))}
         onAddMatch={(match: Match) => mutate(() => tournamentRepository.addMatch(match))}

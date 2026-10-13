@@ -104,6 +104,7 @@ import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, shrinkError, squadOf } from '../lib/squadUtils'
 import type { EntryRoster, NewSquadPlayer } from '../services/tournamentRepository'
+import type { Lineup } from '../lib/formations'
 
 type Props = {
   seasons: Season[]
@@ -127,6 +128,7 @@ type Props = {
   onDeletePlayer: (id: number) => Promise<void>
   /** Join `teamId`'s squad for the season (transferring if needed), or leave the season when null. */
   onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
+  onSaveLineup: (teamId: number, lineup: Lineup) => Promise<void>
   onGenerateFixtures: (seasonId: number, options: FixtureOptions) => Promise<void>
   onAddMatch: (match: Match) => Promise<void>
   onUpdateMatch: (match: Match) => Promise<void>
@@ -185,6 +187,7 @@ export function AdminPanel({
   onUpdatePlayer,
   onDeletePlayer,
   onSetSquad,
+  onSaveLineup,
   onGenerateFixtures,
   onAddMatch,
   onUpdateMatch,
@@ -743,7 +746,7 @@ export function AdminPanel({
           team={canvasSquadTeam}
           teamPlayers={squadOf(players, canvasSquadTeam.id)}
           onClose={() => setCanvasSquadTeam(null)}
-          onSaveSquad={async (assignedIds, unassignedIds) => {
+          onSaveSquad={async (assignedIds, unassignedIds, lineup) => {
             const seasonId = canvasSquadTeam.seasonId
             if (seasonId == null) return
             // Joins first, so the squad never dips below the minimum mid-save.
@@ -755,6 +758,7 @@ export function AdminPanel({
               const p = players.find((item) => item.id === id)
               if (p && isInTeam(p, canvasSquadTeam.id)) await onSetSquad(id, seasonId, null)
             }
+            await onSaveLineup(canvasSquadTeam.id, lineup)
           }}
         />
       )}

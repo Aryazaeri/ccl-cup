@@ -14,114 +14,18 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
-import type { Player, PlayerPosition, Team } from '../types'
+import type { Player, Team } from '../types'
+import { FORMATIONS, filledSlots, reseat, resolveLineup, type FormationType, type Lineup } from '../lib/formations'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 
-type FormationType = '4-3-3' | '4-4-2' | '3-5-2' | '4-2-3-1' | '7v7' | '5v5'
-
-type FormationSlotConfig = {
-  id: string
-  roleName: string
-  position: PlayerPosition
-  top: number // percentage from top (0-100)
-  left: number // percentage from left (0-100)
-}
-
-const FORMATIONS: Record<FormationType, { name: string; slots: FormationSlotConfig[] }> = {
-  '4-3-3': {
-    name: '4-3-3 Attack',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'lb', roleName: 'LB', position: 'defender', top: 68, left: 16 },
-      { id: 'cb1', roleName: 'CB', position: 'defender', top: 72, left: 38 },
-      { id: 'cb2', roleName: 'CB', position: 'defender', top: 72, left: 62 },
-      { id: 'rb', roleName: 'RB', position: 'defender', top: 68, left: 84 },
-      { id: 'cm1', roleName: 'LCM', position: 'midfielder', top: 48, left: 26 },
-      { id: 'cm2', roleName: 'CM', position: 'midfielder', top: 52, left: 50 },
-      { id: 'cm3', roleName: 'RCM', position: 'midfielder', top: 48, left: 74 },
-      { id: 'lw', roleName: 'LW', position: 'forward', top: 22, left: 20 },
-      { id: 'st', roleName: 'ST', position: 'forward', top: 16, left: 50 },
-      { id: 'rw', roleName: 'RW', position: 'forward', top: 22, left: 80 },
-    ],
-  },
-  '4-4-2': {
-    name: '4-4-2 Classic',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'lb', roleName: 'LB', position: 'defender', top: 68, left: 16 },
-      { id: 'cb1', roleName: 'CB', position: 'defender', top: 72, left: 38 },
-      { id: 'cb2', roleName: 'CB', position: 'defender', top: 72, left: 62 },
-      { id: 'rb', roleName: 'RB', position: 'defender', top: 68, left: 84 },
-      { id: 'lm', roleName: 'LM', position: 'midfielder', top: 45, left: 16 },
-      { id: 'cm1', roleName: 'CM', position: 'midfielder', top: 48, left: 38 },
-      { id: 'cm2', roleName: 'CM', position: 'midfielder', top: 48, left: 62 },
-      { id: 'rm', roleName: 'RM', position: 'midfielder', top: 45, left: 84 },
-      { id: 'st1', roleName: 'LS', position: 'forward', top: 18, left: 36 },
-      { id: 'st2', roleName: 'RS', position: 'forward', top: 18, left: 64 },
-    ],
-  },
-  '3-5-2': {
-    name: '3-5-2 Dynamic',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'cb1', roleName: 'LCB', position: 'defender', top: 72, left: 26 },
-      { id: 'cb2', roleName: 'CB', position: 'defender', top: 74, left: 50 },
-      { id: 'cb3', roleName: 'RCB', position: 'defender', top: 72, left: 74 },
-      { id: 'lwb', roleName: 'LWB', position: 'midfielder', top: 50, left: 12 },
-      { id: 'dm', roleName: 'CDM', position: 'midfielder', top: 58, left: 50 },
-      { id: 'cm1', roleName: 'CAM', position: 'midfielder', top: 38, left: 38 },
-      { id: 'cm2', roleName: 'CAM', position: 'midfielder', top: 38, left: 62 },
-      { id: 'rwb', roleName: 'RWB', position: 'midfielder', top: 50, left: 88 },
-      { id: 'st1', roleName: 'LS', position: 'forward', top: 16, left: 36 },
-      { id: 'st2', roleName: 'RS', position: 'forward', top: 16, left: 64 },
-    ],
-  },
-  '4-2-3-1': {
-    name: '4-2-3-1 Tactical',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'lb', roleName: 'LB', position: 'defender', top: 68, left: 16 },
-      { id: 'cb1', roleName: 'CB', position: 'defender', top: 72, left: 38 },
-      { id: 'cb2', roleName: 'CB', position: 'defender', top: 72, left: 62 },
-      { id: 'rb', roleName: 'RB', position: 'defender', top: 68, left: 84 },
-      { id: 'dm1', roleName: 'LDM', position: 'midfielder', top: 54, left: 36 },
-      { id: 'dm2', roleName: 'RDM', position: 'midfielder', top: 54, left: 64 },
-      { id: 'lam', roleName: 'LAM', position: 'midfielder', top: 36, left: 22 },
-      { id: 'cam', roleName: 'CAM', position: 'midfielder', top: 34, left: 50 },
-      { id: 'ram', roleName: 'RAM', position: 'midfielder', top: 36, left: 78 },
-      { id: 'st', roleName: 'ST', position: 'forward', top: 15, left: 50 },
-    ],
-  },
-  '7v7': {
-    name: '7v7 Corporate Cup',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'df1', roleName: 'LCB', position: 'defender', top: 66, left: 28 },
-      { id: 'df2', roleName: 'RCB', position: 'defender', top: 66, left: 72 },
-      { id: 'mf1', roleName: 'LM', position: 'midfielder', top: 44, left: 22 },
-      { id: 'mf2', roleName: 'CM', position: 'midfielder', top: 48, left: 50 },
-      { id: 'mf3', roleName: 'RM', position: 'midfielder', top: 44, left: 78 },
-      { id: 'fw', roleName: 'ST', position: 'forward', top: 18, left: 50 },
-    ],
-  },
-  '5v5': {
-    name: '5v5 Futsal / Arena',
-    slots: [
-      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
-      { id: 'df', roleName: 'CB', position: 'defender', top: 64, left: 50 },
-      { id: 'mf1', roleName: 'LM', position: 'midfielder', top: 42, left: 22 },
-      { id: 'mf2', roleName: 'RM', position: 'midfielder', top: 42, left: 78 },
-      { id: 'fw', roleName: 'ST', position: 'forward', top: 18, left: 50 },
-    ],
-  },
-}
 
 type Props = {
   team: Team
   teamPlayers: Player[]
   onClose: () => void
-  onSaveSquad: (assignedPlayerIds: number[], unassignedPlayerIds: number[]) => Promise<void>
+  /** Saves squad membership changes, then the lineup (formation, starters by slot, bench). */
+  onSaveSquad: (assignedPlayerIds: number[], unassignedPlayerIds: number[], lineup: Lineup) => Promise<void>
 }
 
 export function SquadCanvasModal({
@@ -130,7 +34,9 @@ export function SquadCanvasModal({
   onClose,
   onSaveSquad,
 }: Props) {
-  const [formation, setFormation] = useState<FormationType>('4-3-3')
+  // Opens on the lineup saved for this club entry, if any.
+  const [saved] = useState(() => resolveLineup(team.lineup, teamPlayers))
+  const [formation, setFormation] = useState<FormationType>(saved?.formation ?? '4-3-3')
   const [canvasView, setCanvasView] = useState<'pitch' | 'bench'>('pitch')
   const [searchTerm, setSearchTerm] = useState('')
   const [posFilter, setPosFilter] = useState<string>('All')
@@ -142,6 +48,7 @@ export function SquadCanvasModal({
 
   // Map of slotId -> Player (Starting line-up on pitch)
   const [pitchLineup, setPitchLineup] = useState<Record<string, Player>>(() => {
+    if (saved) return saved.starters
     const initialMap: Record<string, Player> = {}
     const activeSlots = FORMATIONS[formation].slots
     const assignedIds = new Set<number>()
@@ -173,6 +80,7 @@ export function SquadCanvasModal({
 
   // Bench players (team players not in starting lineup)
   const [benchPlayers, setBenchPlayers] = useState<Player[]>(() => {
+    if (saved) return saved.bench
     const startingIds = new Set(Object.values(pitchLineup).map((p) => p.id))
     return teamPlayers.filter((p) => !startingIds.has(p.id))
   })
@@ -330,6 +238,14 @@ export function SquadCanvasModal({
     setPitchLineup(newPitch)
   }
 
+  // Switching formation re-seats the starters into the new slots; anyone without a slot goes to the bench.
+  const changeFormation = (next: FormationType) => {
+    const { starters, overflow } = reseat(next, pitchLineup, (player) => player.position)
+    setFormation(next)
+    setPitchLineup(starters)
+    if (overflow.length > 0) setBenchPlayers((bench) => [...bench, ...overflow.filter((p) => !bench.some((b) => b.id === p.id))])
+  }
+
   const handleClearSquad = () => {
     setPitchLineup({})
     setBenchPlayers([])
@@ -345,7 +261,14 @@ export function SquadCanvasModal({
       // Players to unassign (were in team before, but not in current squad)
       const unassignedIds = originalTeamPlayerIds.filter((id) => !newSquadIds.includes(id))
 
-      await onSaveSquad(newSquadIds, unassignedIds)
+      const lineup: Lineup = {
+        formation,
+        starters: Object.fromEntries(
+          FORMATIONS[formation].slots.filter((slot) => pitchLineup[slot.id]).map((slot) => [slot.id, pitchLineup[slot.id].id]),
+        ),
+        bench: benchPlayers.map((p) => p.id),
+      }
+      await onSaveSquad(newSquadIds, unassignedIds, lineup)
       onClose()
     } catch (err: unknown) {
       console.error('Save squad error:', err)
@@ -362,7 +285,8 @@ export function SquadCanvasModal({
   }
 
   const activeSlots = FORMATIONS[formation].slots
-  const startingCount = Object.keys(pitchLineup).length
+  // Only this formation's slots count; a starter left over from another formation would inflate it.
+  const startingCount = filledSlots(formation, pitchLineup)
   const totalCount = currentSquadPlayers.length
 
   return (
@@ -395,7 +319,7 @@ export function SquadCanvasModal({
               <span>Formation:</span>
               <select
                 value={formation}
-                onChange={(e) => setFormation(e.target.value as FormationType)}
+                onChange={(e) => changeFormation(e.target.value as FormationType)}
               >
                 {Object.entries(FORMATIONS).map(([key, f]) => (
                   <option key={key} value={key}>

@@ -1,3 +1,4 @@
+import type { Lineup } from './lib/formations'
 export type TournamentFormat = 'Champions Cup' | 'Challenge Cup' | 'Open League'
 
 export type SeasonType = 'tournament' | 'league' | 'group_league'
@@ -132,6 +133,8 @@ export type Team = {
   bio?: string
   tournamentFormat?: TournamentFormat
   groupName?: string
+  /** Saved formation, starters by slot and bench (player ids). */
+  lineup?: Lineup
   played: number
   goalDifference: number
   points: number

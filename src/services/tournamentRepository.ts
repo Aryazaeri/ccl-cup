@@ -3,6 +3,7 @@ import { initialMatches, initialPlayers, initialSeasons, initialStories, initial
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { planFixtures, type FixtureOptions } from '../lib/fixtureUtils'
 import { scoreAfterEvent } from '../lib/standingsUtils'
+import type { Lineup } from '../lib/formations'
 import { DEFAULT_SITE_SETTINGS, cleanSiteSettings, type SiteSettings } from '../lib/siteSettings'
 import { saveWithAsset, type UploadedAsset } from '../lib/assetSaveUtils'
 import { discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
@@ -324,6 +325,7 @@ async function loadRemote(): Promise<TournamentData> {
     bio: t.biography ? String(t.biography) : undefined,
     tournamentFormat: (t.tournament_format as Team['tournamentFormat']) || 'Champions Cup',
     groupName: t.group_name ? String(t.group_name) : 'Group A',
+    lineup: (t.lineup as Team['lineup']) ?? undefined,
     played: 0,
     goalDifference: 0,
     points: 0,
@@ -674,6 +676,17 @@ export const tournamentRepository = {
       }
     }, discardUnusedClubCrest)
     return reloadAfterClubSave()
+  },
+
+  /** Saves a club entry's lineup; squad membership is saved separately (setSquad). */
+  async saveLineup(teamId: number, lineup: Lineup): Promise<TournamentData> {
+    if (!supabase) {
+      const data = loadLocal()
+      return saveLocal({ ...data, teams: data.teams.map((t) => (t.id === teamId ? { ...t, lineup } : t)) })
+    }
+    const { error } = await supabase.from('teams').update({ lineup }).eq('id', teamId)
+    if (error) throw new Error(error.message)
+    return loadRemote()
   },
 
   async deleteTeam(id: number): Promise<TournamentData> {

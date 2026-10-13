@@ -35,6 +35,7 @@ export const PERMISSIONS = {
   media: ['super_admin', 'admin', 'editor'],
   sponsors: ['super_admin', 'admin', 'editor'],
   users: ['super_admin', 'admin'],
+  settings: ['super_admin', 'admin'],
 } as const satisfies Record<string, readonly UserRole[]>
 
 export type PermissionArea = keyof typeof PERMISSIONS

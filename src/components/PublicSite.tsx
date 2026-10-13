@@ -20,7 +20,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { flagImageUrl, getCountry } from '../lib/countries'
 import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers, shootoutLine, withDerivedPlayerTotals } from '../lib/standingsUtils'
 import { seasonLabelsForIds } from '../lib/seasonLabels'
-import { commentsRepository } from '../services/tournamentRepository'
+import { commentsRepository, siteSettingsRepository } from '../services/tournamentRepository'
+import { DEFAULT_SITE_SETTINGS, whatsappLink, type SiteSettings } from '../lib/siteSettings'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
@@ -30,46 +31,6 @@ import { bracketWithResults, tableStageMatches } from '../lib/qualificationUtils
 import { KnockoutBracket } from './KnockoutBracket'
 import { isInTeam, latestSquad, matchSquad, playerTeamId, squadOf } from '../lib/squadUtils'
 import { assignedGroupName } from '../lib/groupLeagueUtils'
-
-/* ------------------------------------------------------------------ *
- * Site configuration
- *
- * TODO — replace every value in this block with the real ones before launch.
- * Everything the public site says about the organisation, and every outbound
- * link, is collected here so none of it is buried in the markup.
- *
- * A social link left as an empty string is simply not rendered, so the row
- * degrades to whatever is actually filled in.
- * ------------------------------------------------------------------ */
-const SITE_CONFIG = {
-  social: {
-    instagram: '', // TODO e.g. 'https://instagram.com/cclcup'
-    youtube: '', // TODO
-    linkedin: '', // TODO
-  },
-  whatsapp: {
-    // TODO — international format, digits only, no '+' or spaces.
-    number: '',
-    message: 'Hello! I have a question about the CCL Cup.',
-  },
-  about: {
-    // TODO — replace with the organisation's own copy.
-    intro:
-      'The CCL Cup brings corporate teams together for a season of competitive football, played to full match-day standards across the host city.',
-    history:
-      'Founded to give company sides a real competition rather than a series of friendlies, the Cup has grown into a multi-format season running group stages, league tables and knockout rounds side by side.',
-    vision:
-      'A tournament that treats amateur football seriously: proper fixtures, published results, verified standings, and a record every club can point back to.',
-    rules: [
-      'Squads register a minimum of five players before their first fixture.',
-      'Group stage points: three for a win, one for a draw.',
-      'Ties are separated by goal difference, then goals scored, then head-to-head.',
-      'A player may represent only one club per season.',
-    ],
-    venueNote:
-      'Fixtures are played at the host city venues listed on each match. Kick-off times are local.',
-  },
-}
 
 /* ------------------------------------------------------------------ *
  * Routing
@@ -211,6 +172,11 @@ function useCarousel(count: number) {
 }
 
 export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, selectedSeasonId, onSelectSeason, onAdmin }: Props) {
+  // About copy, rules and contact links are edited in admin → Settings.
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
+  useEffect(() => {
+    void siteSettingsRepository.get().then(setSiteSettings)
+  }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [route, setRoute] = useState<PublicRoute>(() => parsePublicRoute(window.location.hash))
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false)
@@ -1115,23 +1081,23 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <div className="content-width pg-about-grid">
             <div>
               <h2 className="pg-heading">About the cup</h2>
-              <p className="pg-about-lead">{SITE_CONFIG.about.intro}</p>
-              <p>{SITE_CONFIG.about.history}</p>
-              <p>{SITE_CONFIG.about.vision}</p>
+              {siteSettings.aboutIntro ? <p className="pg-about-lead">{siteSettings.aboutIntro}</p> : null}
+              {siteSettings.aboutHistory ? <p>{siteSettings.aboutHistory}</p> : null}
+              {siteSettings.aboutVision ? <p>{siteSettings.aboutVision}</p> : null}
             </div>
             <div className="pg-about-facts">
               <h3 className="pg-subheading">
                 <Shield size={17} /> Competition rules
               </h3>
               <ul>
-                {SITE_CONFIG.about.rules.map((rule) => (
+                {siteSettings.rules.map((rule) => (
                   <li key={rule}>{rule}</li>
                 ))}
               </ul>
               <h3 className="pg-subheading">
                 <MapPin size={17} /> Venues and kick-off
               </h3>
-              <p>{SITE_CONFIG.about.venueNote}</p>
+              {siteSettings.venueNote ? <p>{siteSettings.venueNote}</p> : null}
               {activeSeason ? (
                 <p>
                   Host city this season: <strong>{activeSeason.city}</strong>
@@ -1157,7 +1123,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <button onClick={onAdmin}>Staff login</button>
           </nav>
 
-          <SocialLinks />
+          <SocialLinks settings={siteSettings} />
 
           <small>© {activeSeason?.year ?? new Date().getFullYear()} Corporate Champions League</small>
         </div>
@@ -1229,7 +1195,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         />
       )}
 
-      <WhatsAppFloat />
+      <WhatsAppFloat settings={siteSettings} />
     </div>
   )
 }
@@ -1237,8 +1203,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 /* ------------------------------------------------------------------ *
  * Social links and WhatsApp
  *
- * Both read from SITE_CONFIG and render nothing at all when it has not been
- * filled in, so an unconfigured site shows no dead links.
+ * Both read the site settings and render nothing when a link or number has
+ * not been filled in, so an unconfigured site shows no dead links.
  * ------------------------------------------------------------------ */
 
 /* Lucide removed its brand glyphs, so the three marks are inlined here. */
@@ -1267,11 +1233,11 @@ function LinkedInMark() {
   )
 }
 
-function SocialLinks() {
+function SocialLinks({ settings }: { settings: SiteSettings }) {
   const links = [
-    { key: 'instagram', href: SITE_CONFIG.social.instagram, label: 'Instagram', Icon: InstagramMark },
-    { key: 'youtube', href: SITE_CONFIG.social.youtube, label: 'YouTube', Icon: YouTubeMark },
-    { key: 'linkedin', href: SITE_CONFIG.social.linkedin, label: 'LinkedIn', Icon: LinkedInMark },
+    { key: 'instagram', href: settings.instagramUrl, label: 'Instagram', Icon: InstagramMark },
+    { key: 'youtube', href: settings.youtubeUrl, label: 'YouTube', Icon: YouTubeMark },
+    { key: 'linkedin', href: settings.linkedinUrl, label: 'LinkedIn', Icon: LinkedInMark },
   ].filter((link) => link.href.trim().length > 0)
 
   if (links.length === 0) return null
@@ -1287,11 +1253,9 @@ function SocialLinks() {
   )
 }
 
-function WhatsAppFloat() {
-  const number = SITE_CONFIG.whatsapp.number.replace(/\D/g, '')
-  if (!number) return null
-
-  const href = `https://wa.me/${number}?text=${encodeURIComponent(SITE_CONFIG.whatsapp.message)}`
+function WhatsAppFloat({ settings }: { settings: SiteSettings }) {
+  const href = whatsappLink(settings)
+  if (!href) return null
 
   return (
     <a

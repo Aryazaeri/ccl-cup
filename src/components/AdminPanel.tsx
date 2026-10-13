@@ -55,9 +55,11 @@ import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } 
 import {
   mediaRepository,
   moderationRepository,
+  siteSettingsRepository,
   sponsorsRepository,
   usersRepository,
 } from '../services/tournamentRepository'
+import { DEFAULT_SITE_SETTINGS, type SiteSettings } from '../lib/siteSettings'
 import {
   HOST_CITIES,
   type AdminSection,
@@ -154,6 +156,7 @@ const sections: { label: AdminSection; icon: typeof Home; area?: PermissionArea 
   { label: 'Media', icon: Image, area: 'media' },
   { label: 'Sponsors', icon: Sparkles, area: 'sponsors' },
   { label: 'Users', icon: Users, area: 'users' },
+  { label: 'Settings', icon: Settings, area: 'settings' },
 ]
 
 function sectionFromHash(): AdminSection {
@@ -590,6 +593,8 @@ export function AdminPanel({
           {activeSection === 'Sponsors' && <SponsorsManager sponsors={sponsors} seasons={seasons} onRefresh={onRefresh} />}
 
           {activeSection === 'Users' && <UsersManager currentRole={profile.role} />}
+
+          {activeSection === 'Settings' && <SettingsManager />}
         </div>
       </div>
 
@@ -3302,6 +3307,120 @@ const ROLE_LABELS: Record<AdminUser['role'], string> = {
   editor: 'Editor',
   match_operator: 'Match operator',
   viewer: 'Viewer',
+}
+
+/** About copy, competition rules and contact links shown on the public site. */
+function SettingsManager() {
+  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void siteSettingsRepository.get().then((value) => {
+      if (cancelled) return
+      setSettings(value)
+      setLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const field = (key: keyof SiteSettings) => ({
+    value: key === 'rules' ? settings.rules.join('\n') : settings[key],
+    onChange: (event: { target: { value: string } }) => {
+      setSaved(false)
+      const value = event.target.value
+      setSettings((current) => ({ ...current, [key]: key === 'rules' ? value.split('\n') : value }))
+    },
+  })
+
+  const guard = useSingleFlight()
+  const submit = (event: FormEvent<HTMLFormElement>) =>
+    guard(event, async () => {
+      event.preventDefault()
+      setSaving(true)
+      setError('')
+      try {
+        setSettings(await siteSettingsRepository.save(settings))
+        setSaved(true)
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : 'The settings could not be saved.')
+      } finally {
+        setSaving(false)
+      }
+    })
+
+  return (
+    <section className="module-section">
+      <div className="module-head">
+        <div>
+          <h2>Site settings</h2>
+          <p className="module-sub">The About section, competition rules and contact links on the public site.</p>
+        </div>
+      </div>
+
+      {!loaded ? (
+        <p className="empty-text">Loading settings…</p>
+      ) : (
+        <form className="admin-form" onSubmit={submit}>
+          <label className="span-2">
+            About — introduction
+            <textarea rows={3} {...field('aboutIntro')} />
+          </label>
+          <label className="span-2">
+            About — history
+            <textarea rows={3} {...field('aboutHistory')} />
+          </label>
+          <label className="span-2">
+            About — vision
+            <textarea rows={3} {...field('aboutVision')} />
+          </label>
+          <label className="span-2">
+            Competition rules (one per line)
+            <textarea rows={6} {...field('rules')} />
+          </label>
+          <label className="span-2">
+            Venue note
+            <input {...field('venueNote')} />
+          </label>
+          <label>
+            Instagram link
+            <input type="url" placeholder="https://instagram.com/…" {...field('instagramUrl')} />
+          </label>
+          <label>
+            YouTube link
+            <input type="url" placeholder="https://youtube.com/@…" {...field('youtubeUrl')} />
+          </label>
+          <label>
+            LinkedIn link
+            <input type="url" placeholder="https://linkedin.com/company/…" {...field('linkedinUrl')} />
+          </label>
+          <label>
+            WhatsApp number
+            <input inputMode="tel" placeholder="Country code first, digits only" {...field('whatsappNumber')} />
+          </label>
+          <label className="span-2">
+            WhatsApp greeting
+            <input {...field('whatsappMessage')} />
+          </label>
+          <small className="field-hint span-2">Empty links and an empty WhatsApp number are hidden on the public site.</small>
+
+          {error ? <div className="form-error span-2">{error}</div> : null}
+          {saved ? <p className="span-2" role="status">Saved. The public site shows the new settings on its next load.</p> : null}
+
+          <div className="form-actions span-2">
+            <button className="button button-admin" type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save settings'}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
 }
 
 function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {

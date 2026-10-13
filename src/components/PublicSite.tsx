@@ -220,8 +220,9 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   /* ---------------- Season scoping ---------------- */
 
   // Newest first, so the switcher opens on the current campaign.
+  // Draft and archived seasons stay off the public site, even for signed-in staff.
   const seasonOptions = useMemo(
-    () => [...seasons].sort((a, b) => b.year - a.year || b.id - a.id),
+    () => seasons.filter((season) => (season.status ?? 'published') === 'published').sort((a, b) => b.year - a.year || b.id - a.id),
     [seasons],
   )
 
@@ -399,6 +400,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const latestResult = liveMatch ?? recentResults.find((m) => m.matchStatus === 'completed') ?? null
   const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
   const upcomingMatch = scheduledMatches[0] ?? null
+  // Postponed fixtures are still to be played, so they stay in "Coming up", marked.
+  const comingUp = seasonMatches.filter((m) => m.matchStatus === 'scheduled' || m.matchStatus === 'postponed')
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   // Sponsors only get a menu entry when the season has some.
   const visibleNav = nav.filter((item) => (item.id !== 'sponsors' || seasonSponsors.length > 0) && (item.id !== 'knockout' || knockoutBracket != null))
@@ -432,7 +435,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <TeamMark name={match.away} color={awayTeam?.color} secondaryColor={awayTeam?.secondaryColor} logoUrl={awayTeam?.logoUrl} size="sm" />
           </span>
           {shootout ? <small className="pg-shootout">{shootout}</small> : null}
-          <small>{match.matchStatus === 'live' ? 'Live now' : match.venue}</small>
+          <small>{match.matchStatus === 'live' ? 'Live now' : match.matchStatus === 'postponed' ? 'Postponed' : match.venue}</small>
         </button>
       </li>
     )
@@ -767,10 +770,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               </div>
               <div>
                 <h3 className="pg-subheading">Coming up</h3>
-                {scheduledMatches.length === 0 ? (
-                  <p className="pg-empty">Every fixture this season has been played.</p>
+                {comingUp.length === 0 ? (
+                  <p className="pg-empty">
+                    {recentResults.length > 0 ? 'No more fixtures are scheduled this season.' : 'Fixtures will appear here once they are published.'}
+                  </p>
                 ) : (
-                  <ol className="pg-fixture-list">{scheduledMatches.slice(0, 5).map(fixtureRow)}</ol>
+                  <ol className="pg-fixture-list">{comingUp.slice(0, 5).map(fixtureRow)}</ol>
                 )}
               </div>
             </div>
@@ -1136,7 +1141,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           </div>
         </section>
 
-        <CommentsSection />
+        <CommentsSection seasonId={activeSeason?.id} />
 
       </main>
 
@@ -1497,7 +1502,8 @@ function SearchOverlay({
  * clean comments are approved at once, the rest wait for a moderator.
  * ------------------------------------------------------------------ */
 
-function CommentsSection() {
+/** Feedback for the season being viewed: listed and submitted under that season. */
+function CommentsSection({ seasonId }: { seasonId: number | undefined }) {
   const [comments, setComments] = useState<Comment[]>([])
   const [authorName, setAuthorName] = useState('')
   const [body, setBody] = useState('')
@@ -1507,24 +1513,24 @@ function CommentsSection() {
 
   useEffect(() => {
     let cancelled = false
-    void commentsRepository.listApproved().then((rows) => {
+    void commentsRepository.listApproved(seasonId).then((rows) => {
       if (!cancelled) setComments(rows)
     })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [seasonId])
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSending(true)
     setError('')
     try {
-      const status = await commentsRepository.submit({ authorName, body })
+      const status = await commentsRepository.submit({ authorName, body, seasonId })
       setAuthorName('')
       setBody('')
       setSent(status)
-      if (status === 'approved') setComments(await commentsRepository.listApproved())
+      if (status === 'approved') setComments(await commentsRepository.listApproved(seasonId))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Your comment could not be sent.')
     } finally {

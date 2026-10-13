@@ -1,6 +1,8 @@
 export type TournamentFormat = 'Champions Cup' | 'Challenge Cup' | 'Open League'
 
 export type SeasonType = 'tournament' | 'league' | 'group_league'
+/** Only published seasons appear on the public site; `isActive` (the current season) is separate. */
+export type SeasonStatus = 'draft' | 'published' | 'archived'
 
 export type BracketSlot = {
   slotId: string
@@ -89,6 +91,8 @@ export type Season = {
   parentSeasonId?: number | null
   parentSeasonName?: string
   isActive?: boolean
+  /** Missing on older local data; treated as published. */
+  status?: SeasonStatus
   startDate?: string
   endDate?: string
 }
@@ -299,6 +303,8 @@ export type Comment = {
   body: string
   matchId?: number | null
   storyId?: number | null
+  /** The season the feedback was left under; null for comments made before seasons were tracked. */
+  seasonId?: number | null
   status: CommentStatus
   createdAt?: string
   /** Moderation view only; absent when the comment has not been screened. */

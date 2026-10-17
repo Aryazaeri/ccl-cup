@@ -714,6 +714,7 @@ export function AdminPanel({
           initial={teamInModal}
           template={teamInModal ? undefined : enteringClub ?? undefined}
           defaultSeasonId={newClubSeasonId}
+          hasMatches={!!teamInModal && matches.some((m) => m.homeTeamId === teamInModal.id || m.awayTeamId === teamInModal.id)}
           seasons={seasons}
           teams={teams}
           allPlayers={players}
@@ -3639,6 +3640,7 @@ function TeamModal({
   initial,
   template,
   defaultSeasonId,
+  hasMatches = false,
   players,
   allPlayers = [],
   teams,
@@ -3655,6 +3657,8 @@ function TeamModal({
   template?: { team: Team; squadIds: number[] }
   /** A new club starts in this season: the one the Teams list is showing. */
   defaultSeasonId?: number
+  /** An entry with fixtures stays in its season; the database refuses the move too. */
+  hasMatches?: boolean
   players: Player[]
   allPlayers?: Player[]
   teams: Team[]
@@ -3783,7 +3787,7 @@ function TeamModal({
       // The repository uploads the crest and cleans it up if the row is rejected.
       await onSave({
         id: initial?.id ?? Date.now(),
-        seasonId: initial?.seasonId ?? selectedSeasonId,
+        seasonId: selectedSeasonId,
         clubId: base?.clubId,
         name: String(data.get('name')).toUpperCase(),
         shortName: text('shortName')?.toUpperCase(),
@@ -4090,10 +4094,10 @@ function TeamModal({
                 Season *
                 <select
                   name="seasonId"
-                  value={initial?.seasonId ?? selectedSeasonId}
+                  value={selectedSeasonId}
                   onChange={(e) => setSelectedSeasonId(Number(e.target.value))}
-                  // An entry's squad and results belong to its season; enter the club again for another season.
-                  disabled={!!initial}
+                  // A wrongly entered club can move (squad included) until it has fixtures.
+                  disabled={hasMatches}
                 >
                   {seasons.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -4109,18 +4113,13 @@ function TeamModal({
                 </select>
               </label>
 
-              <label className="span-2 checkbox-label">
-                <input
-                  name="isActive"
-                  type="checkbox"
-                  defaultChecked={initial?.isActive !== false}
-                />
-                <span>
-                  {currentSelectedSeason
-                    ? `Active in ${currentSelectedSeason.year} (${currentSelectedSeason.name || currentSelectedSeason.city})`
-                    : 'Active this season'}
-                </span>
-              </label>
+{hasMatches ? (
+                <small className="span-2 field-hint">
+                  This club has fixtures in this season, so it stays here. Enter the club again to play another season.
+                </small>
+              ) : initial ? (
+                <small className="span-2 field-hint">Changing the season moves this club and its squad.</small>
+              ) : null}
           </div>
 
           {tab === 'squad' && (

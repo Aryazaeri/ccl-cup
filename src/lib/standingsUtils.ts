@@ -620,6 +620,13 @@ export function withDerivedPlayerTotals(players: Player[], matches: Match[]): Pl
   })
 }
 
+/** Why a shootout cannot be saved, or '' when it can: it follows a level score and has a winner. */
+export function shootoutError(homeScore: number, awayScore: number, homePenalties: number, awayPenalties: number): string {
+  if (homeScore !== awayScore) return 'A penalty shootout only follows a level score. Clear the penalties or correct the score.'
+  if (homePenalties === awayPenalties) return 'A penalty shootout needs a winner. Enter the final shootout score.'
+  return ''
+}
+
 /** "Northside won 5–4 on penalties", or null when there was no shootout. */
 export function shootoutLine(match: Match): string | null {
   const { homePenalties: home, awayPenalties: away } = match

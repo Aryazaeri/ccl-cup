@@ -50,7 +50,7 @@ import { qualificationOptions, tableStageMatches } from '../lib/qualificationUti
 import type { FixtureOptions } from '../lib/fixtureUtils'
 import { FixtureGenerator } from './FixtureGenerator'
 import { QualificationPanel } from './QualificationPanel'
-import { computeGroupStandings, computeTopScorers, isCountableMatch } from '../lib/standingsUtils'
+import { computeGroupStandings, computeTopScorers, isCountableMatch, shootoutError } from '../lib/standingsUtils'
 import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
   mediaRepository,
@@ -4823,6 +4823,15 @@ function MatchScoreModal({
     const hasScore = homeScoreVal !== '' && homeScoreVal != null && awayScoreVal !== '' && awayScoreVal != null
     const chosenStatus = String(data.get('matchStatus')) as MatchStatus
     const matchStatus: MatchStatus = hasScore && chosenStatus === 'scheduled' ? 'completed' : chosenStatus
+    // A 2–2 shootout was accepted and then shown nowhere, since it has no winner.
+    const penaltyProblem = hasShootout
+      ? shootoutError(Number(homeScoreVal), Number(awayScoreVal), Number(homePenVal), Number(awayPenVal))
+      : ''
+    if (penaltyProblem) {
+      setSaveError(penaltyProblem)
+      setSaving(false)
+      return
+    }
 
     try {
       await onSave({

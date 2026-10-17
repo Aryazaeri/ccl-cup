@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { initialMatches, initialPlayers, initialSeasons, initialStories, initialTeams } from '../data'
+import { allRows } from '../lib/allRows'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { planFixtures, type FixtureOptions } from '../lib/fixtureUtils'
 import { scoreAfterEvent } from '../lib/standingsUtils'
@@ -264,20 +265,26 @@ async function currentSeasonId(): Promise<number | null> {
 async function loadRemote(): Promise<TournamentData> {
   if (!supabase) throw new Error('Supabase is not configured.')
 
+  // Every list is read page by page: a single request stops at the API's row cap
+  // (1000), which hid players and squads once the archive seasons were imported.
+  // Each order ends with `id` so pages neither overlap nor skip rows.
+  const db = supabase
   const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes, squadsRes] = await Promise.all([
-    supabase.from('seasons').select('*').order('created_at', { ascending: false }),
-    supabase.from('teams').select('*').order('name'),
-    supabase
+    allRows((from, to) => db.from('seasons').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
+    allRows((from, to) => db.from('teams').select('*').order('name').order('id').range(from, to)),
+    allRows((from, to) => db
       .from('matches')
       .select(
         '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players(full_name)), match_squads(team_id, player_id, player_name, shirt_number)',
       )
-      .order('kickoff_at', { ascending: true }),
-    supabase.from('articles').select('*').order('published_at', { ascending: false }),
-    supabase.from('players').select('*').order('full_name'),
-    supabase.from('media_assets').select('*').order('created_at', { ascending: false }),
-    supabase.from('sponsors').select('*').order('display_order', { ascending: true }),
-    supabase.from('squad_memberships').select('player_id, team_id, season_id'),
+      .order('kickoff_at', { ascending: true })
+      .order('id')
+      .range(from, to)),
+    allRows((from, to) => db.from('articles').select('*').order('published_at', { ascending: false }).order('id').range(from, to)),
+    allRows((from, to) => db.from('players').select('*').order('full_name').order('id').range(from, to)),
+    allRows((from, to) => db.from('media_assets').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
+    allRows((from, to) => db.from('sponsors').select('*').order('display_order', { ascending: true }).order('id').range(from, to)),
+    allRows((from, to) => db.from('squad_memberships').select('player_id, team_id, season_id').order('id').range(from, to)),
   ])
 
   if (teamsRes.error) throw teamsRes.error

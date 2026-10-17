@@ -472,6 +472,9 @@ async function loadRemote(): Promise<TournamentData> {
 
 /** Postgres' unique-violation text means nothing to an admin; name the clash instead. */
 function clubSaveError(error: { code?: string; message: string }, name: string): Error {
+  if (error.message.includes('squad_memberships_one_club_per_season'))
+    return new Error(`A player in ${name}'s squad already plays for another club in that season.`)
+  if (error.message.includes('teams_season_club_unique')) return new Error(`${name} is already entered in that season.`)
   if (error.code === '23505') return new Error(`A club called "${name}" is already registered for this season.`)
   return new Error(error.message)
 }
@@ -645,14 +648,21 @@ export const tournamentRepository = {
   async updateTeam(team: Team): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, teams: data.teams.map((t) => (t.id === team.id ? { ...team, seasonId: t.seasonId } : t)) })
+      // A moved entry takes its squad with it, as the cascading key does in the database.
+      const before = data.teams.find((t) => t.id === team.id)
+      const players = before?.seasonId === team.seasonId ? data.players : data.players.map((p) => ({
+        ...p,
+        squads: p.squads.map((entry) => (entry.teamId === team.id ? { ...entry, seasonId: team.seasonId! } : entry)),
+      }))
+      return saveLocal({ ...data, players, teams: data.teams.map((t) => (t.id === team.id ? team : t)) })
     }
     await saveWithAsset(() => prepareUploadedAsset(team.logoUrl, 'logos'), async (logoUrl) => {
       const { error } = await supabase!
         .from('teams')
-        // The season is fixed: squads and results belong to this entry. A club
-        // plays another season through a new entry (addTeam with clubId).
+        // The season can change only while the entry has no matches (a trigger
+        // refuses otherwise); its squad follows through the cascading key.
         .update({
+          season_id: team.seasonId,
           name: team.name,
           short_name: team.shortName ?? team.name.slice(0, 3).toUpperCase(),
           country_code: team.countryCode || 'TR',

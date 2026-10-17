@@ -391,7 +391,7 @@ table { border-collapse: collapse; width: 100%; }
 .admin-form input[type="color"] { padding: 5px; }
 .span-2 { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
-.form-actions > button:first-child { min-height: 50px; padding: 0 20px; border: 1px solid #bdc6ce; border-radius: 6px; background: #fff; }
+.form-actions > button:first-child:not(.button-admin) { min-height: 50px; padding: 0 20px; border: 1px solid #bdc6ce; border-radius: 6px; background: #fff; }
 
 /* Authentication and application states */
 .app-loading { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #fff; background: var(--navy); }

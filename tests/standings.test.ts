@@ -6,6 +6,7 @@ import {
   computeStandings,
   computeTopScorers,
   scoreAfterEvent,
+  shootoutError,
   shootoutLine,
   withDerivedTeamTotals,
   withDerivedPlayerTotals,
@@ -433,6 +434,9 @@ const shootoutBase = { ...initialMatches[0], home: 'Union', away: 'Northside', h
 check('no shootout recorded', shootoutLine(shootoutBase), null)
 check('away side wins', shootoutLine({ ...shootoutBase, homePenalties: 4, awayPenalties: 5 }), 'Northside won 5–4 on penalties')
 check('home side wins', shootoutLine({ ...shootoutBase, homePenalties: 3, awayPenalties: 2 }), 'Union won 3–2 on penalties')
+check('shootout after a level score with a winner is valid', shootoutError(3, 3, 4, 2), '')
+check('tied shootout is refused', shootoutError(3, 3, 2, 2), 'A penalty shootout needs a winner. Enter the final shootout score.')
+check('shootout after a decided score is refused', /level score/.test(shootoutError(2, 1, 4, 3)), true)
 check('level shootout is not shown', shootoutLine({ ...shootoutBase, homePenalties: 2, awayPenalties: 2 }), null)
 
 /* ---------------- logo badges ---------------- */

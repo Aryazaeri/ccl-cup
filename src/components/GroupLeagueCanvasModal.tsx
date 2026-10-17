@@ -39,7 +39,13 @@ export function GroupLeagueCanvasModal({
   )
   const [groups, setGroups] = useState<SeasonGroup[]>(() => {
     if (initialGroupLeague?.groups && initialGroupLeague.groups.length > 0) {
-      return initialGroupLeague.groups
+      // A saved draw can still name clubs that are not entered in this season
+      // (copied layouts, moved or deleted entries). They cannot play here, so
+      // they start unplaced instead of filling the groups.
+      return initialGroupLeague.groups.map((group) => ({
+        ...group,
+        slots: group.slots.filter((slot) => teams.some((team) => team.id === slot.teamId)),
+      }))
     }
     return generateEmptyGroupLeague(initialGroupCount).groups
   })

@@ -239,6 +239,7 @@ export function AdminPanel({
   const teamInModal = editingTeam ?? createdTeam
   // Registering a club that already exists for another season, from its latest entry.
   const [enteringClub, setEnteringClub] = useState<{ team: Team; squadIds: number[] } | null>(null)
+  const [newClubSeasonId, setNewClubSeasonId] = useState<number | undefined>()
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -537,9 +538,10 @@ export function AdminPanel({
               }}
               onManageSquad={(team) => setSquadTeam(team)}
               onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
-              onAdd={() => {
+              onAdd={(seasonId) => {
                 setEditingTeam(null)
                 setEnteringClub(null)
+                setNewClubSeasonId(seasonId)
                 setModal('team')
               }}
             />
@@ -711,6 +713,7 @@ export function AdminPanel({
           key={teamInModal?.id ?? enteringClub?.team.id ?? 'new'}
           initial={teamInModal}
           template={teamInModal ? undefined : enteringClub ?? undefined}
+          defaultSeasonId={newClubSeasonId}
           seasons={seasons}
           teams={teams}
           allPlayers={players}
@@ -1629,7 +1632,8 @@ function TeamsManager({
   onEdit: (team: Team) => void
   onManageSquad: (team: Team) => void
   onOpenSquadCanvas?: (team: Team) => void
-  onAdd: () => void
+  /** Register a new club, starting on the season being viewed (if one is). */
+  onAdd: (seasonId?: number) => void
 }) {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   // Each season has its own club entries; the same club can appear once per season.
@@ -1678,7 +1682,7 @@ function TeamsManager({
               ))}
             </select>
           ) : null}
-          <button className="button button-admin" onClick={onAdd}>
+          <button className="button button-admin" onClick={() => onAdd(seasonFilter === 'all' ? undefined : seasonFilter)}>
             <Plus />
             Register New Club
           </button>
@@ -3634,6 +3638,7 @@ function MatchTable({
 function TeamModal({
   initial,
   template,
+  defaultSeasonId,
   players,
   allPlayers = [],
   teams,
@@ -3648,6 +3653,8 @@ function TeamModal({
   initial: Team | null
   /** When registering an existing club for another season: its latest entry, copied as the starting point. */
   template?: { team: Team; squadIds: number[] }
+  /** A new club starts in this season: the one the Teams list is showing. */
+  defaultSeasonId?: number
   players: Player[]
   allPlayers?: Player[]
   teams: Team[]
@@ -3676,6 +3683,7 @@ function TeamModal({
     if (initial?.seasonId) return initial.seasonId
     // A club entering again starts on the season the caller chose for it.
     if (template?.team.seasonId) return template.team.seasonId
+    if (defaultSeasonId && seasons.some((s) => s.id === defaultSeasonId)) return defaultSeasonId
     const active = seasons.find((s) => s.isActive)
     return active?.id ?? seasons[0]?.id ?? 1
   })
@@ -3888,7 +3896,15 @@ function TeamModal({
   })
 
   return (
-    <Modal title={initial ? `Manage Club: ${initial.name}` : template ? `Enter ${template.team.name} in a season` : 'Register New Club'} onClose={onClose}>
+    <Modal
+      // The season picker sits on the third tab, so a new entry names its season up front.
+      title={
+        initial
+          ? `Manage Club: ${initial.name}`
+          : `${template ? `Enter ${template.team.name}` : 'Register New Club'} in ${currentSelectedSeason ? seasonLabel(currentSelectedSeason) : 'a season'}`
+      }
+      onClose={onClose}
+    >
       <div className="tabbed-modal-container">
         <div className="modal-tabs-header">
           <button

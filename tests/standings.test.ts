@@ -334,6 +334,26 @@ section('9. Group standings')
   check('canvas layout drives group membership', groups.map((g) => g.groupName), ['Grup A', 'Grup B'])
   check('Grup A leader is the winner', groups[0].rows[0].teamName, 'SB')
   check('Grup B holds only its own team', groups[1].rows.map((r) => r.teamName), ['SC'])
+
+  // Customer report (2022 deneme): the saved draw held only another season's
+  // clubs, so every group table was empty although a match had been played.
+  const stale = { ...season, groupLeague: { groupCount: 2, groups: [
+    { id: 'group_a', name: 'Grup A', slots: [{ position: 1, teamId: 901 }, { position: 2, teamId: 902 }] },
+    { id: 'group_b', name: 'Grup B', slots: [{ position: 1, teamId: 903 }] },
+  ] } }
+  const fallback = computeGroupStandings([a, b, c], [played('SA', 0, 'SB', 2)], stale)
+  check('a draw naming none of the season\'s clubs falls back to their own groups',
+    fallback.flatMap((g) => g.rows.map((r) => r.teamName)).sort(), ['SA', 'SB', 'SC'])
+  const mixed = { ...season, groupLeague: { groupCount: 1, groups: [
+    { id: 'group_a', name: 'Grup A', slots: [{ position: 1, teamId: a.id }, { position: 2, teamId: 901 }, { position: 3, teamId: b.id }] },
+  ] } }
+  check('clubs from another season are left out of a drawn group',
+    computeGroupStandings([a, b, c], [], mixed)[0].rows.map((r) => r.teamName).sort(), ['SA', 'SB'])
+  const empty = { ...season, groupLeague: { groupCount: 2, groups: [
+    { id: 'group_a', name: 'Grup A', slots: [] }, { id: 'group_b', name: 'Grup B', slots: [] },
+  ] } }
+  check('an empty draw still shows its groups with nobody placed',
+    computeGroupStandings([a, b, c], [], empty).map((g) => [g.groupName, g.rows.length]), [['Grup A', 0], ['Grup B', 0]])
 }
 
 /* ---------------- 10. player stats ---------------- */

@@ -370,30 +370,34 @@ export function computeGroupStandings(
   season?: Season | null,
   options: StandingsOptions = {},
 ): GroupStandings[] {
+  // A saved draw can still name clubs that are not entered in this season
+  // (copied layouts, moved or deleted entries). Only this season's clubs count.
+  const entered = new Set(teams.map((team) => team.id))
+  const placed = (slots: { teamId?: number | null }[]) =>
+    slots.map((slot) => slot.teamId).filter((id): id is number => typeof id === 'number' && id > 0)
+  const seasonIds = (slots: { teamId?: number | null }[]) => placed(slots).filter((id) => entered.has(id))
+
   // A saved single table takes precedence over legacy team.groupName values.
   if (season?.seasonType === 'league') {
-    const teamIds = season.league?.slots.map((slot) => slot.teamId)
-      .filter((id): id is number => typeof id === 'number')
+    const teamIds = season.league ? seasonIds(season.league.slots) : undefined
     return [{
       groupId: 'league',
       groupName: 'League Table',
       rows: computeStandings(teams, matches, { ...options, ...(teamIds ? { teamIds } : {}) }),
     }]
   }
-  const layout = season?.groupLeague
+  const groups = season?.groupLeague?.groups ?? []
+  const drawn = groups.map((group) => ({ group, teamIds: seasonIds(group.slots) }))
+  // An empty draw is shown as drawn (nobody placed yet). A draw that places only
+  // other seasons' clubs is stale (2022 deneme): fall back to the clubs' own groups.
+  const stale = drawn.every(({ teamIds }) => teamIds.length === 0) && groups.some((group) => placed(group.slots).length > 0)
 
-  if (layout && Array.isArray(layout.groups) && layout.groups.length > 0) {
-    return layout.groups.map((group) => {
-      const teamIds = group.slots
-        .map((slot) => slot.teamId)
-        .filter((id): id is number => typeof id === 'number' && id > 0)
-
-      return {
-        groupId: group.id,
-        groupName: group.name,
-        rows: computeStandings(teams, matches, { ...options, teamIds }),
-      }
-    })
+  if (groups.length > 0 && !stale) {
+    return drawn.map(({ group, teamIds }) => ({
+      groupId: group.id,
+      groupName: group.name,
+      rows: computeStandings(teams, matches, { ...options, teamIds }),
+    }))
   }
 
   const grouped = new Map<string, Team[]>()

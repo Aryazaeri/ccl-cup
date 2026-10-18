@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "tsx tests/standings.test.ts && tsx tests/bracket.test.ts && tsx tests/commentScreening.test.ts && tsx tests/fixtures.test.ts && tsx tests/assetSave.test.ts && tsx tests/squad.test.ts && tsx tests/siteSettings.test.ts && tsx tests/formations.test.ts",
+    "test": "tsx tests/standings.test.ts && tsx tests/bracket.test.ts && tsx tests/commentScreening.test.ts && tsx tests/fixtures.test.ts && tsx tests/assetSave.test.ts && tsx tests/squad.test.ts && tsx tests/siteSettings.test.ts && tsx tests/formations.test.ts && tsx tests/allRows.test.ts",
     "test:browser": "playwright test"
   },
   "dependencies": {

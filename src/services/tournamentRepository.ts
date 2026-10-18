@@ -92,6 +92,10 @@ function slugify(value: string) {
  * and "the current season" stopped meaning anything. Called before a season
  * claims the flag, so the claim is exclusive.
  */
+/** Local-mode twin of clearCurrentSeason: a season saved as current is the only current one. */
+const onlyCurrent = (seasons: Season[], saved: Season): Season[] =>
+  saved.isActive ? seasons.map((s) => (s.id !== saved.id && s.isActive ? { ...s, isActive: false } : s)) : seasons
+
 async function clearCurrentSeason(exceptId?: number): Promise<void> {
   if (!supabase) return
   let query = supabase.from('seasons').update({ is_current: false }).eq('is_current', true)
@@ -521,7 +525,7 @@ export const tournamentRepository = {
   async addSeason(season: Season): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, seasons: [season, ...data.seasons] })
+      return saveLocal({ ...data, seasons: [season, ...onlyCurrent(data.seasons, season)] })
     }
     // A new season does NOT take over as current unless it says so. Defaulting
     // this to true meant every season ever created claimed to be the current
@@ -554,7 +558,7 @@ export const tournamentRepository = {
   async updateSeason(season: Season): Promise<TournamentData> {
     if (!supabase) {
       const data = loadLocal()
-      return saveLocal({ ...data, seasons: data.seasons.map((s) => (s.id === season.id ? season : s)) })
+      return saveLocal({ ...data, seasons: onlyCurrent(data.seasons, season).map((s) => (s.id === season.id ? season : s)) })
     }
     if (season.isActive) await clearCurrentSeason(season.id)
 
@@ -583,8 +587,20 @@ export const tournamentRepository = {
 
   async deleteSeason(id: number): Promise<TournamentData> {
     if (!supabase) {
+      // Mirrors the database: its entries, squads, fixtures and sponsors go
+      // (cascades); articles and media are kept, unpublished, with no season
+      // (seasons_hide_content_before_delete).
       const data = loadLocal()
-      return saveLocal({ ...data, seasons: data.seasons.filter((s) => s.id !== id) })
+      return saveLocal({
+        ...data,
+        seasons: data.seasons.filter((s) => s.id !== id),
+        teams: data.teams.filter((t) => t.seasonId !== id),
+        players: data.players.map((p) => ({ ...p, squads: p.squads.filter((entry) => entry.seasonId !== id) })),
+        matches: data.matches.filter((m) => m.seasonId !== id),
+        sponsors: data.sponsors.filter((s) => s.seasonId !== id),
+        stories: data.stories.map((s) => (s.seasonId === id ? { ...s, status: 'Draft' as const, seasonId: undefined } : s)),
+        media: data.media.map((m) => (m.seasonId === id ? { ...m, isPublished: false, seasonId: undefined } : m)),
+      })
     }
     const { error } = await supabase.from('seasons').delete().eq('id', id)
     if (error) throw error

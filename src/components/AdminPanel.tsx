@@ -1253,6 +1253,8 @@ function SeasonModal({
   onClose: () => void
   onSave: (season: Season) => Promise<void>
 }) {
+  // The draw builders place this season's club entries only, as the Seasons table's buttons do.
+  const seasonTeams = teams.filter((team) => team.seasonId == null || team.seasonId === initial?.id)
   const [city, setCity] = useState(initial?.city ?? 'Antalya')
   const [year, setYear] = useState(initial?.year ?? 2026)
   const [name, setName] = useState(initial?.name ?? '')
@@ -1572,7 +1574,7 @@ function SeasonModal({
       {openBracketBuilder && (
         <BracketCanvasModal
           seasonTitle={fullName || 'Turnuva'}
-          teams={teams}
+          teams={seasonTeams}
           initialBracket={bracket ?? generateEmptyBracket(teamCount)}
           onClose={() => setOpenBracketBuilder(false)}
           onSave={(newBracket) => {
@@ -1585,7 +1587,7 @@ function SeasonModal({
       {openLeagueBuilder && (
         <LeagueCanvasModal
           seasonTitle={fullName || 'League'}
-          teams={teams}
+          teams={seasonTeams}
           initialLeague={league ?? { teamCount: 0, slots: [] }}
           onClose={() => setOpenLeagueBuilder(false)}
           onSave={(newLeague) => {
@@ -1598,7 +1600,7 @@ function SeasonModal({
       {openGroupLeagueBuilder && (
         <GroupLeagueCanvasModal
           seasonTitle={fullName || 'Group league'}
-          teams={teams}
+          teams={seasonTeams}
           initialGroupLeague={groupLeague ?? generateEmptyGroupLeague(groupCount)}
           initialGroupCount={groupCount}
           onClose={() => setOpenGroupLeagueBuilder(false)}
@@ -1763,7 +1765,7 @@ function TeamsManager({
 
       {/* TABLE VIEW */}
       {viewMode === 'table' ? (
-        <div className="admin-panel">
+        <div className="admin-panel table-scroll">
           <table className="admin-table teams-table">
             <thead>
               <tr>
@@ -3804,8 +3806,9 @@ function TeamModal({
         played: initial?.played ?? 0,
         goalDifference: initial?.goalDifference ?? 0,
         points: initial?.points ?? 0,
-        isActive: data.get('isActive') === 'on',
       }, initial ? undefined : { playerIds: stagedIds, newPlayers: stagedNew })
+      // Saved edits close the form like the other editors; a new club stays open on its squad.
+      if (initial) onClose()
     } catch (reason: unknown) {
       console.error('Club save failed:', reason)
       let msg = 'Unable to save club.'
@@ -5094,6 +5097,7 @@ function MatchEventsModal({
                 <option value="goal">⚽ Goal</option>
                 <option value="assist">🅰️ Assist</option>
                 <option value="penalty_scored">🎯 Penalty Scored</option>
+                <option value="own_goal">🥅 Own Goal</option>
                 <option value="yellow_card">🟨 Yellow Card</option>
                 <option value="red_card">🟥 Red Card</option>
                 <option value="substitution">🔄 Substitution</option>
@@ -5111,7 +5115,7 @@ function MatchEventsModal({
             </label>
 
             <small className="field-hint span-2">
-              Goals and scored penalties add one to the club&rsquo;s score; deleting them takes it back off.
+              Goals and scored penalties add one to the club&rsquo;s score, an own goal to the other club&rsquo;s; deleting them takes it back off.
             </small>
 
             <div className="form-actions span-2">

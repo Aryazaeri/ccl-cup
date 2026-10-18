@@ -1765,19 +1765,21 @@ function MatchDetailsModal({
                     {ev.eventType === 'goal' && '⚽'}
                     {ev.eventType === 'assist' && '🅰️'}
                     {ev.eventType === 'penalty_scored' && '🎯'}
+                    {ev.eventType === 'own_goal' && '🥅'}
                     {ev.eventType === 'yellow_card' && '🟨'}
                     {ev.eventType === 'red_card' && '🟥'}
                     {ev.eventType === 'substitution' && '🔄'}
-                    {/* Anything the client does not draw explicitly — an
-                        own goal or missed penalty inserted directly — still
-                        gets a marker rather than an empty cell. */}
-                    {!['goal', 'assist', 'penalty_scored', 'yellow_card', 'red_card', 'substitution'].includes(
+                    {/* Anything the client does not draw explicitly — a
+                        missed penalty inserted directly — still gets a
+                        marker rather than an empty cell. */}
+                    {!['goal', 'own_goal', 'assist', 'penalty_scored', 'yellow_card', 'red_card', 'substitution'].includes(
                       ev.eventType,
                     ) && '•'}
                   </span>
                   <div className="event-desc">
                     <strong>{ev.playerName}</strong>
                     <span>({ev.teamName})</span>
+                    {ev.eventType === 'own_goal' && <small>— own goal</small>}
                     {ev.notes && <small>— {ev.notes}</small>}
                   </div>
                 </div>

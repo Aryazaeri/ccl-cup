@@ -211,14 +211,15 @@ export type AdminUser = {
 /**
  * The subset of match_events_event_type_check the client offers.
  *
- * The constraint also permits 'own_goal' and 'penalty_missed'. Neither is
- * recorded or rendered yet, so they are deliberately absent here rather than
- * declared and unhandled — but a row carrying one can still arrive from SQL,
- * which is why the timeline falls back to a neutral marker instead of drawing
- * nothing.
+ * The constraint also permits 'penalty_missed'. It is not recorded or
+ * rendered yet, so it is deliberately absent here rather than declared and
+ * unhandled — but a row carrying one can still arrive from SQL, which is why
+ * the timeline falls back to a neutral marker instead of drawing nothing.
+ * An own goal is filed under the scorer's club and counts for the other one.
  */
 export type MatchEventType =
   | 'goal'
+  | 'own_goal'
   | 'assist'
   | 'yellow_card'
   | 'red_card'

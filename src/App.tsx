@@ -25,6 +25,8 @@ export default function App() {
   const auth = useAuth()
   const [view, setView] = useState<View>(currentView)
   const lastAdminHash = useRef(window.location.hash.startsWith('#admin') ? window.location.hash : '#admin')
+  // When the last full load started; the reload on returning to the tab waits a minute after it.
+  const lastLoad = useRef(0)
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(() => {
     try {
       const saved = Number(sessionStorage.getItem('ccl-cup:public-season:v1'))
@@ -56,6 +58,7 @@ export default function App() {
     // Only the initial load blocks the page. Refreshing after a media/sponsor
     // save must not unmount the active screen and discard its state.
     setDataError('')
+    lastLoad.current = Date.now()
     try {
       applyData(await tournamentRepository.load())
     } catch (reason) {
@@ -75,7 +78,9 @@ export default function App() {
   // already on screen; the initial load above is what reports errors.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return
+      // A full load is several MB; switching tabs back and forth must not repeat it.
+      if (document.visibilityState !== 'visible' || Date.now() - lastLoad.current < 60_000) return
+      lastLoad.current = Date.now()
       tournamentRepository.load().then(applyData).catch(() => undefined)
     }
     document.addEventListener('visibilitychange', onVisible)

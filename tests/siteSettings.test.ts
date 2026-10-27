@@ -10,10 +10,12 @@ check('defaults are valid and leave contact links empty', () => {
   assert.deepEqual([settings.instagramUrl, settings.youtubeUrl, settings.linkedinUrl, settings.whatsappNumber], ['', '', '', ''])
 })
 
-check('default rules state the five-player minimum and permitted transfers (item 16)', () => {
+check('default rules state entry minimum, kickoff transfer lock and eight-a-side play', () => {
   const rules = DEFAULT_SITE_SETTINGS.rules.join(' ')
   assert.match(rules, /at least five players/)
-  assert.match(rules, /Transfers during a season are allowed/)
+  assert.match(rules, /transfers are locked after/)
+  assert.match(rules, /eight players per side/)
+  assert.match(rules, /directly to penalties/)
   assert.doesNotMatch(rules, /only one club per season/)
 })
 

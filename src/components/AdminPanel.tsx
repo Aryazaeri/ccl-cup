@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   BarChart3,
   CalendarDays,
   CheckCircle2,
@@ -42,6 +41,14 @@ import {
 } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
+import { isStoryPublic, publicationDate, publicationInput } from '../lib/publication'
+import { defaultMatchLineups, goalScore } from '../lib/matchRules'
+import { knockoutRoundSize } from '../lib/matchStages'
+import { MatchLineupFields } from './MatchLineupFields'
+import { ClubRegistry, RegisteredClubForm } from './ClubRegistry'
+import { PlayerSuspensions } from './PlayerSuspensions'
+import { LotsOrderForm } from './LotsOrderForm'
+import { reportAssetSaveFailure } from '../lib/assetSaveUtils'
 import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
@@ -54,6 +61,7 @@ import { computeGroupStandings, computeTopScorers, isCountableMatch, shootoutErr
 import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
   mediaRepository,
+  clubsRepository,
   moderationRepository,
   siteSettingsRepository,
   sponsorsRepository,
@@ -63,6 +71,7 @@ import { DEFAULT_SITE_SETTINGS, type SiteSettings } from '../lib/siteSettings'
 import {
   HOST_CITIES,
   type AdminSection,
+  type Club,
   type Match,
   type MatchEvent,
   type MatchEventType,
@@ -102,11 +111,12 @@ import { TeamLogoPicker } from './TeamLogoPicker'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
-import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, shrinkError, squadOf } from '../lib/squadUtils'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, squadOf } from '../lib/squadUtils'
 import type { EntryRoster, NewSquadPlayer } from '../services/tournamentRepository'
 import type { Lineup } from '../lib/formations'
 
 type Props = {
+  clubs: Club[]
   seasons: Season[]
   teams: Team[]
   players: Player[]
@@ -167,6 +177,7 @@ function sectionFromHash(): AdminSection {
 }
 
 export function AdminPanel({
+  clubs,
   seasons,
   teams,
   players,
@@ -239,7 +250,8 @@ export function AdminPanel({
   const teamInModal = editingTeam ?? createdTeam
   // Registering a club that already exists for another season, from its latest entry.
   const [enteringClub, setEnteringClub] = useState<{ team: Team; squadIds: number[] } | null>(null)
-  const [newClubSeasonId, setNewClubSeasonId] = useState<number | undefined>()
+  const [newMatchSeasonId, setNewMatchSeasonId] = useState<number | undefined>()
+  const [editingRegistration, setEditingRegistration] = useState<Club | null | undefined>(undefined)
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -419,10 +431,6 @@ export function AdminPanel({
     : null
   const [editingStory, setEditingStory] = useState<Story | null>(null)
 
-  const published = stories.filter((story) => story.status === 'Published').length
-  const draft = stories.filter((story) => story.status === 'Draft').length
-  const scheduled = stories.filter((story) => story.status === 'Scheduled').length
-
   const chooseSection = (next: AdminSection) => {
     window.location.assign(next === 'Overview' ? '#admin' : `#admin/${next.toLowerCase()}`)
     setSection(next)
@@ -473,7 +481,7 @@ export function AdminPanel({
             {/* A shortcut from the dashboard only. Teams has its own "Register New
                 Club" button, and on Players it read as the wrong action. */}
             {activeSection === 'Overview' && allowed('teams') && (
-              <button className="button button-admin" onClick={() => setModal('team')}>
+              <button className="button button-admin" onClick={() => setEditingRegistration(null)}>
                 <Plus />
                 Add Club
               </button>
@@ -489,15 +497,14 @@ export function AdminPanel({
           ) : null}
 
           {activeSection === 'Overview' && (
-            <Overview
-              seasonsCount={seasons.length}
+            <SeasonOverview
+              seasons={seasons}
               teams={teams}
               players={players}
               matches={matches}
-              published={published}
-              draft={draft}
-              scheduled={scheduled}
-              onOpenModal={(m) => setModal(m)}
+              stories={stories}
+              role={profile.role}
+              onOpenModal={(m) => m === 'team' ? setEditingRegistration(null) : setModal(m)}
               onManageMatchScore={(match) => setEditingMatch(match)}
             />
           )}
@@ -522,13 +529,22 @@ export function AdminPanel({
           )}
 
           {activeSection === 'Teams' && (
+            <>
+            <ClubRegistry clubs={clubs} seasons={seasons} onNew={() => setEditingRegistration(null)} onEdit={setEditingRegistration}
+              entered={(clubId, seasonId) => teams.some((t) => t.clubId === clubId && t.seasonId === seasonId)}
+              onEnter={(club, seasonId) => {
+                setEditingTeam(null); setCreatedClub(null)
+                setEnteringClub({ team: { id: -club.id, clubId: club.id, seasonId, name: club.name,
+                  countryCode: club.countryCode ?? 'TR', color: club.color ?? '#63e35b', logoUrl: club.logoUrl, played: 0, goalDifference: 0, points: 0 }, squadIds: [] })
+                setModal('team')
+              }} />
             <TeamsManager
               teams={teams}
               seasons={seasons}
               players={players}
               onEnterClub={(team, seasonId) => {
                 setEditingTeam(null)
-                setEnteringClub({ team: { ...team, seasonId }, squadIds: squadOf(players, team.id).map((p) => p.id) })
+                setEnteringClub({ team: { ...team, seasonId }, squadIds: [] })
                 setModal('team')
               }}
               onDelete={confirmDeleteTeam}
@@ -538,13 +554,9 @@ export function AdminPanel({
               }}
               onManageSquad={(team) => setSquadTeam(team)}
               onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
-              onAdd={(seasonId) => {
-                setEditingTeam(null)
-                setEnteringClub(null)
-                setNewClubSeasonId(seasonId)
-                setModal('team')
-              }}
+              onAdd={() => setEditingRegistration(null)}
             />
+            </>
           )}
 
           {activeSection === 'Players' && (
@@ -573,7 +585,7 @@ export function AdminPanel({
               onDelete={confirmDeleteMatch}
               onEditMatch={(match) => setEditingMatch(match)}
               onManageEvents={(match) => setEventMatch(match)}
-              onAdd={() => setModal('match')}
+              onAdd={(seasonId) => { setNewMatchSeasonId(seasonId); setModal('match') }}
             />
             </>
           )}
@@ -687,12 +699,14 @@ export function AdminPanel({
       )}
 
       {modal === 'match' && (
-        <MatchForm teams={teams} seasons={seasons} onClose={() => setModal(null)} onSave={onAddMatch} />
+        <MatchForm teams={teams} seasons={seasons} initialSeasonId={newMatchSeasonId} onClose={() => { setNewMatchSeasonId(undefined); setModal(null) }} onSave={onAddMatch} />
       )}
 
       {editingMatch && (
         <MatchScoreModal
           match={editingMatch}
+          teams={teams}
+          players={players}
           onClose={() => setEditingMatch(null)}
           onSave={onUpdateMatch}
         />
@@ -713,7 +727,6 @@ export function AdminPanel({
           key={teamInModal?.id ?? enteringClub?.team.id ?? 'new'}
           initial={teamInModal}
           template={teamInModal ? undefined : enteringClub ?? undefined}
-          defaultSeasonId={newClubSeasonId}
           hasMatches={!!teamInModal && matches.some((m) => m.homeTeamId === teamInModal.id || m.awayTeamId === teamInModal.id)}
           seasons={seasons}
           teams={teams}
@@ -738,6 +751,11 @@ export function AdminPanel({
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
+
+      {editingRegistration !== undefined && <RegisteredClubForm initial={editingRegistration} players={players}
+        onClose={() => setEditingRegistration(undefined)} onSave={async (club, added) => {
+          await clubsRepository.save(club, added); await onRefresh()
+        }} />}
 
       {squadTeam && (
         <QuickSquadModal
@@ -812,6 +830,30 @@ export function AdminPanel({
   )
 }
 
+function SeasonOverview({ seasons, teams, players, matches, stories, role, onOpenModal, onManageMatchScore }: {
+  seasons: Season[]; teams: Team[]; players: Player[]; matches: Match[]; stories: Story[]; role: AuthProfile['role']
+  onOpenModal: (value: 'season' | 'match' | 'team' | 'player' | 'story') => void
+  onManageMatchScore: (match: Match) => void
+}) {
+  const [selected, setSelected] = useState<number | undefined>(() => defaultSeasonId(seasons))
+  const id = seasons.some((s) => s.id === selected) ? selected : defaultSeasonId(seasons)
+  const articles = stories.filter((s) => s.seasonId === id)
+  return <>
+    <label className="filter-group">Tournament
+      <select aria-label="Overview tournament" value={id ?? ''} onChange={(e) => setSelected(Number(e.target.value))}>
+        {seasons.map((s) => <option key={s.id} value={s.id}>{seasonLabel(s)}</option>)}
+      </select>
+    </label>
+    <Overview seasonsCount={id ? 1 : 0} teams={teams.filter((t) => t.seasonId === id)}
+      players={players.filter((p) => p.squads.some((s) => s.seasonId === id))}
+      matches={matches.filter((m) => m.seasonId === id)}
+      published={articles.filter((s) => isStoryPublic(s)).length}
+      draft={articles.filter((s) => s.status === 'Draft').length}
+      scheduled={articles.filter((s) => s.status === 'Scheduled' && !isStoryPublic(s)).length}
+      role={role} onOpenModal={onOpenModal} onManageMatchScore={onManageMatchScore} />
+  </>
+}
+
 function Overview({
   seasonsCount,
   teams,
@@ -820,6 +862,7 @@ function Overview({
   published,
   draft,
   scheduled,
+  role,
   onOpenModal,
   onManageMatchScore,
 }: {
@@ -830,6 +873,7 @@ function Overview({
   published: number
   draft: number
   scheduled: number
+  role: AuthProfile['role']
   onOpenModal: (value: 'season' | 'match' | 'team' | 'player' | 'story') => void
   onManageMatchScore: (match: Match) => void
 }) {
@@ -864,7 +908,7 @@ function Overview({
           <div className="panel-header-row">
             <h2>Live & Upcoming matches</h2>
           </div>
-          <MatchTable matches={matches.filter((match) => match.matchStatus === 'live' || match.matchStatus === 'scheduled').slice(0, 4)} onEdit={onManageMatchScore} />
+          <MatchTable matches={matches.filter((match) => match.matchStatus === 'live' || match.matchStatus === 'scheduled').slice(0, 4)} onEdit={can(role, 'matches') ? onManageMatchScore : undefined} />
         </section>
 
         <section className="admin-panel activity">
@@ -941,22 +985,22 @@ function Overview({
         <section className="admin-panel quick-actions">
           <h2>Quick actions</h2>
           <div className="quick-actions-grid">
-            <button onClick={() => onOpenModal('season')}>
+            {can(role, 'seasons') && <button onClick={() => onOpenModal('season')}>
               <Trophy size={18} />
               <span>New season</span>
-            </button>
-            <button onClick={() => onOpenModal('team')}>
+            </button>}
+            {can(role, 'teams') && <button onClick={() => onOpenModal('team')}>
               <Shield size={18} />
               <span>Register Club</span>
-            </button>
-            <button onClick={() => onOpenModal('player')}>
+            </button>}
+            {can(role, 'players') && <button onClick={() => onOpenModal('player')}>
               <UserPlus size={18} />
               <span>Add Player</span>
-            </button>
-            <button onClick={() => onOpenModal('match')}>
+            </button>}
+            {can(role, 'matches') && <button onClick={() => onOpenModal('match')}>
               <CalendarDays size={18} />
               <span>Schedule Match</span>
-            </button>
+            </button>}
           </div>
         </section>
       </div>
@@ -1138,7 +1182,7 @@ function SeasonsManager({
                     <span className={`season-status-pill ${(season.status ?? 'published') === 'published' ? 'active' : 'archived'}`}>
                       {SEASON_STATUS_LABEL[season.status ?? 'published']}
                     </span>
-                    {season.isActive ? <span className="season-status-pill active">Current</span> : null}
+                    {season.status === 'published' && season.id === defaultSeasonId(seasons) ? <span className="season-status-pill active">Public default</span> : null}
                   </td>
                   <td>
                     <div className="seasons-action-buttons">
@@ -1199,7 +1243,7 @@ function SeasonsManager({
               {paginated.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: '#8c9bad' }}>
-                    No seasons yet. Use "New Season" to add the first one.
+                    {seasons.length ? 'No seasons match these filters.' : 'No seasons yet. Use "New Season" to add the first one.'}
                   </td>
                 </tr>
               )}
@@ -1285,7 +1329,8 @@ function SeasonModal({
   const [openBracketBuilder, setOpenBracketBuilder] = useState(false)
   const [openLeagueBuilder, setOpenLeagueBuilder] = useState(false)
   const [openGroupLeagueBuilder, setOpenGroupLeagueBuilder] = useState(false)
-  const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
+  const [endDate, setEndDate] = useState(initial?.endDate ?? '')
   // New seasons start as drafts so they stay off the public site until ready.
   const [status, setStatus] = useState<SeasonStatus>(initial?.status ?? (initial ? 'published' : 'draft'))
   const [saving, setSaving] = useState(false)
@@ -1351,7 +1396,8 @@ function SeasonModal({
         bracket: finalBracket,
         league: seasonType === 'league' ? (league ?? { teamCount: 0, slots: [] }) : undefined,
         groupLeague: seasonType === 'group_league' ? (groupLeague ?? generateEmptyGroupLeague(groupCount)) : undefined,
-        isActive,
+        startDate,
+        endDate: endDate || undefined,
         status,
       })
       onClose()
@@ -1556,14 +1602,9 @@ function SeasonModal({
             </select>
           </label>
 
-          <label className="checkbox-label span-2">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-            />
-            <span>Mark as the current season (the public site opens on it when it is published)</span>
-          </label>
+          <label>Start date *<input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+          <label>End date<input type="date" min={startDate} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+          <small className="field-hint span-2">The latest published tournament by start date opens by default across all cities, including future tournaments.</small>
 
           {saveError ? <div className="form-error span-2">{saveError}</div> : null}
 
@@ -1649,16 +1690,14 @@ function TeamsManager({
   }
   const [searchTerm, setSearchTerm] = useState('')
   const [countryFilter, setCountryFilter] = useState('All')
-  const [formatFilter, setFormatFilter] = useState('All')
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => {
       if (searchTerm && !team.name.toLowerCase().includes(searchTerm.toLowerCase())) return false
       if (countryFilter !== 'All' && team.countryCode !== countryFilter) return false
-      if (formatFilter !== 'All' && team.tournamentFormat !== formatFilter) return false
       return true
     })
-  }, [teams, searchTerm, countryFilter, formatFilter])
+  }, [teams, searchTerm, countryFilter])
 
   return (
     <section className="manager-view">
@@ -1734,16 +1773,7 @@ function TeamsManager({
           </select>
         </div>
 
-        <div className="filter-group">
-          <Trophy size={16} />
-          <span>Tournament:</span>
-          <select value={formatFilter} onChange={(e) => setFormatFilter(e.target.value)}>
-            <option value="All">All Formats</option>
-            <option value="Champions Cup">Champions Cup</option>
-            <option value="Challenge Cup">Challenge Cup</option>
-            <option value="Open League">Open League</option>
-          </select>
-        </div>
+
 
         <div className="view-mode-toggle">
           <button
@@ -1782,7 +1812,6 @@ function TeamsManager({
               {filteredTeams.map((team) => {
                 const squad = squadOf(players, team.id)
                 const country = getCountry(team.countryCode)
-                const isComplete = squad.length >= MIN_SQUAD
 
                 return (
                   <tr key={team.id}>
@@ -1811,7 +1840,7 @@ function TeamsManager({
                     </td>
                     <td>
                       <div className="tournament-tag-group">
-                        <span className="tournament-pill">{team.tournamentFormat ?? 'Champions Cup'}</span>
+                        <span className="tournament-pill">{seasonName(team.seasonId)}</span>
                         <span className="group-pill">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? 'Not drawn'}</span>
                       </div>
                     </td>
@@ -1823,15 +1852,9 @@ function TeamsManager({
                     </td>
                     <td>
                       <div className="squad-indicator">
-                        {isComplete ? (
-                          <span className="squad-badge complete">
-                            <CheckCircle2 size={13} aria-hidden="true" /> {squad.length} Players (Ready)
-                          </span>
-                        ) : (
-                          <span className="squad-badge incomplete" title="Minimum 5 squad members required for matchday">
-                            <AlertCircle size={13} aria-hidden="true" /> {squad.length}/5 (Needs {5 - squad.length} more)
-                          </span>
-                        )}
+                        <span className="squad-badge complete">
+                          <Users size={13} aria-hidden="true" /> {squad.length} Players (Registered)
+                        </span>
                       </div>
                     </td>
                     <td>
@@ -1898,7 +1921,6 @@ function TeamsManager({
           {filteredTeams.map((team) => {
             const squad = squadOf(players, team.id)
             const country = getCountry(team.countryCode)
-            const isComplete = squad.length >= MIN_SQUAD
 
             return (
               <div className="team-admin-card" key={team.id}>
@@ -1911,7 +1933,7 @@ function TeamsManager({
                   <span className="card-flag-badge">
                     {country.flag} {country.name}
                   </span>
-                  <span className="card-format-badge">{team.tournamentFormat ?? 'Champions Cup'}</span>
+                  <span className="card-format-badge">{seasonName(team.seasonId)}</span>
                 </div>
 
                 <div className="team-card-body">
@@ -1943,15 +1965,9 @@ function TeamsManager({
                   </div>
 
                   <div className="team-card-squad-status">
-                    {isComplete ? (
-                      <span className="squad-badge complete">
-                        <CheckCircle2 size={13} /> {squad.length} Players (Complete Squad)
-                      </span>
-                    ) : (
-                      <span className="squad-badge incomplete">
-                        <AlertCircle size={13} /> {squad.length}/5 Players (Minimum 5 required)
-                      </span>
-                    )}
+                    <span className="squad-badge complete">
+                      <Users size={13} aria-hidden="true" /> {squad.length} registered players
+                    </span>
                   </div>
 
                   <div className="team-card-actions">
@@ -2048,7 +2064,7 @@ function PlayersManager({
         <div className="filter-group">
           <Filter size={16} />
           <span>Team:</span>
-          <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+          <select aria-label="Team" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="All">All Teams</option>
             <option value="Free Agent">Free agents</option>
             {clubNames.map((clubName) => (
@@ -2175,7 +2191,7 @@ function MatchesManager({
   onDelete: (id: number) => Promise<void>
   onEditMatch: (match: Match) => void
   onManageEvents: (match: Match) => void
-  onAdd: () => void
+  onAdd: (seasonId?: number) => void
 }) {
   const [filterStatus, setFilterStatus] = useState<string>('All')
   const [filterSeason, setFilterSeason] = useState<string>('All')
@@ -2195,7 +2211,7 @@ function MatchesManager({
           <h2>Matches & Scorekeeping ({matches.length})</h2>
           <p>Schedule fixtures, record live match scores, and log event timelines.</p>
         </div>
-        <button className="button button-admin" onClick={onAdd}>
+        <button className="button button-admin" onClick={() => onAdd(filterSeason === 'All' ? undefined : Number(filterSeason))}>
           <Plus />
           Schedule Match
         </button>
@@ -2289,7 +2305,7 @@ function ContentManager({
                     {story.status}
                   </span>
                 </td>
-                <td>{story.publishedAt ?? '—'}</td>
+                <td>{publicationDate(story.publishedAt)}</td>
                 <td>
                   <div className="row-actions-group">
                     <button className="row-action" onClick={() => onEdit(story)}>
@@ -2329,9 +2345,9 @@ function StandingsManager({
   onUpdateSeason: (season: Season) => Promise<void>
   onOpenBracket: (season: Season) => void
 }) {
+  const [lotsOpen, setLotsOpen] = useState(false)
   const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => {
-    const active = seasons.find((season) => season.isActive)
-    return active ? active.id : 'all'
+    return defaultSeasonId(seasons) ?? 'all'
   })
 
   const selectedSeason = useMemo(
@@ -2371,8 +2387,7 @@ function StandingsManager({
         <div>
           <h2>Standings & Statistics</h2>
           <p>
-            Calculated automatically from completed results. Tie-breaks: Points → Goal Difference → Goals Scored
-            → Head-to-Head.
+            Calculated from completed results: Points → Head-to-head (reapplied to remaining ties) → Goal difference → Goals scored → Fewer forfeits → Discipline → Recorded lots.
           </p>
         </div>
       </div>
@@ -2394,6 +2409,10 @@ function StandingsManager({
           </select>
         </div>
       </div>
+
+      {selectedSeason && canManage && <button className="button button-admin" onClick={() => setLotsOpen(true)}>Record drawing-of-lots order</button>}
+      {groups.some((g) => g.rows.some((r) => r.lotsPending)) && <p className="module-note">Some clubs remain tied. Their displayed order is provisional until staff records the drawing of lots.</p>}
+      {lotsOpen && selectedSeason && <LotsOrderForm season={selectedSeason} teams={scopedTeams} onSave={onUpdateSeason} onClose={() => setLotsOpen(false)} />}
 
       <section className="metric-strip">
         {metrics.map(({ icon: Icon, value, label }) => (
@@ -2966,7 +2985,8 @@ function MediaModal({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await mediaRepository.save({
         id: initial.id,
@@ -2981,6 +3001,7 @@ function MediaModal({
       })
       await onSaved()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save this asset.')
     } finally {
       setSaving(false)
@@ -3240,7 +3261,8 @@ function SponsorModal({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await sponsorsRepository.save({
         id: initial.id,
@@ -3253,6 +3275,7 @@ function SponsorModal({
       })
       await onSaved()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save this sponsor.')
     } finally {
       setSaving(false)
@@ -3527,11 +3550,12 @@ function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
                   <td>{user.createdAt ?? '—'}</td>
                   <td>
                     <select
+                      aria-label={`Role for ${user.fullName || 'unnamed account'}`}
                       value={user.role}
-                      disabled={busyId === user.id}
+                      disabled={busyId === user.id || (user.role === 'super_admin' && (!canGrantSuper || users.filter((u) => u.role === 'super_admin').length === 1))}
                       onChange={(event) => void changeRole(user, event.target.value as AdminUser['role'])}
                     >
-                      {ASSIGNABLE_ROLES.filter((role) => role !== 'super_admin' || canGrantSuper).map((role) => (
+                      {ASSIGNABLE_ROLES.filter((role) => role !== 'super_admin' || canGrantSuper || user.role === 'super_admin').map((role) => (
                         <option key={role} value={role}>
                           {ROLE_LABELS[role]}
                         </option>
@@ -3596,11 +3620,6 @@ function MatchTable({
                     )}
                     <span className={`status-dot ${match.matchStatus}`}></span>
                     <span className="status-text">{match.matchStatus}</span>
-                    {match.status === 'Draft' ? (
-                      <span className="status-chip status-pending" title="Not shown on the public site until published">
-                        Draft
-                      </span>
-                    ) : null}
                   </div>
                 </td>
                 <td>{match.stage}</td>
@@ -3641,7 +3660,7 @@ function MatchTable({
 function TeamModal({
   initial,
   template,
-  defaultSeasonId,
+  defaultSeasonId: preselectedSeasonId,
   hasMatches = false,
   players,
   allPlayers = [],
@@ -3689,9 +3708,8 @@ function TeamModal({
     if (initial?.seasonId) return initial.seasonId
     // A club entering again starts on the season the caller chose for it.
     if (template?.team.seasonId) return template.team.seasonId
-    if (defaultSeasonId && seasons.some((s) => s.id === defaultSeasonId)) return defaultSeasonId
-    const active = seasons.find((s) => s.isActive)
-    return active?.id ?? seasons[0]?.id ?? 1
+    if (preselectedSeasonId && seasons.some((s) => s.id === preselectedSeasonId)) return preselectedSeasonId
+    return defaultSeasonId(seasons) ?? 1
   })
 
   const currentSelectedSeason = useMemo(() => {
@@ -4270,7 +4288,6 @@ function TeamModal({
                               <button
                                 type="button"
                                 className="delete-player-inline-btn"
-                                disabled={!!initial && squadSize <= MIN_SQUAD}
                                 aria-label={`Remove ${p.fullName} from the squad`}
                                 onClick={() => {
                                   if (!initial) {
@@ -4282,11 +4299,7 @@ function TeamModal({
                                     setSquadActionError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
                                   )
                                 }}
-                                title={
-                                  initial && squadSize <= MIN_SQUAD
-                                    ? shrinkError(initial, squadSize)
-                                    : 'Remove from squad (keeps the player in the pool)'
-                                }
+                                title="Remove from squad (keeps the player in the pool)"
                               >
                                 <UserMinus size={14} />
                               </button>
@@ -4620,14 +4633,13 @@ function QuickSquadModal({
                   <td>
                     <button
                       className="row-action danger"
-                      disabled={players.length <= MIN_SQUAD}
                       onClick={() => {
                         setAddError('')
                         onSetSquad(p.id, seasonId, null).catch((reason: unknown) =>
                           setAddError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
                         )
                       }}
-                      title={players.length <= MIN_SQUAD ? shrinkError(team, players.length) : 'Remove from squad (keeps the player in the pool)'}
+                      title="Remove from squad (keeps the player in the pool)"
                     >
                       <UserMinus size={14} /> Remove
                     </button>
@@ -4652,15 +4664,17 @@ function QuickSquadModal({
 function MatchForm({
   teams,
   seasons,
+  initialSeasonId,
   onClose,
   onSave,
 }: {
   teams: Team[]
   seasons: Season[]
+  initialSeasonId?: number
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {
-  const [seasonId, setSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
+  const [seasonId, setSeasonId] = useState<number | undefined>(() => initialSeasonId ?? defaultSeasonId(seasons))
 
   // Only clubs registered for the chosen season can contest its fixtures.
   // Clubs with no season recorded stay selectable rather than disappearing.
@@ -4701,7 +4715,7 @@ function MatchForm({
         referee: String(data.get('referee')) || undefined,
         streamUrl: String(data.get('streamUrl')).trim() || undefined,
         matchStatus: 'scheduled',
-        status: String(data.get('status')) as Match['status'],
+        status: 'Scheduled',
         events: [],
       })
       onClose()
@@ -4781,13 +4795,7 @@ function MatchForm({
             Optional. While the match is Live, the public site turns the LIVE badge into a link to this address.
           </small>
         </label>
-        <label className="span-2">
-          Publication Status
-          <select name="status">
-            <option>Scheduled</option>
-            <option>Draft</option>
-          </select>
-        </label>
+        <p className="field-hint span-2">All fixtures are public when their tournament is published.</p>
         {saveError ? <div className="form-error span-2">{saveError}</div> : null}
         <FormActions onClose={onClose} label="Create fixture" saving={saving} />
       </form>
@@ -4797,13 +4805,22 @@ function MatchForm({
 
 function MatchScoreModal({
   match,
+  teams,
+  players,
   onClose,
   onSave,
 }: {
   match: Match
+  teams: Team[]
+  players: Player[]
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {
+  const [lineup, setLineup] = useState(() => defaultMatchLineups(match, teams, players))
+  const [resultKind, setResultKind] = useState(match.resultKind ?? 'normal')
+  const [forfeitTeamId, setForfeitTeamId] = useState(match.forfeitTeamId)
+  const [status, setStatus] = useState(match.matchStatus)
+  const scores = resultKind === 'forfeit' && forfeitTeamId != null ? (forfeitTeamId === match.homeTeamId ? [0, 3] : [3, 0]) : match.scoreSource === 'legacy' ? [match.homeScore ?? 0, match.awayScore ?? 0] : goalScore(match)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -4820,14 +4837,11 @@ function MatchScoreModal({
     const awayPenVal = data.get('awayPenalties')
     // A shootout needs both sides; a half-filled pair is treated as none.
     const hasShootout = !!homePenVal && !!awayPenVal
-    // A scheduled match cannot have a score. Saving one while the status was
-    // left on "Scheduled" kept the result out of the table and scorer list,
-    // which only count finished matches, so a score marks it as full time.
-    const hasScore = homeScoreVal !== '' && homeScoreVal != null && awayScoreVal !== '' && awayScoreVal != null
+    // Recording goals and completing play are separate staff decisions.
     const chosenStatus = String(data.get('matchStatus')) as MatchStatus
-    const matchStatus: MatchStatus = hasScore && chosenStatus === 'scheduled' ? 'completed' : chosenStatus
+    const matchStatus: MatchStatus = chosenStatus
     // A 2–2 shootout was accepted and then shown nowhere, since it has no winner.
-    const penaltyProblem = hasShootout
+    const penaltyProblem = (!!homePenVal !== !!awayPenVal) ? 'Enter both shootout scores.' : resultKind !== 'forfeit' && matchStatus === 'completed' && knockoutRoundSize(String(data.get('stage'))) != null && Number(homeScoreVal) === Number(awayScoreVal) && !hasShootout ? 'A drawn knockout match requires direct penalties with a winner.' : hasShootout
       ? shootoutError(Number(homeScoreVal), Number(awayScoreVal), Number(homePenVal), Number(awayPenVal))
       : ''
     if (penaltyProblem) {
@@ -4846,11 +4860,15 @@ function MatchScoreModal({
         referee: String(data.get('referee')) || undefined,
         streamUrl: String(data.get('streamUrl')).trim() || undefined,
         matchStatus,
+        squads: lineup,
+        resultKind,
+        forfeitTeamId: resultKind === 'forfeit' ? forfeitTeamId : undefined,
+        decisionNote: String(data.get('decisionNote')).trim() || undefined,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
         homePenalties: hasShootout ? Number(homePenVal) : undefined,
         awayPenalties: hasShootout ? Number(awayPenVal) : undefined,
-        status: String(data.get('status')) as Match['status'],
+        status: 'Scheduled',
       })
       onClose()
     } catch (reason) {
@@ -4871,7 +4889,7 @@ function MatchScoreModal({
               type="number"
               name="homeScore"
               aria-label={`${match.home} score`}
-              defaultValue={match.homeScore ?? ''}
+              value={scores[0]} readOnly
               placeholder="0"
               min={0}
               className="score-input"
@@ -4883,7 +4901,7 @@ function MatchScoreModal({
               type="number"
               name="awayScore"
               aria-label={`${match.away} score`}
-              defaultValue={match.awayScore ?? ''}
+              value={scores[1]} readOnly
               placeholder="0"
               min={0}
               className="score-input"
@@ -4892,6 +4910,17 @@ function MatchScoreModal({
             <TeamMark name={match.away} />
           </div>
         </div>
+
+        <small className="field-hint span-2">Normal scores come from registered-player goal events. Fixed duration: two 25-minute halves plus stoppage time; drawn knockout matches go straight to penalties.</small>
+        {match.scoreSource === 'legacy' && <p className="module-note span-2">Historical result: its original score is preserved. Its goal ledger needs staff reconciliation before score changes.</p>}
+        <label>Result type<select value={resultKind} onChange={(e) => { setResultKind(e.target.value as 'normal' | 'forfeit'); if (e.target.value === 'forfeit') setStatus('completed') }}>
+          <option value="normal">Played match · goals from players</option><option value="forfeit">Administrative 3–0 forfeit</option>
+        </select></label>
+        {resultKind === 'forfeit' && <label>Forfeiting club *<select required value={forfeitTeamId ?? ''} onChange={(e) => setForfeitTeamId(Number(e.target.value))}>
+          <option value="">Select a club</option><option value={match.homeTeamId}>{match.home}</option><option value={match.awayTeamId}>{match.away}</option>
+        </select></label>}
+        <label className="span-2">Staff decision / reason<textarea name="decisionNote" defaultValue={match.decisionNote ?? ''} required={resultKind === 'forfeit' || status === 'stopped'} /></label>
+        <MatchLineupFields match={match} players={players} value={lineup} onChange={setLineup} />
 
         <div className="penalties-keeper-row span-2">
           <small className="penalties-label">Penalty shootout (only for knockout matches level after full time)</small>
@@ -4920,13 +4949,13 @@ function MatchScoreModal({
 
         <label>
           Match Status
-          <select name="matchStatus" defaultValue={match.matchStatus}>
+          <select aria-label="Match Status" name="matchStatus" value={status} onChange={(e) => setStatus(e.target.value as MatchStatus)}>
             <option value="scheduled">Scheduled</option>
             <option value="live">Live (In Progress)</option>
             <option value="completed">Completed (Final)</option>
-            <option value="postponed">Postponed</option>
+            <option value="postponed">Postponed</option><option value="stopped">Stopped · staff decision required</option>
           </select>
-          <small className="field-hint">Saving a score on a scheduled match marks it Completed, so it counts in the table.</small>
+          <small className="field-hint">Choose Completed after play, or Stopped when play cannot continue. Staff decides the outcome; no automatic forfeit.</small>
         </label>
 
         <label>
@@ -4997,6 +5026,7 @@ function MatchEventsModal({
 }) {
   const [saving, setSaving] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<string>(match.home)
+  const [eventType, setEventType] = useState<MatchEventType>('goal')
   const [error, setError] = useState('')
   const selectedTeamId = selectedTeam === match.home ? match.homeTeamId : match.awayTeamId
 
@@ -5014,6 +5044,7 @@ function MatchEventsModal({
     const data = new FormData(form)
     try {
       const player = matchPlayers.find((p) => p.id === Number(data.get('playerId')))
+      if (!player) throw new Error('Select a registered squad player. Free-text scorers are not allowed.')
       await onAddEvent({
         id: Date.now(),
         matchId: match.id,
@@ -5024,6 +5055,9 @@ function MatchEventsModal({
         eventType: String(data.get('eventType')) as MatchEventType,
         minute: Number(data.get('minute')),
         notes: String(data.get('notes')) || undefined,
+        extraMinute: data.get('extraMinute') ? Number(data.get('extraMinute')) : undefined,
+        incomingPlayerId: eventType === 'substitution' ? Number(data.get('incomingPlayerId')) : undefined,
+        isGoalkeeperChange: data.get('isGoalkeeperChange') === 'on',
       })
       form.reset()
     } catch (reason) {
@@ -5070,7 +5104,7 @@ function MatchEventsModal({
           <form className="admin-form" onSubmit={submitEvent}>
             <label>
               Team
-              <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+              <select aria-label="Team" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
                 <option value={match.home}>{match.home}</option>
                 <option value={match.away}>{match.away}</option>
               </select>
@@ -5078,22 +5112,19 @@ function MatchEventsModal({
 
             <label>
               Player
-              {matchPlayers.length > 0 ? (
-                <select key={selectedTeam} name="playerId" required>
+                <select aria-label="Player" key={selectedTeam} name="playerId" required disabled={!matchPlayers.length}>
+                  {!matchPlayers.length && <option value="">Register squad players first</option>}
                   {matchPlayers.map((p) => (
                     <option key={p.id} value={p.id}>
                       #{p.shirtNumber ?? '-'} {p.fullName}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <input name="playerName" placeholder="Player name" required />
-              )}
             </label>
 
             <label>
               Event Type
-              <select name="eventType">
+              <select name="eventType" value={eventType} onChange={(e) => setEventType(e.target.value as MatchEventType)}>
                 <option value="goal">⚽ Goal</option>
                 <option value="assist">🅰️ Assist</option>
                 <option value="penalty_scored">🎯 Penalty Scored</option>
@@ -5105,9 +5136,18 @@ function MatchEventsModal({
             </label>
 
             <label>
-              Minute (0 - 120)
-              <input name="minute" type="number" min={1} max={120} defaultValue={45} required />
+              Minute (0–50)
+              <input name="minute" type="number" min={0} max={50} defaultValue={25} required />
             </label>
+            <label>Stoppage minute<input name="extraMinute" type="number" min={0} max={30} placeholder="e.g. 2 for 25+2" /></label>
+            {eventType === 'substitution' && <>
+              <label>Incoming substitute *<select name="incomingPlayerId" required>
+                <option value="">Choose a match-day substitute</option>
+                {matchPlayers.filter((p) => match.squads?.some((s) => s.playerId === p.id && s.lineupRole === 'bench')).map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+              </select></label>
+              <label className="checkbox-label"><input name="isGoalkeeperChange" type="checkbox" />Goalkeeper exchange (one allowed)</label>
+              <small className="field-hint span-2">Player above is outgoing. Five outfield changes plus one goalkeeper change; substituted players cannot return.</small>
+            </>}
 
             <label className="span-2">
               Notes (e.g. Header, Assist, Free kick)
@@ -5119,7 +5159,7 @@ function MatchEventsModal({
             </small>
 
             <div className="form-actions span-2">
-              <button className="button button-admin" type="submit" disabled={saving}>
+              <button className="button button-admin" type="submit" disabled={saving || !matchPlayers.length || match.scoreSource === 'legacy'}>
                 {saving ? 'Adding…' : 'Add Event to Timeline'}
               </button>
             </div>
@@ -5139,14 +5179,17 @@ function MatchEventsModal({
  */
 function useSingleFlight() {
   const busy = useRef(false)
-  return useCallback(async (event: { preventDefault?: () => void } | undefined, fn: () => Promise<void>) => {
+  return useCallback(async (event: { preventDefault?: () => void; currentTarget?: EventTarget | null } | undefined, fn: () => Promise<void>) => {
     event?.preventDefault?.()
     if (busy.current) return
     busy.current = true
+    const form = event?.currentTarget instanceof HTMLFormElement ? event.currentTarget : null
+    if (form) form.dataset.saving = 'true'
     try {
       await fn()
     } finally {
       busy.current = false
+      if (form) delete form.dataset.saving
     }
   }, [])
 }
@@ -5189,7 +5232,8 @@ function PlayerForm({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     const teamId = Number(data.get('teamId')) || undefined
     const foundTeam = teams.find((t) => t.id === teamId)
 
@@ -5209,6 +5253,7 @@ function PlayerForm({
       if (initial && teamId !== currentTeamId) await onSetSquad(initial.id, squadSeasonId, teamId ?? null)
       onClose()
     } catch (reason: unknown) {
+      reportAssetSaveFailure(form, reason)
       console.error('Player save failed:', reason)
       const msg =
         reason instanceof Error
@@ -5334,6 +5379,7 @@ function PlayerForm({
         {saveError ? <div className="form-error span-2">{saveError}</div> : null}
         <FormActions onClose={onClose} label={initial ? 'Save Changes' : 'Register Player'} saving={saving} />
       </form>
+      {initial && <PlayerSuspensions player={initial} seasons={seasons} />}
     </Modal>
   )
 }
@@ -5349,6 +5395,7 @@ function StoryForm({
   onClose: () => void
   onSave: (story: Story) => Promise<void>
 }) {
+  const [publicationStatus, setPublicationStatus] = useState<Story['status']>(initial?.status ?? 'Draft')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -5358,7 +5405,8 @@ function StoryForm({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await onSave({
         id: initial?.id ?? Date.now(),
@@ -5369,10 +5417,11 @@ function StoryForm({
         coverImageUrl: String(data.get('coverImageUrl')) || undefined,
         status: String(data.get('status')) as Story['status'],
         seasonId: Number(data.get('seasonId')) || undefined,
-        publishedAt: initial?.publishedAt ?? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
+        publishedAt: publicationStatus === 'Scheduled' ? new Date(`${String(data.get('publishedAt'))}:00+03:00`).toISOString() : initial?.publishedAt,
       })
       onClose()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save story.')
     } finally {
       setSaving(false)
@@ -5416,7 +5465,7 @@ function StoryForm({
 
         <label>
           Publication Status
-          <select name="status" defaultValue={initial?.status ?? 'Published'}>
+          <select name="status" value={publicationStatus} onChange={(e) => setPublicationStatus(e.target.value as Story['status'])}>
             <option value="Published">Published</option>
             <option value="Draft">Draft</option>
             <option value="Scheduled">Scheduled</option>
@@ -5426,6 +5475,11 @@ function StoryForm({
             Archived keeps a story on record without publishing it. It is hidden from the public site.
           </small>
         </label>
+
+        {publicationStatus === 'Scheduled' && <label className="span-2">Publish at (Istanbul time) *
+          <input name="publishedAt" type="datetime-local" required defaultValue={publicationInput(initial?.publishedAt)} />
+          <small className="field-hint">Appears automatically at this time. Open pages refresh within one minute.</small>
+        </label>}
 
         <ImageUploadField
           name="coverImageUrl"
@@ -5456,7 +5510,7 @@ function StoryForm({
         </label>
 
         {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label={initial ? 'Update Story' : 'Publish Story'} saving={saving} />
+        <FormActions onClose={onClose} label={publicationStatus === 'Draft' ? 'Save Draft' : publicationStatus === 'Scheduled' ? 'Schedule Story' : publicationStatus === 'Published' ? 'Publish Story' : 'Archive Story'} saving={saving} />
       </form>
     </Modal>
   )
@@ -5464,7 +5518,7 @@ function StoryForm({
 
 function FormActions({ onClose, label, saving }: { onClose: () => void; label: string; saving: boolean }) {
   return (
-    <div className="form-actions span-2">
+    <div className="form-actions span-2" data-saving={saving ? 'true' : undefined}>
       <button type="button" onClick={onClose} disabled={saving}>
         Cancel
       </button>

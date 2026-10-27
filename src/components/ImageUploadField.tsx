@@ -1,7 +1,7 @@
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
-import { discardUploadedAsset, uploadAssetReceipt, validateAssetFile, type AssetFolder } from '../lib/assetStorage'
-import type { UploadedAsset } from '../lib/assetSaveUtils'
+import { assetDisplayUrl, canonicalAssetUrl, discardUploadedAsset, uploadAssetReceipt, validateAssetFile, type AssetFolder } from '../lib/assetStorage'
+import { isDefinitiveSaveRejection, type UploadedAsset } from '../lib/assetSaveUtils'
 
 /**
  * An image field that accepts a file or a URL.
@@ -16,10 +16,9 @@ import type { UploadedAsset } from '../lib/assetSaveUtils'
  * on a slow connection should not look like a frozen Save button, and a
  * rejected file should be reported while the user is still looking at it.
  *
- * Because of that, it also cleans up after itself when its form closes: if
- * the form was never submitted, every file it uploaded is removed; if it was,
- * only files that were replaced before saving are. Images from a previous
- * save (the default value) are never touched.
+ * Closing discards only uploads with no possible committed save. A definitive
+ * rejection permits cleanup; an uncertain network outcome retains the file.
+ * Previously saved images are never removed by this field.
  */
 export function ImageUploadField({
   name,
@@ -36,37 +35,57 @@ export function ImageUploadField({
   hint?: string
   required?: boolean
 }) {
-  const [value, setValue] = useState(defaultValue)
+  const [value, setValue] = useState(canonicalAssetUrl(defaultValue) ?? '')
+  const [preview, setPreview] = useState(defaultValue)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const fieldId = useId()
-  // Files this field uploaded while open, and whether its form was submitted.
+  // Track each uploaded file and every attempted save outcome.
   const uploads = useRef<UploadedAsset[]>([])
-  const submitted = useRef(false)
-  const current = useRef(value)
+  const mounted = useRef(false)
+  const uploading = useRef(false)
+  const attempts = useRef<{ url: string; rejected: boolean }[]>([])
   useEffect(() => {
-    current.current = value
+    let active = true
+    assetDisplayUrl(value).then((url) => { if (active) setPreview(url ?? '') })
+    return () => { active = false }
   }, [value])
 
   useEffect(() => {
+    mounted.current = true
     const form = inputRef.current?.closest('form')
-    const uploaded = uploads.current // the same array for the field's lifetime
-    const onSubmit = () => {
-      submitted.current = true
+    const blockPrematureSave = (event: Event) => {
+      if (uploading.current) {
+        event.preventDefault(); event.stopImmediatePropagation()
+        setError('Wait for the image upload to finish before saving.')
+      } else {
+        attempts.current.push({ url: String(new FormData(form!).get(name) ?? ''), rejected: false })
+      }
     }
-    form?.addEventListener('submit', onSubmit)
+    const rejected = (event: Event) => {
+      const last = attempts.current.at(-1)
+      if (last && isDefinitiveSaveRejection((event as CustomEvent).detail)) last.rejected = true
+      else if (last) setError('The save outcome is uncertain. This upload will be retained; reload and check the record before trying again.')
+    }
+    form?.addEventListener('submit', blockPrematureSave, true)
+    form?.addEventListener('ccl:asset-save-failed', rejected)
+    const uploaded = uploads.current // the same arrays for this field's lifetime
+    const saveAttempts = attempts.current
     return () => {
-      form?.removeEventListener('submit', onSubmit)
-      // ponytail: a submit whose save then fails still counts as submitted, so
-      // cancelling after a failed save keeps its last upload. Tracking the
-      // save result would need every form to report back.
-      const stale = uploaded.filter((asset) => !submitted.current || asset.url !== current.current)
-      for (const asset of stale) {
+      mounted.current = false
+      form?.removeEventListener('submit', blockPrematureSave, true)
+      form?.removeEventListener('ccl:asset-save-failed', rejected)
+      // The server checks references across all rows, including a save whose
+      // response was lost. Cancel and rejected saves remove only unused files.
+      for (const asset of uploaded) {
+        // Retain any upload with an ambiguous commit. A later explicit
+        // rejection does not erase uncertainty from an earlier attempt.
+        if (saveAttempts.some((a) => a.url === asset.url && !a.rejected)) continue
         discardUploadedAsset(asset).catch((reason) => console.warn('Could not remove an unused upload:', reason))
       }
     }
-  }, [])
+  }, [name])
 
   const pick = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -81,15 +100,19 @@ export function ImageUploadField({
     }
 
     setBusy(true)
+    uploading.current = true
     setError('')
     try {
       const receipt = await uploadAssetReceipt(file, folder)
+      if (!mounted.current) { await discardUploadedAsset(receipt); return }
       uploads.current.push(receipt)
       setValue(receipt.url ?? '')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'That image could not be uploaded.')
+      if (mounted.current) setError(reason instanceof Error ? reason.message : 'That image could not be uploaded.')
+      else console.warn('Could not clean up a cancelled image upload:', reason)
     } finally {
-      setBusy(false)
+      uploading.current = false
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -100,7 +123,7 @@ export function ImageUploadField({
 
       <div className="image-upload-row">
         <span className="image-upload-preview" aria-hidden="true">
-          {value ? <img src={value} alt="" /> : <ImageIcon size={18} />}
+          {preview ? <img src={preview} alt="" /> : <ImageIcon size={18} />}
         </span>
 
         <input

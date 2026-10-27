@@ -38,7 +38,7 @@ function fixture(): Data {
   })))
   const seasons: Season[] = [
     {
-      id: 1, city: 'Antalya', year: 2026, name: 'Spring Cup', fullName: 'Antalya 2026 Spring Cup', isActive: true, status: 'published',
+      id: 1, city: 'Antalya', year: 2026, startDate: '2026-10-01', name: 'Spring Cup', fullName: 'Antalya 2026 Spring Cup', isActive: true, status: 'published',
       seasonType: 'group_league', groupCount: 2, teamCount: 4,
       groupLeague: { groupCount: 2, groups: [
         { id: 'group_a', name: 'Group A', slots: [{ position: 1, teamId: 1 }, { position: 2, teamId: 2 }] },
@@ -46,17 +46,17 @@ function fixture(): Data {
       ] },
     },
     {
-      id: 2, city: 'İzmir', year: 2026, name: 'Autumn League', fullName: 'İzmir 2026 Autumn League', isActive: false, status: 'published',
+      id: 2, city: 'İzmir', year: 2026, startDate: '2026-09-01', name: 'Autumn League', fullName: 'İzmir 2026 Autumn League', isActive: false, status: 'published',
       seasonType: 'league', teamCount: 2, league: { teamCount: 2, slots: [{ position: 1, teamId: 5 }, { position: 2, teamId: 6 }] },
     },
     {
-      id: 3, city: 'Bodrum', year: 2026, name: 'Knockout Trophy', fullName: 'Bodrum 2026 Knockout Trophy', isActive: false, status: 'published',
+      id: 3, city: 'Bodrum', year: 2026, startDate: '2026-08-01', name: 'Knockout Trophy', fullName: 'Bodrum 2026 Knockout Trophy', isActive: false, status: 'published',
       seasonType: 'tournament', teamCount: 4, bracket: generateEmptyBracket(4),
     },
   ]
   const matches: Match[] = [{
     id: 1, seasonId: 1, home: 'ALPHA', away: 'BRAVO', homeTeamId: 1, awayTeamId: 2, stage: 'Group A',
-    date: '20 Oct', time: '18:00', venue: 'QA Ground', matchStatus: 'scheduled', status: 'Scheduled', events: [],
+    date: '20 Dec', time: '18:00', kickoffAt: '2026-12-20T15:00:00Z', venue: 'QA Ground', matchStatus: 'scheduled', status: 'Scheduled', events: [],
   }]
   return { seasons, teams, players, matches, stories: [], media: [], sponsors: [] }
 }
@@ -120,13 +120,13 @@ test.describe('Seasons', () => {
     await dialog.getByLabel('Season name *').fill('Winter Open')
     await dialog.getByLabel('Format *').selectOption('league')
     await expect(dialog.getByLabel('Visibility')).toHaveValue('draft')
-    await dialog.getByLabel(/Mark as the current season/).uncheck()
+    await dialog.getByLabel('Start date *').fill('2026-12-01')
     await dialog.getByRole('button', { name: 'Add season', exact: true }).click()
     await expect(dialog).toHaveCount(0)
 
     const row = seasonRow(page, 'İzmir 2026 Winter Open')
     await expect(row).toContainText('Draft')
-    await expect(row).not.toContainText('Current')
+    await expect(row).not.toContainText('Public default')
 
     await viewSite(page)
     let menu = await publicSeasons(page)
@@ -166,15 +166,15 @@ test.describe('Seasons', () => {
     await expect(seasonRow(page, 'Antalya 2026 Spring Cup')).toHaveCount(0)
   })
 
-  test('setting a season as current leaves exactly one current season', async ({ page }) => {
+  test('latest published start date determines the public default, including future tournaments', async ({ page }) => {
     await open(page, 'Seasons')
     await page.getByRole('button', { name: 'Edit season İzmir 2026 Autumn League' }).click()
     const dialog = page.getByRole('dialog', { name: 'Edit Season: İzmir 2026 Autumn League' })
-    await dialog.getByLabel(/Mark as the current season/).check()
+    await dialog.getByLabel('Start date *').fill('2026-12-01')
     await dialog.getByRole('button', { name: 'Save Changes', exact: true }).click()
     await expect(dialog).toHaveCount(0)
-    await expect(seasonRow(page, 'İzmir 2026 Autumn League')).toContainText('Current')
-    await expect(seasonRow(page, 'Antalya 2026 Spring Cup')).not.toContainText('Current')
+    await expect(seasonRow(page, 'İzmir 2026 Autumn League')).toContainText('Public default')
+    await expect(seasonRow(page, 'Antalya 2026 Spring Cup')).not.toContainText('Public default')
   })
 
   test('deleting a season needs its name typed and explains what is kept', async ({ page }) => {
@@ -328,41 +328,40 @@ test.describe('Draw canvases', () => {
  * ------------------------------------------------------------------ */
 
 test.describe('Teams', () => {
-  test('registering a club from a filtered season starts on that season and needs five players', async ({ page }) => {
+  test('a club registers without players, then needs five in its empty tournament squad', async ({ page }) => {
     await open(page, 'Teams')
-    await teamsSeasonFilter(page).selectOption({ label: '2026 — Autumn League' })
+    await teamsSeasonFilter(page).selectOption('2')
     await page.getByRole('button', { name: 'Register New Club' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Register New Club in 2026 — Autumn League' })
-    await expect(dialog).toBeVisible()
-    await dialog.getByLabel('Club Full Name *').fill('golf')
-    await dialog.getByLabel('Country / Flag *').selectOption('TR')
+    const registration = page.getByRole('dialog', { name: 'Register club', exact: true })
+    await registration.getByLabel('Club name *').fill('GOLF')
+    await registration.getByRole('button', { name: 'Save club registration' }).click()
+    await expect(registration).toHaveCount(0)
+    const registered = page.locator('tr').filter({ hasText: 'GOLF' })
+    await expect(registered).toContainText('0')
+    await page.getByLabel('Entry tournament').selectOption('2')
+    await registered.getByRole('button', { name: 'Enter tournament' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Enter GOLF in 2026 — Autumn League' })
     await dialog.getByRole('button', { name: /Preset crests/ }).click()
     await dialog.getByTitle('Lion Champion Crest').click()
-    await dialog.getByRole('button', { name: '3. Tournament & Group' }).click()
-    await expect(dialog.getByLabel('Season *')).toHaveValue('2')
-
     await dialog.getByRole('button', { name: /^4\. Squad Roster/ }).click()
+    await expect(dialog.getByRole('button', { name: /^4\. Squad Roster/ })).toContainText('(0/5+)')
     await dialog.getByRole('button', { name: /Create a new player/ }).click()
-    const addNew = async (name: string, shirt: string) => {
-      await dialog.getByPlaceholder('Player full name *').fill(name)
-      await dialog.getByPlaceholder('Forma #').fill(shirt)
+    const addNew = async (n: number) => {
+      await dialog.getByPlaceholder('Player full name *').fill(`Golf Rookie ${n}`)
+      await dialog.getByPlaceholder('Forma #').fill(String(n))
       await dialog.getByRole('button', { name: '+ Add to squad' }).click()
-      await expect(dialog.getByText(name, { exact: true })).toBeVisible()
     }
-    for (let n = 1; n <= 4; n++) await addNew(`Golf Rookie ${n}`, String(n))
+    for (let n = 1; n <= 4; n++) await addNew(n)
     await dialog.getByRole('button', { name: 'Register Club', exact: true }).click()
     await expect(dialog.getByText('Add at least 5 players in the Squad tab before registering (4 so far).')).toBeVisible()
-
-    await addNew('Golf Rookie 5', '5')
+    await addNew(5)
     await dialog.getByRole('button', { name: 'Register Club', exact: true }).click()
     const created = page.getByRole('dialog', { name: 'Manage Club: GOLF' })
     await expect(created).toBeVisible()
     await created.getByRole('button', { name: 'Close', exact: true }).click()
-
-    const row = page.getByRole('row').filter({ hasText: 'GOLF' })
-    await expect(row).toContainText('5 Players (Ready)')
-    await teamsSeasonFilter(page).selectOption({ label: '2026 — Spring Cup' })
-    await expect(page.getByRole('row').filter({ hasText: 'GOLF' })).toHaveCount(0)
+    await expect(page.locator('.teams-table tr').filter({ hasText: 'GOLF' })).toContainText('5 Players')
+    await teamsSeasonFilter(page).selectOption('1')
+    await expect(page.locator('.teams-table tr').filter({ hasText: 'GOLF' })).toHaveCount(0)
   })
 
   test('editing a club saves its staff and the public club page shows them', async ({ page }) => {
@@ -397,7 +396,7 @@ test.describe('Teams', () => {
     await expect(page.getByRole('row').filter({ hasText: 'ECHO' })).toHaveCount(0)
 
     await teamsSeasonFilter(page).selectOption({ label: '2026 — Spring Cup' })
-    await expect(page.getByRole('row').filter({ hasText: 'ECHO' })).toContainText('6 Players (Ready)')
+    await expect(page.getByRole('row').filter({ hasText: 'ECHO' })).toContainText('6 Players (Registered)')
     await navigate(page, 'Players')
     await page.getByRole('button', { name: 'Edit player Echo P1' }).click()
     await expect(page.getByRole('dialog', { name: 'Edit Player: Echo P1' })).toContainText('2026 — Spring Cup · ECHO')
@@ -412,16 +411,22 @@ test.describe('Teams', () => {
     await expect(dialog.getByText('This club has fixtures in this season, so it stays here. Enter the club again to play another season.')).toBeVisible()
   })
 
-  test('an existing club can be entered in another season with its squad', async ({ page }) => {
+  test('an existing club keeps its identity and starts a new tournament squad empty', async ({ page }) => {
     await open(page, 'Teams')
     await page.getByRole('combobox', { name: 'Enter a club from another season' }).selectOption({ label: 'FOXTROT · last in 2026 — Autumn League' })
     const dialog = page.getByRole('dialog', { name: 'Enter FOXTROT in 2026 — Spring Cup' })
-    await expect(dialog.getByRole('button', { name: '4. Squad Roster (6/5+)' })).toBeVisible()
+    await dialog.getByRole('button', { name: '4. Squad Roster (0/5+)' }).click()
+    await dialog.getByRole('button', { name: /Create a new player/ }).click()
+    for (let n = 1; n <= 5; n++) {
+      await dialog.getByPlaceholder('Player full name *').fill(`Foxtrot New ${n}`)
+      await dialog.getByPlaceholder('Forma #').fill(String(n))
+      await dialog.getByRole('button', { name: '+ Add to squad' }).click()
+    }
     await dialog.getByRole('button', { name: 'Register Club', exact: true }).click()
     const created = page.getByRole('dialog', { name: 'Manage Club: FOXTROT' })
     await expect(created).toBeVisible()
     await created.getByRole('button', { name: 'Close', exact: true }).click()
-    await expect(page.getByRole('row').filter({ hasText: 'FOXTROT' })).toContainText('6 Players (Ready)')
+    await expect(page.locator('.teams-table tr').filter({ hasText: 'FOXTROT' })).toContainText('5 Players')
     await teamsSeasonFilter(page).selectOption({ label: '2026 — Autumn League' })
     await expect(page.getByRole('row').filter({ hasText: 'FOXTROT' })).toBeVisible()
   })
@@ -448,31 +453,21 @@ test.describe('Teams', () => {
  * Squad canvas
  * ------------------------------------------------------------------ */
 
-test('squad canvas: formation switch re-seats players, counts only filled slots, and the saved lineup shows publicly', async ({ page }) => {
+test('squad canvas saves a fixed eight-a-side club default and shows it publicly', async ({ page }) => {
   await open(page, 'Teams')
   await page.getByRole('button', { name: 'Formation and pitch canvas for ALPHA' }).click()
   let canvas = page.getByRole('dialog', { name: /ALPHA — Squad & formation/ })
-  await expect(canvas.getByRole('button', { name: /Pitch View \(6\/11\)/ })).toBeVisible()
-  await canvas.getByLabel('Formation:').selectOption('5v5')
-  await expect(canvas.getByRole('button', { name: /Pitch View \(5\/5\)/ })).toBeVisible()
-  await expect(canvas.getByRole('button', { name: /Bench & Roster \(1\)/ })).toBeVisible()
-  await canvas.getByLabel('Formation:').selectOption('4-3-3')
-  await expect(canvas.getByRole('button', { name: /Pitch View \(5\/11\)/ })).toBeVisible()
-  await canvas.getByLabel('Formation:').selectOption('5v5')
-  await expect(canvas.getByRole('button', { name: /Pitch View \(5\/5\)/ })).toBeVisible()
+  await expect(canvas.getByLabel('Formation:')).toHaveValue('8v8')
+  await expect(canvas.getByLabel('Formation:').locator('option')).toHaveCount(1)
+  await expect(canvas.getByRole('button', { name: /Pitch View \(6\/8\)/ })).toBeVisible()
   await canvas.getByRole('button', { name: /Save Squad to Club/ }).click()
   await expect(canvas).toHaveCount(0)
-
   await page.getByRole('button', { name: 'Formation and pitch canvas for ALPHA' }).click()
   canvas = page.getByRole('dialog', { name: /ALPHA — Squad & formation/ })
-  await expect(canvas.getByLabel('Formation:')).toHaveValue('5v5')
-  await expect(canvas.getByRole('button', { name: /Pitch View \(5\/5\)/ })).toBeVisible()
+  await expect(canvas.getByLabel('Formation:')).toHaveValue('8v8')
   await canvas.getByRole('button', { name: 'Cancel' }).click()
-
   await page.goto('/#site/team/1')
-  const club = page.getByRole('dialog', { name: 'Club and squad' })
-  await expect(club.getByText('Lineup · 5v5 Futsal / Arena')).toBeVisible()
-  await expect(club.locator('.squad-column').filter({ hasText: 'Bench' }).locator('.player-row-simple')).toHaveCount(1)
+  await expect(page.getByRole('dialog', { name: 'Club and squad' }).getByText('Lineup · 8-a-side · 3–3–1')).toBeVisible()
 })
 
 /* ------------------------------------------------------------------ *
@@ -506,7 +501,7 @@ test.describe('Players', () => {
     await expect(renamed.getByLabel('Team Captain')).toBeVisible()
   })
 
-  test('a transfer within the season moves the player, but never below five', async ({ page }) => {
+  test('pre-kickoff transfers can leave an entered club below five', async ({ page }) => {
     await open(page, 'Players')
     await page.getByRole('button', { name: 'Edit player Alpha P6' }).click()
     let dialog = page.getByRole('dialog', { name: 'Edit Player: Alpha P6' })
@@ -519,12 +514,11 @@ test.describe('Players', () => {
     dialog = page.getByRole('dialog', { name: 'Edit Player: Alpha P5' })
     await dialog.getByLabel('Club this season').selectOption({ label: 'BRAVO (🇹🇷)' })
     await dialog.getByRole('button', { name: 'Save Changes', exact: true }).click()
-    await expect(dialog.getByText('ALPHA needs at least 5 players in its squad (it would have 4).')).toBeVisible()
-    await dialog.getByRole('button', { name: 'Cancel' }).click()
-    await expect(page.getByRole('row').filter({ hasText: 'Alpha P5' })).toContainText('ALPHA')
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('row').filter({ hasText: 'Alpha P5' })).toContainText('BRAVO')
   })
 
-  test('the squad roster hub adds and removes players and holds the five-player floor', async ({ page }) => {
+  test('the squad roster hub allows releases below the entry minimum', async ({ page }) => {
     await open(page, 'Teams')
     await page.getByRole('button', { name: 'Manage squad roster for ALPHA' }).click()
     const hub = page.getByRole('dialog', { name: 'Squad Roster Hub: ALPHA' })
@@ -538,13 +532,24 @@ test.describe('Players', () => {
     await hub.getByRole('row').filter({ hasText: 'Hub Recruit' }).getByRole('button', { name: /Remove/ }).click()
     await hub.getByRole('row').filter({ hasText: 'Alpha P6' }).getByRole('button', { name: /Remove/ }).click()
     await expect(hub).toContainText('5 Players (Ready)')
-    for (const button of await hub.getByRole('button', { name: /Remove/ }).all()) await expect(button).toBeDisabled()
+    await hub.getByRole('row').filter({ hasText: 'Alpha P5' }).getByRole('button', { name: /Remove/ }).click()
+    await expect(hub.getByRole('row').filter({ hasText: 'Alpha P5' })).toHaveCount(0)
   })
 })
 
 /* ------------------------------------------------------------------ *
  * Matches
  * ------------------------------------------------------------------ */
+
+async function logGoal(page: Page, fixtureName: string, team: string, player: string) {
+  await matchRow(page, fixtureName).getByTitle('Manage events').click()
+  const events = page.getByRole('dialog', { name: `Match Events Timeline: ${fixtureName}` })
+  await events.getByLabel('Team', { exact: true }).selectOption(team)
+  await events.getByLabel('Player', { exact: true }).selectOption({ label: player })
+  await events.getByLabel('Event Type').selectOption('goal')
+  await events.getByRole('button', { name: 'Add Event to Timeline' }).click()
+  await events.getByRole('button', { name: 'Close', exact: true }).click()
+}
 
 test.describe('Matches', () => {
   test('schedule a fixture; the same club on both sides is refused', async ({ page }) => {
@@ -560,8 +565,7 @@ test.describe('Matches', () => {
     await dialog.getByLabel('Stage').fill('Group B')
     await dialog.getByLabel('Venue').fill('QA Park')
     await dialog.getByLabel('Date', { exact: true }).fill('25 Oct')
-    await dialog.getByLabel('Publication Status').selectOption('Scheduled')
-    await dialog.getByRole('button', { name: 'Create fixture' }).click()
+        await dialog.getByRole('button', { name: 'Create fixture' }).click()
     await expect(dialog).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Matches & Scorekeeping (2)' })).toBeVisible()
     await expect(matchRow(page, 'CHARLIE vs DELTA')).toContainText('QA Park')
@@ -569,13 +573,17 @@ test.describe('Matches', () => {
     await expect(page.getByText('QA Park').first()).toBeVisible()
   })
 
-  test('a score on a scheduled match completes it and the standings follow, in admin and publicly', async ({ page }) => {
+  test('registered-player goals derive the score; explicit completion updates standings', async ({ page }) => {
     await open(page, 'Matches')
+    await logGoal(page, 'ALPHA vs BRAVO', 'ALPHA', '#6 Alpha P6')
+    await logGoal(page, 'ALPHA vs BRAVO', 'ALPHA', '#5 Alpha P5')
+    await logGoal(page, 'ALPHA vs BRAVO', 'BRAVO', '#6 Bravo P6')
     await matchRow(page, 'ALPHA vs BRAVO').getByTitle('Edit score & details').click()
     const dialog = page.getByRole('dialog', { name: 'Match Scorekeeper: ALPHA vs BRAVO' })
     await expect(dialog.locator('select[name="matchStatus"]')).toHaveValue('scheduled')
-    await dialog.getByLabel('ALPHA score').fill('2')
-    await dialog.getByLabel('BRAVO score').fill('1')
+    await expect(dialog.getByLabel('ALPHA score', { exact: true })).toHaveValue('2')
+    await expect(dialog.getByLabel('ALPHA score', { exact: true })).toHaveAttribute('readonly', '')
+    await dialog.getByLabel('Match Status', { exact: true }).selectOption('completed')
     await dialog.getByRole('button', { name: 'Save match result' }).click()
     await expect(dialog).toHaveCount(0)
     const row = matchRow(page, 'ALPHA vs BRAVO')
@@ -593,22 +601,21 @@ test.describe('Matches', () => {
     await expect(standings.getByRole('row').filter({ hasText: 'BRAVO' }).locator('.pg-points')).toHaveText('0')
   })
 
-  test('penalty shootouts must have a winner and follow a level score', async ({ page }) => {
-    await open(page, 'Matches')
+  test('drawn knockouts require direct penalties and a winner', async ({ page }) => {
+    const data = fixture()
+    data.matches[0].stage = 'Final'
+    await open(page, 'Matches', data)
     await matchRow(page, 'ALPHA vs BRAVO').getByTitle('Edit score & details').click()
     const dialog = page.getByRole('dialog', { name: 'Match Scorekeeper: ALPHA vs BRAVO' })
-    const enter = async (home: string, away: string, homePens: string, awayPens: string) => {
-      await dialog.getByLabel('ALPHA score').fill(home)
-      await dialog.getByLabel('BRAVO score').fill(away)
-      await dialog.getByLabel('ALPHA penalties').fill(homePens)
-      await dialog.getByLabel('BRAVO penalties').fill(awayPens)
-      await dialog.getByRole('button', { name: 'Save match result' }).click()
-    }
-    await enter('1', '1', '3', '3')
+    await dialog.getByLabel('Match Status', { exact: true }).selectOption('completed')
+    await dialog.getByRole('button', { name: 'Save match result' }).click()
+    await expect(dialog.getByText('A drawn knockout match requires direct penalties with a winner.')).toBeVisible()
+    await dialog.getByLabel('ALPHA penalties').fill('3')
+    await dialog.getByLabel('BRAVO penalties').fill('3')
+    await dialog.getByRole('button', { name: 'Save match result' }).click()
     await expect(dialog.getByText('A penalty shootout needs a winner. Enter the final shootout score.')).toBeVisible()
-    await enter('2', '1', '4', '3')
-    await expect(dialog.getByText('A penalty shootout only follows a level score. Clear the penalties or correct the score.')).toBeVisible()
-    await enter('1', '1', '4', '3')
+    await dialog.getByLabel('ALPHA penalties').fill('4')
+    await dialog.getByRole('button', { name: 'Save match result' }).click()
     await expect(dialog).toHaveCount(0)
     await expect(matchRow(page, 'ALPHA vs BRAVO')).toContainText('(4–3p)')
   })
@@ -626,7 +633,7 @@ test.describe('Matches', () => {
       await events.getByLabel('Team').selectOption(team)
       await events.getByLabel('Player').selectOption({ label: player })
       await events.getByLabel('Event Type').selectOption(type)
-      await events.getByLabel('Minute (0 - 120)').fill(minute)
+      await events.getByLabel('Minute (0–50)').fill(minute)
       await addButton.click()
     }
     await add('ALPHA', '#6 Alpha P6', 'goal', '12')
@@ -635,7 +642,7 @@ test.describe('Matches', () => {
     await add('BRAVO', '#4 Bravo P4', 'penalty_scored', '30')
     await expect(matchRow(page, 'ALPHA vs BRAVO')).toContainText('1 - 1')
     await add('BRAVO', '#2 Bravo P2', 'yellow_card', '40')
-    await add('ALPHA', '#3 Alpha P3', 'red_card', '55')
+    await add('ALPHA', '#3 Alpha P3', 'red_card', '45')
     await expect(events.getByRole('heading', { name: 'Logged Events (4)' })).toBeVisible()
     await expect(matchRow(page, 'ALPHA vs BRAVO')).toContainText('1 - 1')
 
@@ -683,7 +690,8 @@ test.describe('Content and media', () => {
     await dialog.getByRole('combobox', { name: /^Season/ }).selectOption({ label: '2026 — Spring Cup' })
     await dialog.getByLabel('Publication Status').selectOption('Draft')
     await dialog.getByLabel('Summary (Brief teaser)').fill('Groups are set.')
-    await dialog.getByRole('button', { name: 'Publish Story' }).click()
+    await expect(dialog.getByLabel('Publication Status')).toHaveValue('Draft')
+    await dialog.getByRole('button', { name: 'Save Draft' }).click()
     await expect(dialog).toHaveCount(0)
     const row = () => page.getByRole('row').filter({ hasText: /Cup draw/ })
     await expect(row()).toContainText('Draft')
@@ -700,7 +708,7 @@ test.describe('Content and media', () => {
     await row().getByRole('button', { name: 'Edit' }).click()
     dialog = page.getByRole('dialog', { name: 'Edit Story Article' })
     await dialog.getByLabel('Headline / Title *').fill('Cup draw confirmed')
-    await dialog.getByRole('button', { name: 'Update Story' }).click()
+    await dialog.getByRole('button', { name: 'Publish Story' }).click()
     await expect(row()).toContainText('Cup draw confirmed')
     await row().getByRole('button', { name: 'Unpublish' }).click()
     await expect(row()).toContainText('Draft')
@@ -823,10 +831,14 @@ test.describe('Organisation', () => {
   test('overview shows live counts and quick actions; signing out returns to the login', async ({ page }) => {
     await open(page, 'Overview')
     const metrics = page.locator('.metric-strip')
-    await expect(metrics.locator('div').filter({ hasText: 'Seasons & Tournaments' })).toContainText('3')
-    await expect(metrics.locator('div').filter({ hasText: 'Clubs & Teams' })).toContainText('10')
-    await expect(metrics.locator('div').filter({ hasText: 'Registered Players' })).toContainText('60')
+    await expect(metrics.locator('div').filter({ hasText: 'Seasons & Tournaments' })).toContainText('1')
+    await expect(metrics.locator('div').filter({ hasText: 'Clubs & Teams' })).toContainText('4')
+    await expect(metrics.locator('div').filter({ hasText: 'Registered Players' })).toContainText('24')
     await expect(metrics.locator('div').filter({ hasText: 'Scheduled Matches' })).toContainText('1')
+    await page.getByLabel('Overview tournament').selectOption('2')
+    await expect(metrics.locator('div').filter({ hasText: 'Clubs & Teams' })).toContainText('2')
+    await expect(metrics.locator('div').filter({ hasText: 'Registered Players' })).toContainText('12')
+    await expect(metrics.locator('div').filter({ hasText: 'Scheduled Matches' })).toContainText('0')
     await page.locator('.quick-actions').getByRole('button', { name: 'Schedule Match' }).click()
     await expect(page.getByRole('dialog', { name: 'Create match fixture' })).toBeVisible()
     await page.getByRole('dialog', { name: 'Create match fixture' }).getByRole('button', { name: 'Cancel' }).click()

@@ -1,5 +1,6 @@
 import type { Match, MatchEvent, Player, Season, Team } from '../types'
 import { tableStageMatches } from './matchStages'
+import { goalScore } from './matchRules'
 
 /**
  * Standings engine.
@@ -38,6 +39,10 @@ export type StandingsRow = {
   /** Manual adjustment applied to this row's points, if any. */
   adjustment: number
   adjustmentNote?: string
+  forfeits: number
+  disciplinaryPoints: number
+  lotsRank?: number
+  lotsPending?: boolean
 }
 
 export type PointsAdjustment = {
@@ -58,6 +63,7 @@ export type StandingsOptions = {
   adjustments?: PointsAdjustment[]
   /** Apply head-to-head before goal difference (UEFA order). Default false. */
   headToHeadFirst?: boolean
+  lotsOrder?: number[]
 }
 
 const DEFAULTS = {
@@ -222,6 +228,11 @@ export function computeStandings(
       form: [...accumulator.form].reverse().slice(0, 5),
       adjustment: adjustment?.points ?? 0,
       adjustmentNote: adjustment?.note,
+      forfeits: matches.filter((m) => isCountableMatch(m) && (!stageFilter || stageFilter.includes(normalizeName(m.stage))) && m.forfeitTeamId === team.id).length,
+      disciplinaryPoints: matches.filter((m) => isCountableMatch(m) && (!stageFilter || stageFilter.includes(normalizeName(m.stage)))).flatMap((m) => m.events ?? [])
+        .filter((e) => e.teamId === team.id || (e.teamId == null && normalizeName(e.teamName) === normalizeName(team.name)))
+        .reduce((sum, e) => sum + (e.eventType === 'yellow_card' ? 1 : e.eventType === 'red_card' ? 3 : 0), 0),
+      lotsRank: options.lotsOrder?.includes(team.id) ? options.lotsOrder.indexOf(team.id) : undefined,
     }
   })
 
@@ -229,7 +240,7 @@ export function computeStandings(
     pointsForWin,
     pointsForDraw,
     pointsForLoss,
-    headToHeadFirst: options.headToHeadFirst ?? false,
+    headToHeadFirst: options.headToHeadFirst ?? true,
     stages: options.stages,
   })
 }
@@ -298,53 +309,39 @@ function sortStandings(
     stages?: string[]
   },
 ): StandingsRow[] {
-  // Primary pass. Head-to-head is deliberately excluded here: it is only
-  // meaningful within a set of already-tied teams, so it is resolved below.
-  const primary = (a: StandingsRow, b: StandingsRow): number => {
-    if (b.points !== a.points) return b.points - a.points
-    if (config.headToHeadFirst) return 0
-    if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference
-    if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor
-    return 0
-  }
-
-  const sorted = [...rows].sort((a, b) => primary(a, b) || a.teamName.localeCompare(b.teamName, 'tr'))
-
-  // Second pass: walk runs of teams the primary pass could not separate and
-  // re-order each run by its internal head-to-head record.
-  const result: StandingsRow[] = []
-  let index = 0
-  while (index < sorted.length) {
-    let end = index + 1
-    while (end < sorted.length && primary(sorted[index], sorted[end]) === 0) end += 1
-
-    const run = sorted.slice(index, end)
-    if (run.length > 1) {
-      const records = headToHead(run, matches, config)
-      run.sort((a, b) => {
-        const recordA = records.get(a.teamId)!
-        const recordB = records.get(b.teamId)!
-        if (recordB.points !== recordA.points) return recordB.points - recordA.points
-        if (recordB.goalDifference !== recordA.goalDifference) {
-          return recordB.goalDifference - recordA.goalDifference
-        }
-        if (recordB.goalsFor !== recordA.goalsFor) return recordB.goalsFor - recordA.goalsFor
-        // UEFA order: fall back to overall GD/GF only after head-to-head.
-        if (config.headToHeadFirst) {
-          if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference
-          if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor
-        }
-        // Genuinely inseparable — order alphabetically so the table is at least
-        // deterministic across reloads rather than dependent on input order.
-        return a.teamName.localeCompare(b.teamName, 'tr')
-      })
+  const partition = (input: StandingsRow[], compare: (a: StandingsRow, b: StandingsRow) => number) => {
+    const sorted = [...input].sort(compare)
+    const groups: StandingsRow[][] = []
+    for (const row of sorted) {
+      const last = groups.at(-1)
+      if (last && compare(last[0], row) === 0) last.push(row)
+      else groups.push([row])
     }
-
-    result.push(...run)
-    index = end
+    return groups
   }
-
-  return result.map((row, position) => ({ ...row, position: position + 1 }))
+  const fallback = (run: StandingsRow[]) => partition(run, (a, b) =>
+    b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor ||
+    a.forfeits - b.forfeits || a.disciplinaryPoints - b.disciplinaryPoints
+  ).flatMap((tied) => {
+    if (tied.length < 2) return tied
+    const recorded = tied.every((r) => r.lotsRank != null) && new Set(tied.map((r) => r.lotsRank)).size === tied.length
+    return recorded ? tied.sort((a, b) => a.lotsRank! - b.lotsRank!)
+      : tied.sort((a, b) => a.teamId - b.teamId).map((r) => ({ ...r, lotsPending: true }))
+  })
+  const resolve = (run: StandingsRow[]): StandingsRow[] => {
+    if (run.length < 2) return run
+    const records = headToHead(run, matches, config)
+    const groups = partition(run, (a, b) => {
+      const x = records.get(a.teamId)!, y = records.get(b.teamId)!
+      return y.points - x.points || y.goalDifference - x.goalDifference || y.goalsFor - x.goalsFor
+    })
+    // Reapply the mini-table only when it separated some of this tied group.
+    // An unchanged group falls through, preventing infinite recursion.
+    return groups.length === 1 ? fallback(run) : groups.flatMap(resolve)
+  }
+  const primary = partition(rows, (a, b) => b.points - a.points ||
+    (config.headToHeadFirst ? 0 : b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor))
+  return primary.flatMap(resolve).map((row, position) => ({ ...row, position: position + 1 }))
 }
 
 /* ------------------------------------------------------------------ *
@@ -383,7 +380,7 @@ export function computeGroupStandings(
     return [{
       groupId: 'league',
       groupName: 'League Table',
-      rows: computeStandings(teams, matches, { ...options, ...(teamIds ? { teamIds } : {}) }),
+      rows: computeStandings(teams, matches, { lotsOrder: season?.lotsOrder, ...options, ...(teamIds ? { teamIds } : {}) }),
     }]
   }
   const groups = season?.groupLeague?.groups ?? []
@@ -396,7 +393,7 @@ export function computeGroupStandings(
     return drawn.map(({ group, teamIds }) => ({
       groupId: group.id,
       groupName: group.name,
-      rows: computeStandings(teams, matches, { ...options, teamIds }),
+      rows: computeStandings(teams, matches, { lotsOrder: season?.lotsOrder, ...options, teamIds }),
     }))
   }
 
@@ -413,7 +410,7 @@ export function computeGroupStandings(
       {
         groupId: 'league',
         groupName: [...grouped.keys()][0] ?? 'League Table',
-        rows: computeStandings(teams, matches, options),
+        rows: computeStandings(teams, matches, { lotsOrder: season?.lotsOrder, ...options }),
       },
     ]
   }
@@ -424,6 +421,7 @@ export function computeGroupStandings(
       groupId: groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       groupName,
       rows: computeStandings(teams, matches, {
+        lotsOrder: season?.lotsOrder,
         ...options,
         teamIds: groupTeams.map((team) => team.id),
       }),
@@ -456,16 +454,10 @@ const GOAL_EVENTS: MatchEvent['eventType'][] = ['goal', 'penalty_scored']
  * full event log.
  */
 export function scoreAfterEvent(match: Match, event: MatchEvent, step: 1 | -1): Pick<Match, 'homeScore' | 'awayScore'> {
-  const unchanged = { homeScore: match.homeScore, awayScore: match.awayScore }
-  const kind: string = event.eventType
-  if (!['goal', 'penalty_scored', 'own_goal'].includes(kind)) return unchanged
-  const side = event.teamId != null
-    ? event.teamId === match.homeTeamId ? 'home' : event.teamId === match.awayTeamId ? 'away' : null
-    : event.teamName === match.home ? 'home' : event.teamName === match.away ? 'away' : null
-  if (!side) return unchanged
-  const homeScores = kind === 'own_goal' ? side === 'away' : side === 'home'
-  const bump = (score: number | undefined, scores: boolean) => Math.max((score ?? 0) + (scores ? step : 0), 0)
-  return { homeScore: bump(match.homeScore, homeScores), awayScore: bump(match.awayScore, !homeScores) }
+  if (match.resultKind === 'forfeit' || match.scoreSource === 'legacy') return { homeScore: match.homeScore, awayScore: match.awayScore }
+  const events = step === 1 ? [...(match.events ?? []), event] : (match.events ?? []).filter((e) => e.id !== event.id)
+  const [homeScore, awayScore] = goalScore({ ...match, events })
+  return { homeScore, awayScore }
 }
 
 /** Every event across the countable matches, flattened. */

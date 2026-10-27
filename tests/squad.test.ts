@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, matchSquad, playerTeamId, shrinkError, squadOf, withSquad } from '../src/lib/squadUtils'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, matchSquad, playerTeamId, entrySquadError, squadOf, withSquad } from '../src/lib/squadUtils'
 import { assignedGroupName } from '../src/lib/groupLeagueUtils'
 import type { Player, Season, Team } from '../src/types'
 
@@ -27,11 +27,11 @@ check('a transfer replaces the club for that season only', () => {
   assert.deepEqual(withSquad(squads, 2025, null), [{ seasonId: 2026, teamId: 20 }])
 })
 
-check('squads may not shrink below the minimum', () => {
+check('five-player minimum applies at tournament entry', () => {
   assert.equal(MIN_SQUAD, 5)
-  assert.equal(shrinkError({ name: 'NOVA' }, 6), '')
-  assert.match(shrinkError({ name: 'NOVA' }, 5), /NOVA needs at least 5 players.*would have 4/)
-  assert.match(shrinkError({ name: 'OLD' }, 2), /would have 1/)
+  assert.equal(entrySquadError(5), '')
+  assert.equal(entrySquadError(150), '')
+  assert.match(entrySquadError(4), /at least 5/)
 })
 
 check('clubs to enter are those not in the season, as their latest entry', () => {

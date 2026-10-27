@@ -92,9 +92,9 @@ check('clear spam is still rejected', routeScreening(assess({ spam: 0.97 }), str
 
 section('resolvePolicyName')
 check('known name', resolvePolicyName('strict'), 'strict')
-check('unset falls back to balanced', resolvePolicyName(undefined), 'balanced')
-check('unknown falls back to balanced', resolvePolicyName('lenient'), 'balanced')
-check('prototype keys are not policies', resolvePolicyName('toString'), 'balanced')
+check('unset requires manual review', resolvePolicyName(undefined), 'strict')
+check('unknown requires manual review', resolvePolicyName('lenient'), 'strict')
+check('prototype keys are not policies', resolvePolicyName('toString'), 'strict')
 
 /* ---------------- request / response ---------------- */
 

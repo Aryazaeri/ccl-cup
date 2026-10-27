@@ -15,6 +15,11 @@ export function Modal({
   className?: string
 }) {
   const dialogRef = useRef<HTMLDivElement>(null)
+  const requestClose = () => {
+    // Every form using FormActions marks its pending write. Prevent closing
+    // during a commit so upload cleanup cannot race a successful row insert.
+    if (!dialogRef.current?.querySelector('[data-saving="true"]')) onClose()
+  }
 
   // Keyboard users land inside the dialog when it opens and back on whatever
   // opened it when it closes, instead of at the top of the page behind it.
@@ -29,7 +34,7 @@ export function Modal({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation()
-      onClose()
+      requestClose()
       return
     }
     if (event.key !== 'Tab' || !dialogRef.current) return
@@ -52,7 +57,7 @@ export function Modal({
     <div
       className="modal-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+      onMouseDown={(event) => event.currentTarget === event.target && requestClose()}
     >
       <div
         ref={dialogRef}
@@ -65,7 +70,7 @@ export function Modal({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button aria-label="Close" onClick={onClose}>
+          <button aria-label="Close" onClick={requestClose}>
             <X size={20} aria-hidden="true" />
           </button>
         </div>

@@ -1,6 +1,6 @@
 import type { Match, MatchSquadPlayer, Player, SquadEntry, Team } from '../types'
 
-/** Mirrors public.enforce_min_squad: a club entry never drops below this. */
+/** Minimum only when entering a tournament; registration has no minimum. */
 export const MIN_SQUAD = 5
 
 export const isInTeam = (player: Player, teamId: number) => player.squads.some((entry) => entry.teamId === teamId)
@@ -36,9 +36,9 @@ export function withSquad(squads: SquadEntry[], seasonId: number, teamId: number
  * minimum, or '' if it would not. Mirrors the database check so the UI can
  * explain before saving.
  */
-export function shrinkError(team: Pick<Team, 'name'>, size: number, count = 1) {
-  return size - count < MIN_SQUAD
-    ? `${team.name} needs at least ${MIN_SQUAD} players in its squad (it would have ${size - count}).`
+export function entrySquadError(size: number) {
+  return size < MIN_SQUAD
+    ? `Select at least ${MIN_SQUAD} players to enter this tournament (${size} selected).`
     : ''
 }
 

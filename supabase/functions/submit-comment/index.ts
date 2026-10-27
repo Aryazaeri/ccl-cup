@@ -4,20 +4,20 @@
 //
 //   POST { authorName, body, matchId?, storyId?, seasonId? }   — public. Stores the
 //        comment as `pending` first (so nothing is ever lost), screens it with
-//        TypeSafe, records the assessment, then applies the policy's action.
+//        TypeSafe and records an advisory assessment. Only staff can approve.
 //        Replies { id, status: 'approved' | 'pending' }. A rejection is
 //        reported as 'pending' on purpose: a spammer learns nothing.
 //
 //   POST { commentId }                              — content staff only.
 //        Re-screens an existing comment (for example one submitted while the
-//        function was down) and applies the action if it is still pending.
+//        function was down) without changing the moderation decision.
 //
 // The TypeSafe key never leaves this function. If TypeSafe is unreachable the
 // comment simply stays pending for a moderator — the same outcome as before
 // screening existed.
 //
 // Secrets: TYPESAFE_API_KEY (required), COMMENT_SCREENING_POLICY
-// ('balanced' | 'strict', default 'balanced'). SUPABASE_URL,
+// ('balanced' | 'strict', default 'strict'). SUPABASE_URL,
 // SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -109,15 +109,8 @@ async function screenComment(
     })
     if (saveError) throw saveError
 
-    if (decision.action !== 'review') {
-      // Only move a comment no moderator has decided on yet.
-      const { error } = await admin
-        .from('comments')
-        .update({ status: decision.action === 'approve' ? 'approved' : 'rejected' })
-        .eq('id', commentId)
-        .eq('status', 'pending')
-      if (error) throw error
-    }
+    // Screening is advice to staff. Every publication decision is manual,
+    // including when an older environment still selects the balanced policy.
   } catch (reason) {
     console.error(`Screening failed for comment ${commentId}:`, reason)
   }

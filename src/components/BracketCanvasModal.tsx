@@ -35,7 +35,7 @@ type Props = {
 
 export function BracketCanvasModal({
   seasonTitle,
-  teams,
+  teams: allTeams,
   initialBracket,
   matches = [],
   onClose,
@@ -48,7 +48,9 @@ export function BracketCanvasModal({
       : generateEmptyBracket(initialBracket?.teamCount ?? 8)
   )
   const bracket = useMemo(() => bracketWithResults(storedBracket, matches), [storedBracket, matches])
-  const lockedSeeding = Boolean(bracket.qualification)
+  const qualifiedIds = useMemo(() => new Set(initialBracket?.rounds[0]?.matches.flatMap((m) => [m.slot1.teamId, m.slot2.teamId]).filter((id): id is number => id != null)), [initialBracket])
+  const teams = bracket.qualification ? allTeams.filter((t) => qualifiedIds.has(t.id)) : allTeams
+  const lockedSeeding = Boolean(bracket.qualification && matches.some((m) => !/^(group|grup)/i.test(m.stage)))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const savingRef = useRef(false)
@@ -130,6 +132,10 @@ export function BracketCanvasModal({
     const match = updated.rounds[roundIdx]?.matches[matchIdx]
     if (!match) return
 
+    for (const tie of updated.rounds[0].matches) for (const key of ['slot1', 'slot2'] as const) {
+      if (tie[key].teamId === team.id) tie[key] = { slotId: tie[key].slotId }
+    }
+
     match[slotKey] = {
       slotId: match[slotKey].slotId,
       teamId: team.id,
@@ -174,6 +180,12 @@ export function BracketCanvasModal({
     setSaving(true)
     setSaveError('')
     try {
+      if (bracket.qualification) {
+        const placed = bracket.rounds[0].matches.flatMap((m) => [m.slot1.teamId, m.slot2.teamId])
+        if (placed.some((id) => id == null || !qualifiedIds.has(id)) || new Set(placed).size !== qualifiedIds.size) {
+          throw new Error('Place each qualified club exactly once in the first round.')
+        }
+      }
       await onSave(bracket)
       onClose()
     } catch (reason) {
@@ -195,7 +207,7 @@ export function BracketCanvasModal({
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
             <span className="toolbar-label">Format:</span>
-            {lockedSeeding ? <strong>{teamCount} qualified clubs · pairings from table positions</strong> : <div className="team-count-pills">
+            {bracket.qualification ? <strong>{teamCount} qualified clubs · configure first-round pairings</strong> : <div className="team-count-pills">
               {[2, 4, 8, 16].map((count) => (
                 <button
                   key={count}

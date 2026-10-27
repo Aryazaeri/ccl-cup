@@ -1,6 +1,6 @@
 import type { PlayerPosition } from '../types'
 
-export type FormationType = '4-3-3' | '4-4-2' | '3-5-2' | '4-2-3-1' | '7v7' | '5v5'
+export type FormationType = '8v8' | '4-3-3' | '4-4-2' | '3-5-2' | '4-2-3-1' | '7v7' | '5v5'
 
 export type FormationSlotConfig = {
   id: string
@@ -11,6 +11,19 @@ export type FormationSlotConfig = {
 }
 
 export const FORMATIONS: Record<FormationType, { name: string; slots: FormationSlotConfig[] }> = {
+  '8v8': {
+    name: '8-a-side · 3–3–1',
+    slots: [
+      { id: 'gk', roleName: 'GK', position: 'goalkeeper', top: 86, left: 50 },
+      { id: 'df1', roleName: 'LCB', position: 'defender', top: 68, left: 22 },
+      { id: 'df2', roleName: 'CB', position: 'defender', top: 71, left: 50 },
+      { id: 'df3', roleName: 'RCB', position: 'defender', top: 68, left: 78 },
+      { id: 'mf1', roleName: 'LM', position: 'midfielder', top: 44, left: 22 },
+      { id: 'mf2', roleName: 'CM', position: 'midfielder', top: 48, left: 50 },
+      { id: 'mf3', roleName: 'RM', position: 'midfielder', top: 44, left: 78 },
+      { id: 'fw', roleName: 'ST', position: 'forward', top: 18, left: 50 },
+    ],
+  },
   '4-3-3': {
     name: '4-3-3 Attack',
     slots: [

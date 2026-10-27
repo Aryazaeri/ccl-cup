@@ -68,13 +68,12 @@ export function FixtureGenerator({ seasons, teams, matches, onGenerate }: {
               <option value="table" disabled={season?.seasonType === 'tournament'}>League / group stage</option>
               <option value="knockout">Knockout games with known opponents</option>
             </select></label>
-            {options.phase === 'table' ? <label>Meetings per pair<select value={options.legs} onChange={(event) => change({ legs: Number(event.target.value) as 1 | 2 })}><option value={1}>Once</option><option value={2}>Twice — home and away</option></select></label> : null}
+            {options.phase === 'table' ? <label>Meetings per pair<select value={options.legs} onChange={(event) => change({ legs: Number(event.target.value) as 1 | 2 })}><option value={1}>Once</option></select></label> : null}
             <label>First match date<input type="date" required value={options.startDate} onChange={(event) => change({ startDate: event.target.value })} /></label>
             <label>First kickoff (Istanbul time)<input type="time" required value={options.time} onChange={(event) => change({ time: event.target.value })} /></label>
             <label>Venue<input required value={options.venue} onChange={(event) => change({ venue: event.target.value })} placeholder="Ground name" /></label>
             <label>Days between rounds<input type="number" min={1} max={365} required value={options.daysBetweenRounds} onChange={(event) => change({ daysBetweenRounds: Number(event.target.value) })} /></label>
             <label>Minutes between games<input type="number" min={1} max={1440} required value={options.minutesBetweenMatches} onChange={(event) => change({ minutesBetweenMatches: Number(event.target.value) })} /></label>
-            <label>Visibility<select value={options.publication} onChange={(event) => change({ publication: event.target.value as Match['status'] })}><option value="Draft">Draft — review before publishing</option><option value="Scheduled">Published — show on public site</option></select></label>
           </fieldset>
           <div className="form-actions span-2"><button className="button button-admin" type="submit" disabled={saving}>Preview schedule</button></div>
         </form>

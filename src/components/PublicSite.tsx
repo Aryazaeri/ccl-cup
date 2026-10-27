@@ -19,7 +19,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flagImageUrl, getCountry } from '../lib/countries'
 import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTopScorers, shootoutLine, withDerivedPlayerTotals } from '../lib/standingsUtils'
-import { seasonLabelsForIds } from '../lib/seasonLabels'
+import { publicationDate } from '../lib/publication'
+import { latestSeasons, seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository, siteSettingsRepository } from '../services/tournamentRepository'
 import { DEFAULT_SITE_SETTINGS, whatsappLink, type SiteSettings } from '../lib/siteSettings'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
@@ -189,14 +190,14 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   // Newest first, so the switcher opens on the current campaign.
   // Draft and archived seasons stay off the public site, even for signed-in staff.
   const seasonOptions = useMemo(
-    () => seasons.filter((season) => (season.status ?? 'published') === 'published').sort((a, b) => b.year - a.year || b.id - a.id),
+    () => latestSeasons(seasons.filter((season) => (season.status ?? 'published') === 'published')),
     [seasons],
   )
 
   // The selection lives above this screen so staff visits and data refreshes
   // do not reset it. A deleted/stale selection falls back to the current season.
   const activeSeason = useMemo(
-    () => seasonOptions.find((season) => season.id === selectedSeasonId) ?? seasonOptions.find((season) => season.isActive) ?? seasonOptions[0],
+    () => seasonOptions.find((season) => season.id === selectedSeasonId) ?? seasonOptions[0],
     [seasonOptions, selectedSeasonId],
   )
 
@@ -220,7 +221,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
    * the sections below say so.
    */
   const seasonTeams = useMemo(() => {
-    if (!activeSeason || !seasonScopingAvailable) return teams
+    if (!activeSeason) return []
+    if (!seasonScopingAvailable) return teams
     return teams.filter((team) => team.seasonId === activeSeason.id)
   }, [teams, activeSeason, seasonScopingAvailable])
 
@@ -228,7 +230,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   // club membership so they are not dropped, but nothing falls back to "show
   // everything" — see seasonTeams.
   const seasonMatches = useMemo(() => {
-    if (!activeSeason) return matches
+    if (!activeSeason) return []
     const names = new Set(seasonTeams.map((team) => team.name))
     return matches.filter((match) =>
       match.seasonId != null ? match.seasonId === activeSeason.id : names.has(match.home) || names.has(match.away),
@@ -237,7 +239,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
   /** Players in a squad of one of the selected season's club entries. */
   const seasonPlayers = useMemo(() => {
-    if (!activeSeason || !seasonScopingAvailable) return players
+    if (!activeSeason) return []
+    if (!seasonScopingAvailable) return players
     const ids = new Set(seasonTeams.map((team) => team.id))
     return players.filter((player) => player.squads.some((entry) => ids.has(entry.teamId)))
   }, [players, seasonTeams, activeSeason, seasonScopingAvailable])
@@ -250,15 +253,15 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
    * season is selected. Only rows that name a different season drop out.
    */
   const seasonStories = useMemo(
-    () => (activeSeason ? stories.filter((s) => s.seasonId == null || s.seasonId === activeSeason.id) : stories),
+    () => stories.filter((s) => s.seasonId == null || s.seasonId === activeSeason?.id),
     [stories, activeSeason],
   )
   const seasonMedia = useMemo(
-    () => (activeSeason ? media.filter((m) => m.seasonId == null || m.seasonId === activeSeason.id) : media),
+    () => media.filter((m) => m.seasonId == null || m.seasonId === activeSeason?.id),
     [media, activeSeason],
   )
   const seasonSponsors = useMemo(
-    () => (activeSeason ? sponsors.filter((x) => x.seasonId == null || x.seasonId === activeSeason.id) : sponsors),
+    () => sponsors.filter((x) => x.seasonId == null || x.seasonId === activeSeason?.id),
     [sponsors, activeSeason],
   )
 
@@ -537,7 +540,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   <article key={story.id} className="pg-slide" aria-roledescription="slide" aria-label={`${i + 1} of ${heroStories.length}`}>
                     <small className="pg-slide-meta">
                       {storyCategoryLabel(story.category)}
-                      {story.publishedAt ? `, ${story.publishedAt}` : ''}
+                      {story.publishedAt ? `, ${publicationDate(story.publishedAt)}` : ''}
                     </small>
                     <h2 className="pg-slide-title">{story.title}</h2>
                     {story.summary ? <p className="pg-slide-summary">{story.summary}</p> : null}
@@ -820,7 +823,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                               }}
                             >
                               <TeamMark name={row.teamName} color={row.color} secondaryColor={team?.secondaryColor} logoUrl={row.logoUrl} size="sm" />
-                              <strong>{row.teamName}</strong>
+                              <strong>{row.teamName}{row.lotsPending ? ' · provisional' : ''}</strong>
                               <span title={country.name}>{country.flag}</span>
                             </button>
                           </td>
@@ -953,7 +956,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   <button onClick={() => openDetail({ kind: 'story', id: story.id })}>
                     <small>
                       {storyCategoryLabel(story.category)}
-                      {story.publishedAt ? `, ${story.publishedAt}` : ''}
+                      {story.publishedAt ? `, ${publicationDate(story.publishedAt)}` : ''}
                     </small>
                     <strong>{story.title}</strong>
                   </button>
@@ -1314,15 +1317,25 @@ function SearchOverlay({
 }) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose }, [onClose])
 
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
     inputRef.current?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') { event.stopPropagation(); closeRef.current(); return }
+      if (event.key !== 'Tab') return
+      const controls = [...(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),input,a[href]') ?? [])]
+        .filter((e) => e.offsetParent !== null)
+      const first = controls[0], last = controls.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    return () => { window.removeEventListener('keydown', onKey); opener?.focus() }
+  }, [])
 
   const results = useMemo(() => {
     const q = foldForSearch(query)
@@ -1348,7 +1361,7 @@ function SearchOverlay({
   return (
     <div className="search-overlay" role="dialog" aria-modal="true" aria-label="Search">
       <div className="search-scrim" onClick={onClose} />
-      <div className="search-panel">
+      <div className="search-panel" ref={panelRef}>
         <div className="search-field">
           <Search size={20} />
           <input
@@ -1703,6 +1716,8 @@ function MatchDetailsModal({
               <div className="match-time-large">{match.time}</div>
             )}
             {shootout ? <span className="modal-penalties-banner">{shootout}</span> : null}
+            {match.resultKind === 'forfeit' && <span className="modal-penalties-banner">Administrative 3–0 forfeit</span>}
+            {match.scoreSource === 'legacy' && <span className="field-hint">Historical result · staff reconciliation pending</span>}
             <span className={`status-pill ${match.matchStatus}`}>
               {MATCH_STATUS_LABELS[match.matchStatus] ?? match.matchStatus}
             </span>
@@ -1760,7 +1775,7 @@ function MatchDetailsModal({
             <div className="public-timeline">
               {events.map((ev) => (
                 <div key={ev.id} className="public-event-row">
-                  <span className="event-min">{ev.minute}'</span>
+                  <span className="event-min">{ev.minute}{ev.extraMinute ? `+${ev.extraMinute}` : ''}'</span>
                   <span className="event-symbol">
                     {ev.eventType === 'goal' && '⚽'}
                     {ev.eventType === 'assist' && '🅰️'}
@@ -1777,7 +1792,7 @@ function MatchDetailsModal({
                     ) && '•'}
                   </span>
                   <div className="event-desc">
-                    <strong>{ev.playerName}</strong>
+                    <strong>{ev.playerName}{ev.eventType === 'substitution' && ` → ${ev.incomingPlayerName ?? players.find((p) => p.id === ev.incomingPlayerId)?.fullName ?? 'Recorded substitute'}`}</strong>
                     <span>({ev.teamName})</span>
                     {ev.eventType === 'own_goal' && <small>— own goal</small>}
                     {ev.notes && <small>— {ev.notes}</small>}
@@ -1788,6 +1803,7 @@ function MatchDetailsModal({
           )}
         </div>
 
+        {match.lineupSource === 'legacy' && <p className="field-hint">Historical roster snapshot · starter and substitute assignments were not recorded.</p>}
         {/* Starting Lineups / Squads */}
         {(homeSquad.length > 0 || awaySquad.length > 0) && (
           <div className="match-lineups-grid">
@@ -1796,7 +1812,7 @@ function MatchDetailsModal({
               {homeSquad.map((p) => (
                 <div key={p.playerId ?? p.playerName} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
-                  <span>{p.playerName}</span>
+                  <span>{p.playerName}{p.lineupRole && <small> · {p.lineupRole === 'starter' ? 'Starter' : 'Substitute'}{p.isGoalkeeper ? ' · GK' : ''}</small>}</span>
                   <span className="pos-badge">{positionOf(p.playerId)?.slice(0, 3).toUpperCase() ?? ''}</span>
                 </div>
               ))}
@@ -1807,7 +1823,7 @@ function MatchDetailsModal({
               {awaySquad.map((p) => (
                 <div key={p.playerId ?? p.playerName} className="player-row-simple">
                   <span className="num">#{p.shirtNumber ?? '-'}</span>
-                  <span>{p.playerName}</span>
+                  <span>{p.playerName}{p.lineupRole && <small> · {p.lineupRole === 'starter' ? 'Starter' : 'Substitute'}{p.isGoalkeeper ? ' · GK' : ''}</small>}</span>
                   <span className="pos-badge">{positionOf(p.playerId)?.slice(0, 3).toUpperCase() ?? ''}</span>
                 </div>
               ))}
@@ -1834,7 +1850,7 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
           <span className="reader-category">
             {storyCategoryLabel(story.category)}
           </span>
-          <time>{story.publishedAt ?? '15 AUG 2026'}</time>
+          <time>{publicationDate(story.publishedAt)}</time>
         </div>
         <h1 className="reader-title">{story.title}</h1>
         {story.summary && <p className="reader-lead">{story.summary}</p>}

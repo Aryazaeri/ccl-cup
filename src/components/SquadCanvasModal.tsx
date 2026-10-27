@@ -35,8 +35,8 @@ export function SquadCanvasModal({
   onSaveSquad,
 }: Props) {
   // Opens on the lineup saved for this club entry, if any.
-  const [saved] = useState(() => resolveLineup(team.lineup, teamPlayers))
-  const [formation, setFormation] = useState<FormationType>(saved?.formation ?? '4-3-3')
+  const [saved] = useState(() => resolveLineup(team.lineup?.formation === '8v8' ? team.lineup : undefined, teamPlayers))
+  const [formation, setFormation] = useState<FormationType>('8v8')
   const [canvasView, setCanvasView] = useState<'pitch' | 'bench'>('pitch')
   const [searchTerm, setSearchTerm] = useState('')
   const [posFilter, setPosFilter] = useState<string>('All')
@@ -321,7 +321,7 @@ export function SquadCanvasModal({
                 value={formation}
                 onChange={(e) => changeFormation(e.target.value as FormationType)}
               >
-                {Object.entries(FORMATIONS).map(([key, f]) => (
+                {Object.entries(FORMATIONS).filter(([, f]) => f.slots.length === 8).map(([key, f]) => (
                   <option key={key} value={key}>
                     📐 {f.name}
                   </option>

@@ -1,0 +1,43 @@
+# Project-only MCP policy for CCL Cup. Global settings stay unchanged.
+# T3 Code supplies its own orchestration/browser server; keep that available.
+# Keep unified-computer-use available as the browser/native-settings fallback.
+
+# Block unrelated connected apps by default; retain GitHub for this repository.
+[apps._default]
+enabled = false
+
+[apps.connector_1p_1a69035c238881919c4190932b2df699]
+enabled = true
+
+# T3's browser and unified-computer-use cover this web project's browser work.
+[mcp_servers.node_repl]
+enabled = false
+
+[mcp_servers.computer-use]
+enabled = false
+
+# This app does not use OpenAI APIs.
+[mcp_servers.openaiDeveloperDocs]
+enabled = false
+
+[plugins."openai-developers@openai-curated".mcp_servers.openai-api-key-local-confirmation]
+enabled = false
+
+[plugins."openai-developers@openai-curated-remote".mcp_servers.openai-api-key-local-confirmation]
+enabled = false
+
+[plugins."openai-developers@chatgpt-global".mcp_servers.openai-api-key-local-confirmation]
+enabled = false
+
+# Native Apple builds and these optional app-specific tools are unused here.
+[plugins."build-ios-apps@openai-curated-remote".mcp_servers.xcodebuildmcp]
+enabled = false
+
+[plugins."codex-security@openai-curated-remote".mcp_servers.codex-security]
+enabled = false
+
+[plugins."codex-app-tools@openai-bundled".mcp_servers.codex_app]
+enabled = false
+
+[plugins."code-review@openai-bundled".mcp_servers.code-review]
+enabled = false

@@ -13,6 +13,35 @@ import type { UploadedAsset } from './assetSaveUtils'
 
 const BUCKET = 'club-assets'
 
+/** Persist stable object URLs; signatures are exclusively short-lived views. */
+export function canonicalAssetUrl(value: string | undefined): string | undefined {
+  if (!value || !supabase) return value
+  const prefix = supabase.storage.from(BUCKET).getPublicUrl('').data.publicUrl
+  const base = prefix.replace(/\/public\/club-assets\/?$/, '')
+  for (const mode of ['public', 'sign', 'authenticated']) {
+    const start = `${base}/${mode}/${BUCKET}/`
+    if (value.startsWith(start)) return `${prefix.replace(/\/$/, '')}/${value.slice(start.length).split('?')[0]}`
+  }
+  return value
+}
+
+export function assetPath(value: string | undefined): string | undefined {
+  if (!value || !supabase) return undefined
+  const prefix = supabase.storage.from(BUCKET).getPublicUrl('').data.publicUrl.replace(/\/$/, '') + '/'
+  const canonical = canonicalAssetUrl(value)
+  return canonical?.startsWith(prefix) ? canonical.slice(prefix.length) : undefined
+}
+
+export async function assetDisplayUrl(value: string | undefined): Promise<string | undefined> {
+  const path = assetPath(value)
+  if (!path || !supabase) return value
+  // A short signature limits access retained after unpublishing. Canonical
+  // references stay in Postgres and are authorized afresh on every load.
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 120)
+  if (error) return canonicalAssetUrl(value)
+  return data.signedUrl
+}
+
 /** Folders inside the bucket, one per kind of subject. */
 export type AssetFolder = 'logos' | 'players' | 'sponsors' | 'articles' | 'media'
 
@@ -116,7 +145,7 @@ export async function uploadAssetReceipt(file: File, folder: AssetFolder): Promi
 
   const path = objectPath(folder, file)
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    cacheControl: '31536000',
+    cacheControl: '0',
     upsert: false,
     contentType: file.type,
   })
@@ -137,12 +166,18 @@ export async function uploadAssetReceipt(file: File, folder: AssetFolder): Promi
 /** Only receipts from this upload operation may be discarded, never an old URL. */
 export async function discardUploadedAsset(asset: UploadedAsset): Promise<void> {
   if (!asset.path || !supabase) return
+  const permission = await supabase.rpc('can_manage_asset', { object_name: asset.path })
+  if (permission.error) throw new AssetUploadError(permission.error.message)
+  if (!permission.data) throw new AssetUploadError('You do not have permission to remove this image.')
+  const referenced = await supabase.rpc('asset_is_referenced', { object_name: asset.path })
+  if (referenced.error) throw new AssetUploadError(referenced.error.message)
+  if (referenced.data) return
   const { error } = await supabase.storage.from(BUCKET).remove([asset.path])
   if (error) throw new AssetUploadError(error.message)
 }
 
 export async function prepareUploadedAsset(value: string | undefined, folder: AssetFolder): Promise<UploadedAsset> {
-  if (!value || !isDataUrl(value)) return { url: value }
+  if (!value || !isDataUrl(value)) return { url: canonicalAssetUrl(value) }
   const file = dataUrlToFile(value, `${folder}-upload`)
   if (!file) throw new AssetUploadError('That image could not be read.')
   return uploadAssetReceipt(file, folder)

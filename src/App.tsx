@@ -3,9 +3,10 @@ import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { PublicSite } from './components/PublicSite'
 import type { FixtureOptions } from './lib/fixtureUtils'
 import { withDerivedPlayerTotals, withDerivedTeamTotals } from './lib/standingsUtils'
-import { tournamentRepository, type EntryRoster, type TournamentData } from './services/tournamentRepository'
+import { isStoryPublic } from './lib/publication'
+import { resolveTournamentAssets, tournamentRepository, type EntryRoster, type TournamentData } from './services/tournamentRepository'
 import type { Lineup } from './lib/formations'
-import type { Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
+import type { Club, Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Story, Team, View } from './types'
 
 // Staff-only screens load on demand: the admin panel and its canvas editors
 // are most of the app's code, and no public visitor ever needs them.
@@ -34,6 +35,7 @@ export default function App() {
     } catch { return null }
   })
   const [seasons, setSeasons] = useState<Season[]>([])
+  const [clubs, setClubs] = useState<Club[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [matches, setMatches] = useState<Match[]>([])
@@ -42,9 +44,12 @@ export default function App() {
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [dataLoading, setDataLoading] = useState(true)
   const [dataError, setDataError] = useState('')
+  const assetData = useRef<TournamentData | null>(null)
 
   const applyData = useCallback((data: TournamentData) => {
+    assetData.current = data
     setSeasons(data.seasons ?? [])
+    setClubs(data.clubs ?? [])
     setTeams(data.teams)
     setPlayers(data.players)
     setMatches(data.matches)
@@ -53,6 +58,17 @@ export default function App() {
     setSponsors(data.sponsors ?? [])
     setDataError(data.loadWarning ?? '')
   }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const current = assetData.current
+      if (!current || document.visibilityState !== 'visible') return
+      resolveTournamentAssets(current).then((next) => {
+        if (assetData.current === current) applyData(next)
+      }).catch(() => undefined)
+    }, 90_000)
+    return () => window.clearInterval(timer)
+  }, [applyData])
 
   const refresh = useCallback(async () => {
     // Only the initial load blocks the page. Refreshing after a media/sponsor
@@ -71,6 +87,14 @@ export default function App() {
   useEffect(() => {
     void refresh()
   }, [refresh, auth.profile?.id])
+
+  useEffect(() => {
+    if (view !== 'site') return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [refresh, view])
 
   // Results are often entered from the admin panel in another tab. When this
   // tab comes back into view, reload quietly (no loading screen) so the public
@@ -157,6 +181,7 @@ export default function App() {
     return (
       <Suspense fallback={loadingScreen}>
       <AdminPanel
+        clubs={clubs}
         seasons={seasons}
         teams={derivedTeams}
         players={derivedPlayers}
@@ -198,15 +223,15 @@ export default function App() {
 
   return (
     <>
-      {dataError ? <div className="public-data-error">Data connection: {dataError}</div> : null}
+      {dataError ? <div className="public-data-error" role="alert">Tournament data could not be refreshed. <button onClick={() => void refresh()}>Retry</button></div> : null}
       <PublicSite
         seasons={seasons}
         teams={derivedTeams}
         players={derivedPlayers}
         selectedSeasonId={selectedSeasonId}
         onSelectSeason={selectSeason}
-        matches={matches.filter((match) => match.status === 'Scheduled')}
-        stories={stories.filter((story) => story.status === 'Published')}
+        matches={matches}
+        stories={stories.filter((story) => isStoryPublic(story))}
         media={media.filter((asset) => asset.isPublished)}
         sponsors={sponsors.filter((sponsor) => sponsor.isActive)}
         onAdmin={() => navigate('admin')}

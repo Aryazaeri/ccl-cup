@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import {
   Check,
   Maximize,
@@ -30,6 +31,7 @@ export function ImageTrimmerModal({
   onClose,
   onApply,
 }: Props) {
+  const { tr } = useAdminLanguage()
   const [config, setConfig] = useState<CropConfig>({
     zoom: 1,
     offsetX: 0,
@@ -154,22 +156,21 @@ export function ImageTrimmerModal({
   }
 
   return (
-    <Modal title="✂️ Crop logo" onClose={onClose}>
+    <Modal title={tr("✂️ Crop logo")} onClose={onClose}>
       <div className="trimmer-modal-shell">
         <div className="trimmer-content-grid">
           {/* LEFT: INTERACTIVE CROP CANVAS & PAN WORKSPACE */}
           <div className="trimmer-workspace-panel">
             <div className="trimmer-workspace-header">
-              <span>Drag to position the logo:</span>
+              <span>{tr("Drag to position the logo:")}</span>
               <button
                 type="button"
                 className="btn-smart-trim-action"
                 onClick={handleSmartAutoTrim}
                 disabled={isProcessing}
-                title="Trim the empty edges and centre the logo"
+                title={tr("Trim the empty edges and centre the logo")}
               >
-                <Sparkles size={15} /> Auto trim & fit
-              </button>
+                <Sparkles size={15} /> {tr(" Auto trim & fit")}</button>
             </div>
 
             <div
@@ -192,7 +193,7 @@ export function ImageTrimmerModal({
                   transform: `translate(${config.offsetX}px, ${config.offsetY}px) rotate(${config.rotation}deg) scale(${config.zoom})`,
                 }}
               >
-                <img src={rawImageSrc} alt="Crop Subject" draggable={false} />
+                <img src={rawImageSrc} alt={tr("Crop Subject")} draggable={false} />
               </div>
 
               {/* CROP OVERLAY MASK & GUIDES */}
@@ -228,57 +229,54 @@ export function ImageTrimmerModal({
                   type="button"
                   className="btn-crop-tool"
                   onClick={handleRotate}
-                  title="Rotate 90° right"
+                  title={tr("Rotate 90° right")}
                 >
-                  <RotateCw size={15} /> Rotate
-                </button>
+                  <RotateCw size={15} /> {tr(" Rotate")}</button>
                 <button
                   type="button"
                   className="btn-crop-tool secondary"
                   onClick={handleReset}
-                  title="Reset to centre"
+                  title={tr("Reset to centre")}
                 >
-                  <Maximize size={15} /> Reset
-                </button>
+                  <Maximize size={15} /> {tr(" Reset")}</button>
               </div>
             </div>
           </div>
 
           {/* RIGHT: REAL-TIME COMPONENT PREVIEW PANEL */}
           <aside className="trimmer-preview-sidebar">
-            <h4>Previews</h4>
+            <h4>{tr("Previews")}</h4>
             <span className="preview-subtitle">
-              How the logo will look around the site:
-            </span>
+              {tr("How the logo will look around the site:")}</span>
 
             <div className="previews-collection">
               {/* 1. LARGE SHIELD BADGE PREVIEW */}
               <div className="preview-card-item">
-                <label>Club page crest</label>
+                <label>{tr("Club page crest")}</label>
                 <div
                   className="preview-shield-box"
                   style={{ borderColor: teamColor || '#63e35b' }}
                 >
-                  <img src={currentPreview} alt="Shield Preview" />
+                  <img src={currentPreview} alt={tr("Shield Preview")} />
                 </div>
               </div>
 
               {/* 2. CIRCLE PROFILE PREVIEW */}
               <div className="preview-card-item">
-                <label>Match & list icon</label>
+                <label>{tr("Match & list icon")}</label>
                 <div className="preview-circle-box">
-                  <img src={currentPreview} alt="Circle Preview" />
+                  <img src={currentPreview} alt={tr("Circle Preview")} />
                 </div>
               </div>
 
               {/* 3. MINI MATCH STRIP PREVIEW */}
               <div className="preview-card-item">
-                <label>Live score strip</label>
+                <label>{tr("Live score strip")}</label>
                 <div className="preview-match-row">
                   <div className="mini-team-thumb">
-                    <img src={currentPreview} alt="Mini" />
+                    <img src={currentPreview} alt={tr("Mini")} />
                   </div>
-                  <strong>{teamName.toUpperCase() || 'CLUB'}</strong>
+                  <strong>{teamName.toUpperCase() || tr("CLUB")}</strong>
                 </div>
               </div>
             </div>
@@ -288,15 +286,14 @@ export function ImageTrimmerModal({
         {/* BOTTOM ACTION BAR */}
         <div className="trimmer-actions-bar">
           <button type="button" className="button button-admin secondary" onClick={onClose}>
-            <X size={15} /> Cancel
-          </button>
+            <X size={15} /> {tr(" Cancel")}</button>
           <button
             type="button"
             className="button button-admin primary"
             onClick={handleSaveAndApply}
             disabled={isProcessing}
           >
-            <Check size={16} /> {isProcessing ? 'Processing…' : 'Apply crop'}
+            <Check size={16} /> {isProcessing ? tr("Processing…") : tr("Apply crop")}
           </button>
         </div>
       </div>

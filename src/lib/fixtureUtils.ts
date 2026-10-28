@@ -41,7 +41,7 @@ function validateOptions(options: FixtureOptions) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(options.startDate) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== options.startDate) throw new Error('Choose a valid first match date.')
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(options.time)) throw new Error('Choose a valid kickoff time.')
   if (!options.venue.trim()) throw new Error('Enter the venue for these fixtures.')
-  if (![1, 2].includes(options.legs)) throw new Error('Choose one or two meetings per pair.')
+  if (options.legs !== 1) throw new Error('CCL uses one match per pair.')
   if (!Number.isInteger(options.daysBetweenRounds) || options.daysBetweenRounds < 1 || options.daysBetweenRounds > 365) throw new Error('Days between rounds must be between 1 and 365.')
   if (!Number.isInteger(options.minutesBetweenMatches) || options.minutesBetweenMatches < 1 || options.minutesBetweenMatches > 1440) throw new Error('Minutes between games must be between 1 and 1440.')
 }
@@ -70,7 +70,7 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
     if (prior?.kickoffAt && Date.parse(kickoffAt) <= Date.parse(prior.kickoffAt)) throw new Error('The rounds overlap. Increase days between rounds or reduce minutes between games.')
     plan.fixtures.push({ id: 0, seasonId: season.id, home: home.name, away: away.name, homeTeamId: home.id, awayTeamId: away.id, stage, fixtureKey: key, kickoffAt,
       date: new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', timeZone: 'Europe/Istanbul' }).format(new Date(kickoffAt)),
-      time: kickoffAt.slice(11, 16), venue: options.venue.trim(), matchStatus: 'scheduled', status: options.publication, events: [] })
+      time: kickoffAt.slice(11, 16), venue: options.venue.trim(), matchStatus: 'scheduled', status: 'Scheduled', events: [] })
   }
   if (options.phase === 'knockout') {
     if (!season.bracket?.rounds.length || (season.bracket.qualification && !season.bracket.qualification.seededAt)) throw new Error('Save a seeded knockout draw first.')

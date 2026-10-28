@@ -50,7 +50,7 @@ export function qualificationPreview(season: Season, teams: Team[], matches: Mat
   else if (groups.some((group) => group.rows.length < perTable)) reason = 'Assign enough clubs to every table before qualification.'
   else if (new Set(groups.flatMap((group) => group.rows.map((row) => row.teamId))).size !== groups.reduce((sum, group) => sum + group.rows.length, 0)) reason = 'A club is assigned to more than one table. Correct the group assignments first.'
   else if (tableMatches.length === 0) reason = 'Add and complete the table-stage fixtures first.'
-  else if (tableMatches.some((match) => match.status === 'Draft')) reason = 'Publish all table-stage fixtures before qualification.'
+  else if (groups.some((g) => g.rows.slice(0, perTable).some((r) => r.lotsPending))) reason = 'Record the drawing-of-lots order for tied clubs before qualification.'
   else if (tableMatches.some((match) => !isCountableMatch(match))) reason = 'Complete all table-stage fixtures before generating the knockout draw.'
   else if (groups.some((group) => group.rows.some((row) => row.played === 0))) reason = 'Every club must have a completed table-stage result before qualification.'
   else if (missing) reason = `${missing} table-stage fixture${missing === 1 ? ' is' : 's are'} missing. Use Matches → Plan fixtures to complete the schedule before qualification.`

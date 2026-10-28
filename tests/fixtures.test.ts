@@ -28,9 +28,9 @@ check('duplicate assignments and incomplete tables are rejected', () => {
   assert.throws(() => roundRobin([1]), /at least two/)
 })
 const first = planFixtures(league, teams, [], options)
-check('five clubs get ten draft fixtures with exact dates across New Year', () => {
+check('five clubs get ten fixtures visible with their parent tournament with exact dates across New Year', () => {
   assert.equal(first.fixtures.length, 10)
-  assert.ok(first.fixtures.every((m) => m.status === 'Draft' && m.homeTeamId !== m.awayTeamId && m.kickoffAt?.endsWith('+03:00')))
+  assert.ok(first.fixtures.every((m) => m.status === 'Scheduled' && m.homeTeamId !== m.awayTeamId && m.kickoffAt?.endsWith('+03:00')))
   assert.equal(first.fixtures[2].kickoffAt?.slice(0, 10), '2027-01-06')
   assert.equal(new Set(first.fixtures.map((m) => m.fixtureKey)).size, 10)
 })
@@ -39,18 +39,15 @@ check('retry preserves generated fixtures and scores', () => {
   assert.equal(planFixtures(league, teams, saved, options).fixtures.length, 0)
   assert.equal(saved[0].homeScore, 3)
 })
-check('home and away schedules reverse every pair', () => {
-  const twice = planFixtures(league, teams, [], { ...options, legs: 2 }).fixtures
-  assert.equal(twice.length, 20)
-  for (const fixture of twice.slice(0, 10)) assert.ok(twice.slice(10).some((m) => m.homeTeamId === fixture.awayTeamId && m.awayTeamId === fixture.homeTeamId))
+check('home-and-away planning is rejected', () => {
+  assert.throws(() => planFixtures(league, teams, [], { ...options, legs: 2 }), /one match per pair/)
 })
 check('manual fixtures count towards the schedule, other seasons do not', () => {
   const manual = { ...first.fixtures[0], fixtureKey: undefined, id: 99 }
   assert.equal(planFixtures(league, teams, [manual], options).fixtures.length, 9)
   assert.equal(planFixtures(league, teams, [{ ...manual, seasonId: 2 }], options).fixtures.length, 10)
   const reversed = { ...manual, home: manual.away, away: manual.home, homeTeamId: manual.awayTeamId, awayTeamId: manual.homeTeamId }
-  const returnGame = planFixtures(league, teams, [reversed], { ...options, legs: 2 }).fixtures.find((match) => (match.fixtureKey?.endsWith(':2') && match.homeTeamId === reversed.awayTeamId && match.awayTeamId === reversed.homeTeamId))
-  assert.equal(returnGame?.homeTeamId, reversed.awayTeamId)
+  assert.equal(planFixtures(league, teams, [reversed], options).fixtures.length, 9)
 })
 check('renamed clubs match existing fixtures by IDs', () => {
   const renamed = teams.map((team) => ({ ...team, name: `Renamed ${team.id}` }))

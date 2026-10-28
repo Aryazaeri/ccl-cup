@@ -1,9 +1,12 @@
+import { AdminLanguageSwitch } from './AdminLanguageSwitch'
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { type FormEvent, useState } from 'react'
 import { ArrowLeft, LockKeyhole, Sparkles } from 'lucide-react'
 import { Brand } from './Brand'
 import { DEMO_EMAIL, DEMO_PASSWORD, useAuth } from '../auth/AuthContext'
 
 export function LoginPage({ onBack }: { onBack: () => void }) {
+  const { tr } = useAdminLanguage()
   const { signIn, backend, signingIn } = useAuth()
   const [email, setEmail] = useState(backend === 'local-demo' ? DEMO_EMAIL : '')
   const [password, setPassword] = useState(backend === 'local-demo' ? DEMO_PASSWORD : '')
@@ -33,21 +36,20 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
   return (
     <main className="login-page">
       <button className="login-back" onClick={onBack}>
-        <ArrowLeft size={16} /> Public website
-      </button>
+        <ArrowLeft size={16} /> {tr(" Public website")}</button>
 
       <section className="login-card">
+            <AdminLanguageSwitch />
         <Brand admin />
         <div className="login-icon">
           <LockKeyhole />
         </div>
-        <h1>Sign in to manage the tournament</h1>
-        <p>Use your staff account to update teams, fixtures and published content.</p>
+        <h1>{tr("Sign in to manage the tournament")}</h1>
+        <p>{tr("Use your staff account to update teams, fixtures and published content.")}</p>
 
         <form onSubmit={submit}>
           <label>
-            Email
-            <input
+            {tr("Email")}<input
               name="email"
               type="email"
               value={email}
@@ -59,8 +61,7 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
           </label>
 
           <label>
-            Password
-            <input
+            {tr("Password")}<input
               name="password"
               type="password"
               value={password}
@@ -73,12 +74,12 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
 
           {error ? (
             <div className="login-error" role="alert">
-              {error}
+              {tr(error)}
             </div>
           ) : null}
 
           <button className="button button-primary" disabled={signingIn} type="submit">
-            {signingIn ? 'Signing in…' : 'Sign in'}
+            {signingIn ? tr("Signing in…") : tr("Sign in")}
           </button>
         </form>
 
@@ -92,12 +93,11 @@ export function LoginPage({ onBack }: { onBack: () => void }) {
             >
               <Sparkles size={14} />
               <span>
-                One-click demo sign-in ({DEMO_EMAIL} / {DEMO_PASSWORD}) — offline prototype data only
-              </span>
+                {tr("One-click demo sign-in (")}{DEMO_EMAIL} / {DEMO_PASSWORD}{tr(") — offline prototype data only")}</span>
             </button>
           </div>
         ) : (
-          <small>Connected securely through Supabase Auth</small>
+          <small>{tr("Connected securely through Supabase Auth")}</small>
         )}
       </section>
     </main>

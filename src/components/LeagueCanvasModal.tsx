@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import {
   Check,
   Dices,
@@ -32,6 +33,7 @@ export function LeagueCanvasModal({
   onClose,
   onSave,
 }: Props) {
+  const { tr } = useAdminLanguage()
   // Extract placed slots only (slots that actually have a team)
   const [placedSlots, setPlacedSlots] = useState<LeagueSlot[]>(() => {
     if (!initialLeague?.slots) return []
@@ -184,7 +186,7 @@ export function LeagueCanvasModal({
 
   return (
     <Modal
-      title={`⚽ ${seasonTitle || 'League'} - League table`}
+      title={tr("⚽ {value0} - League table", { value0: seasonTitle || 'League' })}
       onClose={() => { if (!savingRef.current) onClose() }}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -192,33 +194,30 @@ export function LeagueCanvasModal({
         {/* TOP TOOLBAR */}
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
-            <span className="toolbar-label">Teams added:</span>
+            <span className="toolbar-label">{tr("Teams added:")}</span>
             <div className="count-pill-btn active">
-              {placedSlots.length} teams placed
-            </div>
+              {placedSlots.length} {tr(" teams placed")}</div>
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title="Add all clubs">
-              <Dices size={16} /> Add all clubs
-            </button>
-            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title="Clear table">
-              <RotateCcw size={16} /> Clear
-            </button>
+            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title={tr("Add all clubs")}>
+              <Dices size={16} /> {tr(" Add all clubs")}</button>
+            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title={tr("Clear table")}>
+              <RotateCcw size={16} /> {tr(" Clear")}</button>
             <button
               type="button"
               className="toolbar-btn icon-only"
               onClick={() => setIsFullScreen(!isFullScreen)}
-              title="Tam Ekran"
+              title={tr("Tam Ekran")}
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button type="button" className="toolbar-btn primary" disabled={saving} onClick={() => void handleSave()}>
-              <Check size={16} /> {saving ? 'Saving…' : `Save league table (${placedSlots.length} teams)`}
+              <Check size={16} /> {saving ? tr("Saving…") : tr("Save league table ({value0} teams)", { value0: placedSlots.length })}
             </button>
           </div>
         </header>
-        {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
+        {saveError ? <p className="form-error" role="alert">{tr(saveError)}</p> : null}
 
         {/* WORKSPACE GRID: SIDEBAR + SINGLE FILE LEAGUE CANVAS */}
         <div className="bracket-workspace-grid" inert={saving}>
@@ -228,17 +227,16 @@ export function LeagueCanvasModal({
               <Search size={15} />
               <input
                 type="text"
-                placeholder="Search clubs…"
+                placeholder={tr("Search clubs…")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <div className="sidebar-stats-row">
-              <span>Toplam Eklenen:</span>
+              <span>{tr("Toplam Eklenen:")}</span>
               <strong>
-                {placedSlots.length} / {teams.length} clubs
-              </strong>
+                {placedSlots.length} / {teams.length} {tr(" clubs")}</strong>
             </div>
 
             <div className="draggable-teams-list">
@@ -271,11 +269,11 @@ export function LeagueCanvasModal({
                     <div className="team-card-info">
                       <strong>{team.name}</strong>
                       <small>
-                        {country.flag} {country.name}
+                        {country.flag} {tr(country.name)}
                       </small>
                     </div>
                     {isPlaced && (
-                      <span className="placed-indicator-badge" title="In the table">
+                      <span className="placed-indicator-badge" title={tr("In the table")}>
                         ✓
                       </span>
                     )}
@@ -284,7 +282,7 @@ export function LeagueCanvasModal({
               })}
 
               {filteredTeams.length === 0 && (
-                <div className="empty-teams-notice">No clubs found.</div>
+                <div className="empty-teams-notice">{tr("No clubs found.")}</div>
               )}
             </div>
           </aside>
@@ -296,12 +294,10 @@ export function LeagueCanvasModal({
                 <div className="league-header-left">
                   <Trophy size={18} className="trophy-gold" />
                   <h3>
-                    League order ({placedSlots.length} teams)
-                  </h3>
+                    {tr("League order (")}{placedSlots.length} {tr(" teams)")}</h3>
                 </div>
                 <span className="league-drag-hint">
-                  💡 Drag clubs in. A new position is always added at the end of the list.
-                </span>
+                  {tr("💡 Drag clubs in. A new position is always added at the end of the list.")}</span>
               </div>
 
               <div className="league-slots-list">
@@ -344,22 +340,22 @@ export function LeagueCanvasModal({
                           <strong className="slot-team-title">{slot.teamName}</strong>
                           {country && (
                             <small className="slot-country-tag">
-                              {country.flag} {country.name}
+                              {country.flag} {tr(country.name)}
                             </small>
                           )}
                         </div>
                         <span className="slot-zone-pill">
                           {pos === 1
-                            ? '🥇 Leader'
+                            ? tr("🥇 Leader")
                             : isTopZone
-                            ? '🏆 Top places'
-                            : 'Position'}
+                            ? tr("🏆 Top places")
+                            : tr("Position")}
                         </span>
                         <button
                           type="button"
                           className="btn-slot-remove"
                           onClick={(e) => removeTeamFromPosition(pos, e)}
-                          title="Remove from table"
+                          title={tr("Remove from table")}
                         >
                           <X size={15} />
                         </button>
@@ -385,8 +381,8 @@ export function LeagueCanvasModal({
                     <Plus size={16} className="empty-plus" />
                     <span>
                       {dragOverPosition === nextPlusOnePosition
-                        ? `Drop here (position ${nextPlusOnePosition})`
-                        : `+ Position ${nextPlusOnePosition}: drag a club here or click`}
+                        ? tr("Drop here (position {value0})", { value0: nextPlusOnePosition })
+                        : tr("+ Position {value0}: drag a club here or click", { value0: nextPlusOnePosition })}
                     </span>
                   </div>
                 </div>

@@ -153,7 +153,7 @@ export const POLICIES = {
 } satisfies Record<string, ScreeningPolicy>
 
 export type PolicyName = keyof typeof POLICIES
-export const DEFAULT_POLICY: PolicyName = 'balanced'
+export const DEFAULT_POLICY: PolicyName = 'strict'
 
 export function resolvePolicyName(value: string | undefined | null): PolicyName {
   return value && Object.hasOwn(POLICIES, value) ? (value as PolicyName) : DEFAULT_POLICY

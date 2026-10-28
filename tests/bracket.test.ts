@@ -147,7 +147,7 @@ const tableFixtures = [fixture(1, 'ALPHA', 'BRAVO', 'Group A'), fixture(2, 'CHAR
   check('four groups support top 1, 2, 4', qualificationOptions(4), [1, 2, 4])
   check('three equal groups cannot form a full knockout draw', qualificationOptions(3), [])
   check('pending group match blocks qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], matchStatus: 'scheduled' }]).ready, false)
-  check('draft result blocks qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], status: 'Draft' }]).ready, false)
+  check('child publication flag does not block parent tournament qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], status: 'Draft' }]).ready, true)
   check('empty fixture list blocks qualification', qualificationPreview(season, teams, []).ready, false)
   check('missing club results block qualification', qualificationPreview(season, teams, [tableFixtures[0]]).ready, false)
   const duplicate = { ...season, groupLeague: { groupCount: 2, groups: [season.groupLeague!.groups[0], { ...season.groupLeague!.groups[1], slots: [{ position: 1, teamId: 1 }, { position: 2, teamId: 4 }] }] } }
@@ -158,7 +158,7 @@ const tableFixtures = [fixture(1, 'ALPHA', 'BRAVO', 'Group A'), fixture(2, 'CHAR
 
 console.log('\n9. Single table ignores legacy group names')
 {
-  const league: Season = { ...season, seasonType: 'league', groupLeague: undefined, league: { teamCount: 4, slots: teams.map((t, index) => ({ position: index + 1, teamId: t.id })) }, bracket: { ...generateEmptyBracket(2), qualification: { qualifiersPerTable: 2 } } }
+  const league: Season = { ...season, lotsOrder: [1, 3, 2, 4], seasonType: 'league', groupLeague: undefined, league: { teamCount: 4, slots: teams.map((t, index) => ({ position: index + 1, teamId: t.id })) }, bracket: { ...generateEmptyBracket(2), qualification: { qualifiersPerTable: 2 } } }
   const tagged = teams.map((t) => ({ ...t, groupName: t.id <= 2 ? 'Old A' : 'Old B' }))
   check('league always has one table', computeGroupStandings(tagged, tableFixtures, league).length, 1)
   check('league table uses all assigned clubs', computeGroupStandings(tagged, tableFixtures, league)[0].rows.length, 4)

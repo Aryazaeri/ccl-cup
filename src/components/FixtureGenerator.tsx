@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { CalendarDays } from 'lucide-react'
 import type { Match, Season, Team } from '../types'
@@ -11,6 +12,7 @@ export function FixtureGenerator({ seasons, teams, matches, onGenerate }: {
   matches: Match[]
   onGenerate: (seasonId: number, options: FixtureOptions) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const [open, setOpen] = useState(false)
   const [seasonId, setSeasonId] = useState(() => defaultSeasonId(seasons) ?? seasons[0]?.id ?? 0)
   const season = seasons.find((item) => item.id === seasonId)
@@ -42,7 +44,7 @@ export function FixtureGenerator({ seasons, teams, matches, onGenerate }: {
     setError('')
     try {
       await onGenerate(seasonId, { ...options, expectedKeys: planned.plan.fixtures.map((match) => match.fixtureKey!) })
-      setMessage(`Schedule saved. Existing games were kept. ${options.publication === 'Draft' ? 'Draft games are ready to review in Matches.' : 'Published games are visible on the public site.'}`)
+      setMessage('Saved. All fixtures are public when their tournament is published.')
       setOpen(false)
       setPreview(false)
     } catch (reason) {
@@ -50,43 +52,42 @@ export function FixtureGenerator({ seasons, teams, matches, onGenerate }: {
     } finally { flight.current = false; setSaving(false) }
   }
   return (
-    <section className="admin-panel fixture-generator" aria-label="Fixture generation">
+    <section className="admin-panel fixture-generator" aria-label={tr("Fixture generation")}>
       <div className="admin-panel-head">
-        <div><h3><CalendarDays size={18} /> Generate fixtures</h3><p>Create a table schedule or the next available knockout games.</p></div>
-        <button className="button button-admin" disabled={!seasons.length} onClick={() => { setOpen(true); setMessage(''); setError('') }}>Plan fixtures</button>
+        <div><h3><CalendarDays size={18} /> {tr(" Generate fixtures")}</h3><p>{tr("Create a table schedule or the next available knockout games.")}</p></div>
+        <button className="button button-admin" disabled={!seasons.length} onClick={() => { setOpen(true); setMessage(''); setError('') }}>{tr("Plan fixtures")}</button>
       </div>
-      {message ? <p role="status">{message}</p> : null}
-      {open ? <Modal title="Plan fixtures" className="fixture-modal" onClose={() => { if (!flight.current) setOpen(false) }}>
+      {message ? <p role="status">{tr(message)}</p> : null}
+      {open ? <Modal title={tr("Plan fixtures")} className="fixture-modal" onClose={() => { if (!flight.current) setOpen(false) }}>
         <form className="admin-form fixture-options" onSubmit={showPreview}>
           <fieldset className="fixture-fields" disabled={saving}>
-            <label>Season<select value={seasonId} onChange={(event) => {
+            <label>{tr("Season")}<select value={seasonId} onChange={(event) => {
               const id = Number(event.target.value)
               setSeasonId(id)
               change({ phase: seasons.find((item) => item.id === id)?.seasonType === 'tournament' ? 'knockout' : 'table' })
             }}>{seasons.map((item) => <option key={item.id} value={item.id}>{seasonLabel(item)}</option>)}</select></label>
-            <label>Stage<select value={options.phase} onChange={(event) => change({ phase: event.target.value as FixtureOptions['phase'] })}>
-              <option value="table" disabled={season?.seasonType === 'tournament'}>League / group stage</option>
-              <option value="knockout">Knockout games with known opponents</option>
+            <label>{tr("Stage")}<select value={options.phase} onChange={(event) => change({ phase: event.target.value as FixtureOptions['phase'] })}>
+              <option value="table" disabled={season?.seasonType === 'tournament'}>{tr("League / group stage")}</option>
+              <option value="knockout">{tr("Knockout games with known opponents")}</option>
             </select></label>
-            {options.phase === 'table' ? <label>Meetings per pair<select value={options.legs} onChange={(event) => change({ legs: Number(event.target.value) as 1 | 2 })}><option value={1}>Once</option><option value={2}>Twice — home and away</option></select></label> : null}
-            <label>First match date<input type="date" required value={options.startDate} onChange={(event) => change({ startDate: event.target.value })} /></label>
-            <label>First kickoff (Istanbul time)<input type="time" required value={options.time} onChange={(event) => change({ time: event.target.value })} /></label>
-            <label>Venue<input required value={options.venue} onChange={(event) => change({ venue: event.target.value })} placeholder="Ground name" /></label>
-            <label>Days between rounds<input type="number" min={1} max={365} required value={options.daysBetweenRounds} onChange={(event) => change({ daysBetweenRounds: Number(event.target.value) })} /></label>
-            <label>Minutes between games<input type="number" min={1} max={1440} required value={options.minutesBetweenMatches} onChange={(event) => change({ minutesBetweenMatches: Number(event.target.value) })} /></label>
-            <label>Visibility<select value={options.publication} onChange={(event) => change({ publication: event.target.value as Match['status'] })}><option value="Draft">Draft — review before publishing</option><option value="Scheduled">Published — show on public site</option></select></label>
+            {options.phase === 'table' ? <label>{tr("Meetings per pair")}<select value={options.legs} onChange={(event) => change({ legs: Number(event.target.value) as 1 | 2 })}><option value={1}>{tr("Once")}</option></select></label> : null}
+            <label>{tr("First match date")}<input type="date" required value={options.startDate} onChange={(event) => change({ startDate: event.target.value })} /></label>
+            <label>{tr("First kickoff (Istanbul time)")}<input type="time" required value={options.time} onChange={(event) => change({ time: event.target.value })} /></label>
+            <label>{tr("Venue")}<input required value={options.venue} onChange={(event) => change({ venue: event.target.value })} placeholder={tr("Ground name")} /></label>
+            <label>{tr("Days between rounds")}<input type="number" min={1} max={365} required value={options.daysBetweenRounds} onChange={(event) => change({ daysBetweenRounds: Number(event.target.value) })} /></label>
+            <label>{tr("Minutes between games")}<input type="number" min={1} max={1440} required value={options.minutesBetweenMatches} onChange={(event) => change({ minutesBetweenMatches: Number(event.target.value) })} /></label>
           </fieldset>
-          <div className="form-actions span-2"><button className="button button-admin" type="submit" disabled={saving}>Preview schedule</button></div>
+          <div className="form-actions span-2"><button className="button button-admin" type="submit" disabled={saving}>{tr("Preview schedule")}</button></div>
         </form>
-        {planned.error || error ? <p className="form-error" role="alert">{error || planned.error}</p> : null}
-        {planned.plan ? <section className="fixture-preview" aria-label="Schedule preview">
-          <h3>{planned.plan.fixtures.length} new fixture{planned.plan.fixtures.length === 1 ? '' : 's'} · {planned.plan.skipped} existing game{planned.plan.skipped === 1 ? '' : 's'} kept</h3>
-          {planned.plan.waiting ? <p>{planned.plan.waiting} knockout games await opponents. Generate again after recording the earlier results.</p> : null}
-          <p>Games at {options.venue} use Istanbul time. Check these dates against existing fixtures before saving.</p>
+        {planned.error || error ? <p className="form-error" role="alert">{tr(error || planned.error)}</p> : null}
+        {planned.plan ? <section className="fixture-preview" aria-label={tr("Schedule preview")}>
+          <h3>{planned.plan.fixtures.length} {tr(" new fixture")}{planned.plan.fixtures.length === 1 ? '' : tr("s")} · {planned.plan.skipped} {tr(" existing game")}{planned.plan.skipped === 1 ? '' : tr("s")} {tr(" kept")}</h3>
+          {planned.plan.waiting ? <p>{planned.plan.waiting} {tr(" knockout games await opponents. Generate again after recording the earlier results.")}</p> : null}
+          <p>{tr("Games at ")}{options.venue} {tr(" use Istanbul time. Check these dates against existing fixtures before saving.")}</p>
           {planned.plan.fixtures.length ? <>
-            <div className="fixture-preview-scroll"><table><thead><tr><th>Stage</th><th>Fixture</th><th>Date</th><th>Time</th><th>Visibility</th></tr></thead><tbody>{planned.plan.fixtures.map((match) => <tr key={match.fixtureKey}><td>{match.stage}</td><td>{match.home} vs {match.away}</td><td>{match.kickoffAt?.slice(0, 10)}</td><td>{match.time}</td><td>{match.status === 'Draft' ? 'Draft' : 'Published'}</td></tr>)}</tbody></table></div>
-            <div className="form-actions"><button type="button" className="button button-admin" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : `Create ${planned.plan.fixtures.length} fixture${planned.plan.fixtures.length === 1 ? '' : 's'}`}</button></div>
-          </> : <p>No new fixtures are needed for this selection.</p>}
+            <div className="fixture-preview-scroll"><table><thead><tr><th>{tr("Stage")}</th><th>{tr("Fixture")}</th><th>{tr("Date")}</th><th>{tr("Time")}</th><th>{tr("Visibility")}</th></tr></thead><tbody>{planned.plan.fixtures.map((match) => <tr key={match.fixtureKey}><td>{match.stage}</td><td>{match.home} {tr(" vs ")}{match.away}</td><td>{match.kickoffAt?.slice(0, 10)}</td><td>{match.time}</td><td>{match.status === 'Draft' ? tr("Draft") : tr("Published")}</td></tr>)}</tbody></table></div>
+            <div className="form-actions"><button type="button" className="button button-admin" disabled={saving} onClick={() => void save()}>{saving ? tr("Saving…") : tr("Create {value0} fixture{value1}", { value0: planned.plan.fixtures.length, value1: planned.plan.fixtures.length === 1 ? '' : 's' })}</button></div>
+          </> : <p>{tr("No new fixtures are needed for this selection.")}</p>}
         </section> : null}
       </Modal> : null}
     </section>

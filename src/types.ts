@@ -96,6 +96,10 @@ export type Season = {
   status?: SeasonStatus
   startDate?: string
   endDate?: string
+  createdAt?: string
+  startedAt?: string
+  /** Staff-recorded drawing-of-lots order, only after all football tie-breaks. */
+  lotsOrder?: number[]
 }
 
 export const HOST_CITIES = [
@@ -141,6 +145,16 @@ export type Team = {
   isActive?: boolean
 }
 
+/** Lasting club registration exists independently of any tournament entry. */
+export type Club = {
+  id: number
+  name: string
+  countryCode?: string
+  color?: string
+  logoUrl?: string
+  registeredPlayerIds: number[]
+}
+
 export type PlayerPosition = 'goalkeeper' | 'defender' | 'midfielder' | 'forward'
 export type StrongFoot = 'left' | 'right' | 'both'
 
@@ -167,6 +181,19 @@ export type Player = {
    * country flag on roster cards, so a background-free image looks best.
    */
   photoUrl?: string
+}
+
+export type PlayerSuspension = {
+  id: number
+  playerId: number
+  seasonId: number
+  teamId: number
+  reason: string
+  matchCount?: number
+  endsOn?: string
+  issuedAt: string
+  revokedAt?: string
+  served: number
 }
 
 /** Mirrors the media_assets_kind_check constraint exactly. */
@@ -237,12 +264,15 @@ export type MatchEvent = {
   minute: number
   extraMinute?: number
   notes?: string
+  incomingPlayerName?: string
+  incomingPlayerId?: number
+  isGoalkeeperChange?: boolean
 }
 
-export type MatchStatus = 'scheduled' | 'live' | 'completed' | 'postponed'
+export type MatchStatus = 'scheduled' | 'live' | 'completed' | 'postponed' | 'stopped'
 
 /** A player as registered for one side of a completed match. */
-export type MatchSquadPlayer = { teamId: number; playerId?: number; playerName: string; shirtNumber?: number }
+export type MatchSquadPlayer = { teamId: number; playerId?: number; playerName: string; shirtNumber?: number; lineupRole?: 'starter' | 'bench'; isGoalkeeper?: boolean }
 
 export type Match = {
   id: number
@@ -264,10 +294,16 @@ export type Match = {
   /** Shootout score when a knockout match is decided on penalties (e.g. 4-3). */
   homePenalties?: number
   awayPenalties?: number
+  resultKind?: 'normal' | 'forfeit'
+  forfeitTeamId?: number
+  decisionNote?: string
+  scoreSource?: 'events' | 'legacy'
+  lineupSource?: 'selected' | 'legacy'
   /** The season this fixture belongs to. Stored, not inferred from its clubs. */
   seasonId?: number
   matchStatus: MatchStatus
-  /** Squads recorded when the match was completed; absent for unplayed matches. */
+  startedAt?: string
+  /** Match-specific selection. Legacy imports retain their original roster snapshot. */
   squads?: MatchSquadPlayer[]
   status: 'Scheduled' | 'Draft'
   /**

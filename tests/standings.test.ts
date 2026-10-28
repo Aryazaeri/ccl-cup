@@ -178,7 +178,8 @@ section('3. Tie-breaks: Points > GD > GF > Head-to-head')
   const matches = [played('ZEBRA', 1, 'APPLE', 1)]
   const first = order(computeStandings(teams, matches))
   const second = order(computeStandings([...teams].reverse(), matches))
-  check('identical teams sort alphabetically', first, ['APPLE', 'ZEBRA'])
+  check('fully tied teams await staff lots, with stable display order', first, ['ZEBRA', 'APPLE'])
+  check('unresolved order is explicitly provisional', computeStandings(teams, matches).every((r) => r.lotsPending), true)
   check('order does not depend on input order', first, second)
 }
 
@@ -197,7 +198,7 @@ section('4. headToHeadFirst option')
   ]
   const standard = computeStandings(teams, matches)
   const uefa = computeStandings(teams, matches, { headToHeadFirst: true })
-  check('default order puts better GD first', order(standard).indexOf('BIGGD') < order(standard).indexOf('SMALLWIN'), true)
+  check('default order puts head-to-head first', order(standard).indexOf('SMALLWIN') < order(standard).indexOf('BIGGD'), true)
   check('UEFA order puts head-to-head winner first', order(uefa).indexOf('SMALLWIN') < order(uefa).indexOf('BIGGD'), true)
 }
 
@@ -513,17 +514,22 @@ section('Player identity after transfers and name changes')
 section('Goal events move the score (item 9)')
 {
   const fixture: Match = { ...played('HOME FC', 3, 'AWAY FC', 1), homeTeamId: 1, awayTeamId: 2 }
-  // own_goal exists in the database, not in the app's event picker.
   const ev = (eventType: string, teamId: number): MatchEvent => ({ id: 1, matchId: fixture.id, teamId, teamName: '', playerName: 'P', eventType: eventType as MatchEvent['eventType'], minute: 10 })
   const score = (m: Pick<Match, 'homeScore' | 'awayScore'>) => [m.homeScore, m.awayScore]
-  check('home goal adds one to a typed-in 3-1', score(scoreAfterEvent(fixture, ev('goal', 1), 1)), [4, 1])
-  check('scored penalty counts for its club', score(scoreAfterEvent(fixture, ev('penalty_scored', 2), 1)), [3, 2])
-  check('own goal counts for the other club', score(scoreAfterEvent(fixture, ev('own_goal', 2), 1)), [4, 1])
-  check('removing a goal takes it back off', score(scoreAfterEvent(fixture, ev('goal', 1), -1)), [2, 1])
-  check('cards and missed penalties leave the score', [score(scoreAfterEvent(fixture, ev('yellow_card', 1), 1)), score(scoreAfterEvent(fixture, ev('penalty_missed', 1), 1))], [[3, 1], [3, 1]])
+  check('a goal replaces invalid typed totals with the ledger', score(scoreAfterEvent(fixture, ev('goal', 1), 1)), [1, 0])
+  check('scored penalty counts for its club', score(scoreAfterEvent(fixture, ev('penalty_scored', 2), 1)), [0, 1])
+  check('own goal counts for the other club', score(scoreAfterEvent(fixture, ev('own_goal', 2), 1)), [1, 0])
+  check('removing a goal takes it back off', score(scoreAfterEvent(fixture, ev('goal', 1), -1)), [0, 0])
+  check('cards and missed penalties do not create goals', [score(scoreAfterEvent(fixture, ev('yellow_card', 1), 1)), score(scoreAfterEvent(fixture, ev('penalty_missed', 1), 1))], [[0, 0], [0, 0]])
   check('first goal of an unplayed match starts from 0-0', score(scoreAfterEvent({ ...fixture, homeScore: undefined, awayScore: undefined }, ev('goal', 2), 1)), [0, 1])
   check('a score never goes below zero', score(scoreAfterEvent({ ...fixture, homeScore: 0, awayScore: 0 }, ev('goal', 1), -1)), [0, 0])
-  check('a club outside the fixture changes nothing', score(scoreAfterEvent(fixture, ev('goal', 9), 1)), [3, 1])
+  check('a club outside the fixture changes nothing', score(scoreAfterEvent(fixture, ev('goal', 9), 1)), [0, 0])
+}
+
+{
+ const legacy = { ...played('OLD HOME',3,'OLD AWAY',1), scoreSource:'legacy' as const }
+ const event: MatchEvent = { id:1,matchId:legacy.id,teamName:legacy.home,playerName:'Historical',eventType:'goal',minute:1 }
+ check('historical scores are retained for explicit reconciliation', scoreAfterEvent(legacy,event,1), { homeScore:3,awayScore:1 })
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

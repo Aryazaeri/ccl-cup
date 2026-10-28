@@ -1,96 +1,32 @@
-# CCL Cup — Tournament Management & Competition Platform
+# CCL Cup
 
-[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.0-purple.svg)](https://vitejs.dev/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-green.svg)](https://supabase.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+Football tournament administration and public results portal, built with React 19, TypeScript, Vite and Supabase (Postgres, Auth and Storage).
 
-A modern, full-featured football tournament management platform and public portal. Built with **React**, **TypeScript**, **Vite**, and **Supabase (PostgreSQL + Auth + Row Level Security)**.
+The app supports single leagues, groups and knockout competitions, shared club/player identities, tournament squads, match-specific lineups, player-attributed scoring, staff suspensions, editorial publishing, moderated comments and staff permissions. The [confirmed competition rules](docs/COMPETITION_RULES.md) define the intended behavior.
 
----
+## Local development
 
-## 🌟 Key Features
+Use Node 22.12 or newer, then `npm ci`. Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` using `.env.example`. These are browser configuration values; never put database passwords, service-role keys or provider secrets in `VITE_` variables.
 
-### 🏆 Competition & Tournament Systems
-- **Multi-Format Tournament Support**:
-  - 🏆 **Single-Elimination Knockout Brackets** (4, 8, or 16 teams with interactive drag-and-drop seeding).
-  - 📋 **Single-Table Leagues** (Dynamic table standings, head-to-head records, goal difference).
-  - 👥 **Multi-Group Leagues** (UEFA Champions League / World Cup format with group tables and knockout stages).
-- **Interactive Visual Canvases**:
-  - **Tactical Pitch & Formation Squad Canvas**: Interactive stadium football pitch (`4-3-3`, `4-4-2`, `3-5-2`, `7v7`, `5v5`) with drag-and-drop roster assignments.
-  - **Knockout Bracket Canvas**: Visual tournament bracket builder with match progression.
-  - **League & Group Stage Canvases**: Visual team seeding and live standing configuration.
+Apply migrations from `supabase/migrations/` in filename order to a disposable local Supabase project. `supabase/seed.sql` is a rule-compliant development fixture; **never run it against production**. `npm run dev` starts the app at `http://127.0.0.1:5173`: public portal `/#site`, staff panel `/#admin`.
 
-### 👥 Teams & Global Player Pool Hub
-- **Club Management**: Team branding, dynamic country flag resolution, custom primary/secondary kit colors, crest management, and staff rosters.
-- **Global Player Pool & Transfers**: Transfer players freely between clubs, assign to squads, or register free agents (`team_id: null`).
-- **Detailed Player Profiles**: Positions (`GK`, `DEF`, `MID`, `FWD`), squad numbers, matchday statistics (goals, assists), active season tags, and captaincy badges.
+For an isolated demo without reading project environment files, use `node tools/test-server.mjs 5180`. Demo changes stay in browser localStorage and do not verify server permissions. A configured backend failure is shown with a Retry action rather than substituted sample data.
 
-### ⏱️ Live Match Center & Event Timeline
-- **Scorekeeping & Match States**: Scheduled, Live (In-Progress), Completed (Final), and Postponed match statuses.
-- **Match Events Timeline**: Real-time event logging for goals, penalties, yellow cards, red cards, and substitutions with player attribution.
+## Competition workflow
 
-### 🔒 Enterprise Security & Roles
-- **Supabase Authentication & Row-Level Security (RLS)**:
-  - `super_admin`: Full system control and permission delegation.
-  - `admin`: Competition, squad, and content management.
-  - `editor`: Editorial stories, media assets, and news.
-  - `match_operator`: Fixtures, scores, and matchday events.
-  - `viewer`: Public read-only access.
-- **Strict Client-Side Security**: Only the public anonymous key is exposed to the frontend; all modifications are enforced at the PostgreSQL database level via RLS policies.
+Register a club independently, then enter it into a tournament with a new squad of at least five. Save league/group assignments or knockout seeds in the canvas. In Matches, select the tournament and use Plan fixtures to preview one meeting per pair before saving. Every fixture in a published tournament is public.
 
----
+Select actual match starters/substitutes from the club default, record player goal events, then explicitly mark the match completed. Normal scores are calculated; staff forfeits are separate decisions. Complete table games before qualification. Configure the qualifier count and first-round pairings per tournament; generate later knockout rounds once opponents are known. Unresolved football ties require staff-recorded drawing-of-lots order.
 
-## 🚀 Quick Start
+Use **Broadcast URL** when scheduling or editing a match. A specific YouTube video or live-event link adds an embedded player before kickoff and promotes the next scheduled broadcast on the public page. Visitors press Play to load YouTube; its scripts are absent from the initial page load. Live broadcasts take priority, and postponed matches are not promoted. Other broadcast services retain an external link.
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/Aryazaeri/ccl-cup.git
-cd ccl-cup
-```
+The public portal loads the tournament list plus the selected tournament's records, and fetches another tournament when selected or opened through a shared detail link. Initial reads are deduplicated, pagination uses exact counts to avoid empty final requests, and Storage image signatures are batched. Staff login loads its workspace only after the profile is verified. Connection failures remain visible with Retry; they never substitute sample data.
 
-### 2. Install dependencies
-```bash
-npm install
-```
+Stories and media start as drafts. Scheduled stories use an Istanbul publication date/time. Uploaded draft files remain private. Visitor comments always require a human moderator.
 
-### 3. Configure environment variables
-Copy `.env.example` to `.env.local`:
-```bash
-cp .env.example .env.local
-```
+## Verification
 
-Fill in your Supabase project credentials in `.env.local`:
-```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-### 4. Run database migrations
-Apply every SQL migration in `supabase/migrations/` in filename order, using the Supabase CLI or SQL Editor. Existing projects should apply only migrations they have not run.
-
-Fixture generation requires `202610120001_generated_fixtures.sql`, which adds a unique fixture key per season and support for Round of 32. It preserves existing games and access policies.
-
-### 5. Launch development server
-```bash
-npm run dev
-```
-
-- **Public Tournament Portal**: `http://localhost:5173/#site`
-- **Admin Management Panel**: `http://localhost:5173/#admin`
-
-### Fixture generation
-
-Save the club assignments in the season's league/group canvas, then use **Matches → Plan fixtures**. Choose one meeting per pair or home/away games, dates, kickoff gaps, a venue, and draft/published visibility. Review the preview before creating the schedule. Existing games count towards the requested schedule and retain their scores.
-
-For a league/group format with qualification, complete and publish the table schedule, then generate the draw in **Standings**. Return to **Matches → Plan fixtures → Knockout games with known opponents**. Generate later rounds after recording earlier results. Corrected results that change an already scheduled final require reviewing that fixture first.
-
-### Checks
-
-Use Node.js 22.12 or newer. The PR workflow runs:
-
-```bash
+```sh
 npm test
 npm run lint
 npm run build
@@ -98,39 +34,20 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Browser tests use isolated local demo data, with Supabase environment variables explicitly cleared. They cover desktop/mobile login, failed table saves and retry, fixture persistence/visibility, knockout progression, qualification, and player transfers. Failure traces and screenshots are saved in `playwright-report/` and `test-results/` (gitignored).
+Browser tests exercise desktop/mobile workflows with isolated local data. Their server explicitly avoids `.env.local`. API/Storage tests require a separate disposable local Supabase stack and synthetic staff accounts; set `CCL_TEST_WORKDIR` to its workdir, then run `npm run test:connected`. The runner rejects a linked or remote project. Never direct these mutation tests at production.
 
----
+Database regression files `tests/database-security.sql`, `tests/database-competition.sql` and `tests/database-clock-suspensions.sql` run as the local database owner and roll back their synthetic data. `tests/storage-security.mjs` and `tests/role-concurrency.py` additionally verify real Auth/Storage and concurrent role changes in that disposable stack.
 
-## 📦 Production Deployment
+## Deployment and recovery
 
-### Build for Production
-```bash
-npm run build
-```
+Build with `npm run build`; publish `dist/`. Vercel and Netlify SPA routing files are included. Review the [rollout checklist](docs/ROLLOUT.md) before applying changes to an existing database. Frontend, database policies and the submit-comment Edge Function must be deployed together in a controlled window.
 
-### Deploy to Vercel / Netlify
-The repository includes pre-configured single-page application (SPA) routing manifests:
-- [`vercel.json`](vercel.json)
-- [`netlify.toml`](netlify.toml)
+The owner requires separate approval for every production change. Nothing in this local work authorizes deployment or production data changes.
 
-Set the following build settings in your hosting dashboard:
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Environment Variables**: Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+Daily encrypted off-site backups with 30-day retention are prepared but activation is deferred. See the [backup and restore runbook](docs/BACKUP_RESTORE.md). Backups must include actual uploaded bytes, and a hosted restore drill remains required after setup.
 
----
+### Admin language
 
-## 🛠️ Tech Stack
+The sign-in page and admin header include an **English / Türkçe** selector. English is the default; the selected admin language is remembered in this browser. Navigation, forms, status labels, draw tools, confirmations and known validation messages are translated. The Turkish message file loads only when entering admin. If it cannot load, reload using the displayed recovery button.
 
-- **Frontend**: React 18, TypeScript, Vite
-- **Styling**: Modern CSS3 Custom Properties, Responsive Grid & Flexbox
-- **Icons**: Lucide React
-- **Backend & Database**: Supabase (PostgreSQL 15), Supabase Auth, Row Level Security (RLS)
-- **Deployment**: Vercel / Netlify
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
+Changing the interface language does not translate saved team/player names, tournament/group names, articles, media titles or site settings. Form values, permission roles and URLs retain their original identities. The public website stays in English. Unknown backend/provider diagnostics remain in their original language. Translation copy is maintained in `src/i18n/admin.tr.json`.

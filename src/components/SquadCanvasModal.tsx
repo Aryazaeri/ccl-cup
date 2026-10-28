@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import {
   Check,
   GripVertical,
@@ -34,9 +35,10 @@ export function SquadCanvasModal({
   onClose,
   onSaveSquad,
 }: Props) {
+  const { tr } = useAdminLanguage()
   // Opens on the lineup saved for this club entry, if any.
-  const [saved] = useState(() => resolveLineup(team.lineup, teamPlayers))
-  const [formation, setFormation] = useState<FormationType>(saved?.formation ?? '4-3-3')
+  const [saved] = useState(() => resolveLineup(team.lineup?.formation === '8v8' ? team.lineup : undefined, teamPlayers))
+  const [formation, setFormation] = useState<FormationType>('8v8')
   const [canvasView, setCanvasView] = useState<'pitch' | 'bench'>('pitch')
   const [searchTerm, setSearchTerm] = useState('')
   const [posFilter, setPosFilter] = useState<string>('All')
@@ -291,7 +293,7 @@ export function SquadCanvasModal({
 
   return (
     <Modal
-      title={`🏟️ ${team.name} — Squad & formation`}
+      title={tr("🏟️ {value0} — Squad & formation", { value0: team.name })}
       onClose={onClose}
       className={`squad-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -309,21 +311,21 @@ export function SquadCanvasModal({
             <div>
               <h3>{team.name}</h3>
               <span>
-                {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'}
+                {country.flag} {tr(country.name)} · {team.tournamentFormat ?? tr("Champions Cup")}
               </span>
             </div>
           </div>
 
           <div className="canvas-action-controls">
             <label className="formation-select-wrap">
-              <span>Formation:</span>
+              <span>{tr("Formation:")}</span>
               <select
                 value={formation}
                 onChange={(e) => changeFormation(e.target.value as FormationType)}
               >
-                {Object.entries(FORMATIONS).map(([key, f]) => (
+                {Object.entries(FORMATIONS).filter(([, f]) => f.slots.length === 8).map(([key, f]) => (
                   <option key={key} value={key}>
-                    📐 {f.name}
+                    📐 {tr(f.name)}
                   </option>
                 ))}
               </select>
@@ -335,14 +337,14 @@ export function SquadCanvasModal({
                 className={`view-tab ${canvasView === 'pitch' ? 'active' : ''}`}
                 onClick={() => setCanvasView('pitch')}
               >
-                🏟️ Pitch View ({startingCount}/{activeSlots.length})
+                {tr("🏟️ Pitch View (")}{startingCount}/{activeSlots.length})
               </button>
               <button
                 type="button"
                 className={`view-tab ${canvasView === 'bench' ? 'active' : ''}`}
                 onClick={() => setCanvasView('bench')}
               >
-                🪑 Bench & Roster ({benchPlayers.length})
+                {tr("🪑 Bench & Roster (")}{benchPlayers.length})
               </button>
             </div>
 
@@ -350,28 +352,26 @@ export function SquadCanvasModal({
               type="button"
               className="quick-canvas-btn primary"
               onClick={handleAutoFillFromPool}
-              title="Auto-fill empty formation slots with best available players from pool"
-              aria-label="Auto-fill formation from player pool"
+              title={tr("Auto-fill empty formation slots with best available players from pool")}
+              aria-label={tr("Auto-fill formation from player pool")}
             >
-              <Sparkles size={14} aria-hidden="true" /> Auto-Fill
-            </button>
+              <Sparkles size={14} aria-hidden="true" /> {tr(" Auto-Fill")}</button>
 
             <button
               type="button"
               className="quick-canvas-btn danger"
               onClick={handleClearSquad}
-              title="Release all players back to pool"
-              aria-label="Clear squad and return players to pool"
+              title={tr("Release all players back to pool")}
+              aria-label={tr("Clear squad and return players to pool")}
             >
-              <RotateCcw size={14} aria-hidden="true" /> Clear
-            </button>
+              <RotateCcw size={14} aria-hidden="true" /> {tr(" Clear")}</button>
 
             <button
               type="button"
               className="quick-canvas-btn icon-only"
               onClick={() => setIsFullScreen(!isFullScreen)}
-              title={isFullScreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              aria-label={isFullScreen ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
+              title={isFullScreen ? tr("Exit Fullscreen") : tr("Fullscreen")}
+              aria-label={isFullScreen ? tr("Exit fullscreen mode") : tr("Enter fullscreen mode")}
             >
               {isFullScreen ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
             </button>
@@ -385,17 +385,17 @@ export function SquadCanvasModal({
             <div className="pool-header">
               <div className="pool-title">
                 <Users size={16} />
-                <h4>Player Pool ({filteredPool.length})</h4>
+                <h4>{tr("Player Pool (")}{filteredPool.length})</h4>
               </div>
-              <span className="pool-subtext">Drag or click player, then pick slot</span>
+              <span className="pool-subtext">{tr("Drag or click player, then pick slot")}</span>
             </div>
 
             <div className="pool-search-box">
               <Search size={14} aria-hidden="true" />
               <input
                 type="text"
-                placeholder="Search squad by name or position…"
-                aria-label="Search squad by name or position"
+                placeholder={tr("Search squad by name or position…")}
+                aria-label={tr("Search squad by name or position")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -404,7 +404,7 @@ export function SquadCanvasModal({
                   type="button"
                   onClick={() => setSearchTerm('')}
                   className="clear-search-btn"
-                  aria-label="Clear search text"
+                  aria-label={tr("Clear search text")}
                 >
                   <X size={12} aria-hidden="true" />
                 </button>
@@ -420,7 +420,7 @@ export function SquadCanvasModal({
                   className={`pos-chip ${posFilter === pos ? 'active' : ''}`}
                   onClick={() => setPosFilter(pos)}
                 >
-                  {pos === 'All' ? 'All' : pos.slice(0, 3).toUpperCase()}
+                  {pos === 'All' ? tr("All") : pos.slice(0, 3).toUpperCase()}
                 </button>
               ))}
             </div>
@@ -430,7 +430,7 @@ export function SquadCanvasModal({
               {filteredPool.length === 0 ? (
                 <div className="pool-empty-state">
                   <UserCheck size={28} />
-                  <p>No available players in pool matching search.</p>
+                  <p>{tr("No available players in pool matching search.")}</p>
                 </div>
               ) : (
                 filteredPool.map((p) => {
@@ -443,7 +443,7 @@ export function SquadCanvasModal({
                       onDragStart={(e) => handleDragStart(e, p)}
                       onClick={() => setSelectedPoolPlayerId(isSelected ? null : p.id)}
                     >
-                      <div className="pool-card-drag-handle" title="Drag to pitch">
+                      <div className="pool-card-drag-handle" title={tr("Drag to pitch")}>
                         <GripVertical size={14} />
                       </div>
                       <span className="pool-card-shirt">#{p.shirtNumber ?? '-'}</span>
@@ -451,10 +451,10 @@ export function SquadCanvasModal({
                         <strong>{p.fullName}</strong>
                         <div className="pool-card-meta">
                           <span className={`mini-pos-badge ${p.position}`}>
-                            {p.position.slice(0, 3).toUpperCase()}
+                            {tr({ goalkeeper: 'GK', defender: 'DEF', midfielder: 'MID', forward: 'FWD' }[p.position])}
                           </span>
                           <span className="pool-team-tag">
-                            {p.isCaptain ? 'Captain' : `#${p.shirtNumber ?? '—'} · ${p.position}`}
+                            {p.isCaptain ? tr("Captain") : `#${p.shirtNumber ?? '—'} · ${tr(p.position)}`}
                           </span>
                         </div>
                       </div>
@@ -462,15 +462,14 @@ export function SquadCanvasModal({
                         <button
                           type="button"
                           className="quick-bench-btn"
-                          title="Add directly to substitutes bench"
-                          aria-label={`Add ${p.fullName} to bench`}
+                          title={tr("Add directly to substitutes bench")}
+                          aria-label={tr("Add {value0} to bench", { value0: p.fullName })}
                           onClick={(e) => {
                             e.stopPropagation()
                             handleAddDirectToBench(p)
                           }}
                         >
-                          <Plus size={14} aria-hidden="true" /> Bench
-                        </button>
+                          <Plus size={14} aria-hidden="true" /> {tr(" Bench")}</button>
                       </div>
                     </div>
                   )
@@ -527,8 +526,8 @@ export function SquadCanvasModal({
                             <button
                               type="button"
                               className="remove-from-pitch-btn"
-                              title="Move to bench"
-                              aria-label={`Remove ${assignedPlayer.fullName} from position ${slot.roleName}`}
+                              title={tr("Move to bench")}
+                              aria-label={tr("Remove {value0} from position {value1}", { value0: assignedPlayer.fullName, value1: slot.roleName })}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleRemoveFromSlot(slot.id)
@@ -541,7 +540,7 @@ export function SquadCanvasModal({
                           <div className="empty-pitch-slot">
                             <span className="slot-role-target">{slot.roleName}</span>
                             <span className="slot-hint">
-                              {selectedPoolPlayerId ? 'Tap to assign' : '+ Drop'}
+                              {selectedPoolPlayerId ? tr("Tap to assign") : tr("+ Drop")}
                             </span>
                           </div>
                         )}
@@ -554,7 +553,7 @@ export function SquadCanvasModal({
               /* BENCH & SQUAD LIST VIEW */
               <div className="squad-bench-workspace">
                 <div className="bench-section-header">
-                  <h4>Starting Lineup ({startingCount} Players)</h4>
+                  <h4>{tr("Starting Lineup (")}{startingCount} {tr(" Players)")}</h4>
                 </div>
                 <div className="bench-cards-grid">
                   {Object.entries(pitchLineup).map(([slotId, player]) => (
@@ -563,27 +562,26 @@ export function SquadCanvasModal({
                       <div className="bench-player-meta">
                         <strong>{player.fullName}</strong>
                         <span>
-                          Role: {FORMATIONS[formation].slots.find((s) => s.id === slotId)?.roleName} ·{' '}
-                          {player.position}
+                          {tr("Role: ")}{FORMATIONS[formation].slots.find((s) => s.id === slotId)?.roleName} ·{' '}
+                          {tr(player.position)}
                         </span>
                       </div>
                       <button
                         type="button"
                         className="bench-action-btn"
                         onClick={() => handleRemoveFromSlot(slotId)}
-                        title="Move to bench"
+                        title={tr("Move to bench")}
                       >
-                        Move to Bench
-                      </button>
+                        {tr("Move to Bench")}</button>
                     </div>
                   ))}
                   {startingCount === 0 && (
-                    <p className="empty-bench-text">No starting players assigned yet.</p>
+                    <p className="empty-bench-text">{tr("No starting players assigned yet.")}</p>
                   )}
                 </div>
 
                 <div className="bench-section-header" style={{ marginTop: '24px' }}>
-                  <h4>Substitutes & Reserves ({benchPlayers.length} Players)</h4>
+                  <h4>{tr("Substitutes & Reserves (")}{benchPlayers.length} {tr(" Players)")}</h4>
                 </div>
                 <div className="bench-cards-grid">
                   {benchPlayers.map((player) => (
@@ -591,22 +589,21 @@ export function SquadCanvasModal({
                       <span className="shirt-badge">{player.shirtNumber ?? '-'}</span>
                       <div className="bench-player-meta">
                         <strong>{player.fullName}</strong>
-                        <span>{player.position.toUpperCase()}</span>
+                        <span>{tr(player.position).toLocaleUpperCase()}</span>
                       </div>
                       <div className="row-actions-group">
                         <button
                           type="button"
                           className="bench-action-btn danger"
                           onClick={() => handleDropFromSquadCompletely(player.id)}
-                          title="Release back to pool"
+                          title={tr("Release back to pool")}
                         >
-                          <UserMinus size={14} /> Release to Pool
-                        </button>
+                          <UserMinus size={14} /> {tr(" Release to Pool")}</button>
                       </div>
                     </div>
                   ))}
                   {benchPlayers.length === 0 && (
-                    <p className="empty-bench-text">No substitute players on the bench.</p>
+                    <p className="empty-bench-text">{tr("No substitute players on the bench.")}</p>
                   )}
                 </div>
               </div>
@@ -619,29 +616,27 @@ export function SquadCanvasModal({
           <div className="squad-status-counter">
             {totalCount >= 5 ? (
               <span className="status-badge valid">
-                <Check size={14} /> Squad Ready: {totalCount} Players ({startingCount} Starting,{' '}
-                {benchPlayers.length} Bench)
-              </span>
+                <Check size={14} /> {tr(" Squad Ready: ")}{totalCount} {tr(" Players (")}{startingCount} {tr(" Starting,")}{' '}
+                {benchPlayers.length} {tr(" Bench)")}</span>
             ) : (
               <span className="status-badge warning">
-                ⚠️ Need at least 5 players (Currently: {totalCount})
+                {tr("⚠️ Need at least 5 players (Currently: ")}{totalCount})
               </span>
             )}
           </div>
 
-          {saveError && <span className="canvas-error-text">{saveError}</span>}
+          {saveError && <span className="canvas-error-text">{tr(saveError)}</span>}
 
           <div className="canvas-footer-actions">
             <button type="button" className="button" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
+              {tr("Cancel")}</button>
             <button
               type="button"
               className="button button-admin"
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? 'Saving Squad…' : '💾 Save Squad to Club'}
+              {saving ? tr("Saving Squad…") : tr("💾 Save Squad to Club")}
             </button>
           </div>
         </div>

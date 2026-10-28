@@ -1,5 +1,7 @@
+import { AdminLanguageSwitch } from './AdminLanguageSwitch'
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
+import { broadcastUrlError } from '../lib/broadcast'
 import {
-  AlertCircle,
   BarChart3,
   CalendarDays,
   CheckCircle2,
@@ -42,6 +44,14 @@ import {
 } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { can, type AuthProfile, type PermissionArea } from '../auth/AuthContext'
+import { isStoryPublic, publicationDate, publicationInput } from '../lib/publication'
+import { defaultMatchLineups, goalScore } from '../lib/matchRules'
+import { knockoutRoundSize } from '../lib/matchStages'
+import { MatchLineupFields } from './MatchLineupFields'
+import { ClubRegistry, RegisteredClubForm } from './ClubRegistry'
+import { PlayerSuspensions } from './PlayerSuspensions'
+import { LotsOrderForm } from './LotsOrderForm'
+import { reportAssetSaveFailure } from '../lib/assetSaveUtils'
 import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
@@ -54,6 +64,7 @@ import { computeGroupStandings, computeTopScorers, isCountableMatch, shootoutErr
 import { defaultSeasonId, seasonBadgesForIds, seasonLabel, seasonLabelsForIds } from '../lib/seasonLabels'
 import {
   mediaRepository,
+  clubsRepository,
   moderationRepository,
   siteSettingsRepository,
   sponsorsRepository,
@@ -63,6 +74,7 @@ import { DEFAULT_SITE_SETTINGS, type SiteSettings } from '../lib/siteSettings'
 import {
   HOST_CITIES,
   type AdminSection,
+  type Club,
   type Match,
   type MatchEvent,
   type MatchEventType,
@@ -102,11 +114,12 @@ import { TeamLogoPicker } from './TeamLogoPicker'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
-import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, shrinkError, squadOf } from '../lib/squadUtils'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, squadOf } from '../lib/squadUtils'
 import type { EntryRoster, NewSquadPlayer } from '../services/tournamentRepository'
 import type { Lineup } from '../lib/formations'
 
 type Props = {
+  clubs: Club[]
   seasons: Season[]
   teams: Team[]
   players: Player[]
@@ -167,6 +180,7 @@ function sectionFromHash(): AdminSection {
 }
 
 export function AdminPanel({
+  clubs,
   seasons,
   teams,
   players,
@@ -202,6 +216,7 @@ export function AdminPanel({
   onSignOut,
   onViewSite,
 }: Props) {
+  const { tr } = useAdminLanguage()
   const [section, setSection] = useState<AdminSection>(sectionFromHash)
   useEffect(() => {
     const onHash = () => setSection(sectionFromHash())
@@ -239,7 +254,8 @@ export function AdminPanel({
   const teamInModal = editingTeam ?? createdTeam
   // Registering a club that already exists for another season, from its latest entry.
   const [enteringClub, setEnteringClub] = useState<{ team: Team; squadIds: number[] } | null>(null)
-  const [newClubSeasonId, setNewClubSeasonId] = useState<number | undefined>()
+  const [newMatchSeasonId, setNewMatchSeasonId] = useState<number | undefined>()
+  const [editingRegistration, setEditingRegistration] = useState<Club | null | undefined>(undefined)
   const [squadTeam, setSquadTeam] = useState<Team | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
@@ -266,8 +282,8 @@ export function AdminPanel({
     const countsAreKnown = teams.some((team) => team.seasonId != null)
     const cascadeLines = countsAreKnown
       ? [
-          `${seasonTeams.length} club${seasonTeams.length === 1 ? '' : 's'} will be deleted`,
-          `${seasonPlayers.length} player${seasonPlayers.length === 1 ? '' : 's'} leave this season's squads; their profiles and other seasons stay`,
+          tr("{value0} club{value1} will be deleted", { value0: seasonTeams.length, value1: seasonTeams.length === 1 ? '' : 's' }),
+          tr("{value0} player{value1} leave this season's squads; their profiles and other seasons stay", { value0: seasonPlayers.length, value1: seasonPlayers.length === 1 ? '' : 's' }),
         ]
       : ['Every club entry in this season is deleted; players keep their profiles']
     // The database unpublishes these before the delete, so they do not turn into content shown in every season.
@@ -275,7 +291,7 @@ export function AdminPanel({
     const seasonMedia = media.filter((asset) => asset.seasonId === id).length
     if (seasonStories + seasonMedia > 0) {
       cascadeLines.push(
-        `${seasonStories} article${seasonStories === 1 ? '' : 's'} and ${seasonMedia} media item${seasonMedia === 1 ? '' : 's'} are kept as unpublished drafts with no season`,
+        tr("{value0} article{value1} and {value2} media item{value3} are kept as unpublished drafts with no season", { value0: seasonStories, value1: seasonStories === 1 ? '' : 's', value2: seasonMedia, value3: seasonMedia === 1 ? '' : 's' }),
       )
     }
 
@@ -283,8 +299,7 @@ export function AdminPanel({
       title: 'Delete season',
       body: (
         <>
-          Delete <strong>{label}</strong> and everything recorded under it?
-        </>
+          {tr('Delete {name} and everything recorded under it?', { name: label })}</>
       ),
       consequences: [
         ...cascadeLines,
@@ -311,10 +326,7 @@ export function AdminPanel({
         title: 'Club cannot be deleted',
         body: (
           <>
-            <strong>{label}</strong> appears in {fixtures.length} fixture
-            {fixtures.length === 1 ? '' : 's'}, and the database refuses to delete a club with a match
-            history. Delete or reassign those fixtures first.
-          </>
+            {tr('{name} appears in {count} fixtures. A club with match history cannot be deleted. Delete or reassign those fixtures first.', { name: label, count: fixtures.length })}</>
         ),
         confirmLabel: 'Close',
       })
@@ -325,11 +337,11 @@ export function AdminPanel({
       title: 'Delete club',
       body: (
         <>
-          Delete <strong>{label}</strong>?
+          {tr('Delete {name}?', { name: label })}
         </>
       ),
       consequences: [
-        `${squad.length} player${squad.length === 1 ? '' : 's'} leave${squad.length === 1 ? 's' : ''} this season's squad; their profiles and other seasons stay`,
+        tr("{value0} player{value1} leave{value2} this season's squad; their profiles and other seasons stay", { value0: squad.length, value1: squad.length === 1 ? '' : 's', value2: squad.length === 1 ? 's' : '' }),
         'Squad and group assignments are removed',
       ],
       confirmLabel: 'Delete club',
@@ -343,8 +355,7 @@ export function AdminPanel({
       title: 'Delete player',
       body: (
         <>
-          Delete <strong>{player?.fullName ?? 'this player'}</strong> and their squad places in every season?
-        </>
+          {tr('Delete {name} and their squad places in every season?', { name: player?.fullName ?? tr('this player') })}</>
       ),
       consequences: [
         'Goals and cards already logged stay on the match timeline, recorded under the player name',
@@ -363,12 +374,12 @@ export function AdminPanel({
       title: 'Delete fixture',
       body: (
         <>
-          Delete <strong>{match ? `${match.home} v ${match.away}` : 'this fixture'}</strong>
-          {match?.date ? ` on ${match.date}` : ''}?
+          {tr("Delete ")}<strong>{match ? tr("{value0} v {value1}", { value0: match.home, value1: match.away }) : tr("this fixture")}</strong>
+          {match?.date ? tr(" on {value0}", { value0: match.date }) : ''}?
         </>
       ),
       consequences: [
-        ...(eventCount > 0 ? [`${eventCount} match event${eventCount === 1 ? '' : 's'} will be deleted`] : []),
+        ...(eventCount > 0 ? [tr("{value0} match event{value1} will be deleted", { value0: eventCount, value1: eventCount === 1 ? '' : 's' })] : []),
         ...(played
           ? ['This result counts towards the table — deleting it changes the standings and top scorers']
           : []),
@@ -385,7 +396,7 @@ export function AdminPanel({
       title: 'Delete story',
       body: (
         <>
-          Delete <strong>{story?.title ?? 'this story'}</strong>?
+          {tr('Delete {name}?', { name: story?.title ?? tr("this story") })}
         </>
       ),
       confirmLabel: 'Delete story',
@@ -400,9 +411,9 @@ export function AdminPanel({
       title: 'Delete match event',
       body: (
         <>
-          Remove the {event?.eventType.replace('_', ' ') ?? 'event'} for{' '}
-          <strong>{event?.playerName ?? 'this player'}</strong>
-          {event?.minute ? ` at ${event.minute}'` : ''}?
+          {tr("Remove the ")}{event?.eventType.replace('_', ' ') ?? tr("event")} {tr(" for")}{' '}
+          <strong>{event?.playerName ?? tr("this player")}</strong>
+          {event?.minute ? tr(" at {value0}'", { value0: event.minute }) : ''}?
         </>
       ),
       consequences: ['Top scorers and disciplinary totals are recalculated from the event log'],
@@ -419,10 +430,6 @@ export function AdminPanel({
     : null
   const [editingStory, setEditingStory] = useState<Story | null>(null)
 
-  const published = stories.filter((story) => story.status === 'Published').length
-  const draft = stories.filter((story) => story.status === 'Draft').length
-  const scheduled = stories.filter((story) => story.status === 'Scheduled').length
-
   const chooseSection = (next: AdminSection) => {
     window.location.assign(next === 'Overview' ? '#admin' : `#admin/${next.toLowerCase()}`)
     setSection(next)
@@ -432,19 +439,19 @@ export function AdminPanel({
 
   return (
     <div className="admin-shell">
-      {sidebarOpen ? <button className="admin-sidebar-scrim" aria-label="Close admin menu" onClick={() => setSidebarOpen(false)} /> : null}
+      {sidebarOpen ? <button className="admin-sidebar-scrim" aria-label={tr("Close admin menu")} onClick={() => setSidebarOpen(false)} /> : null}
       <aside className={sidebarOpen ? 'admin-sidebar is-open' : 'admin-sidebar'}>
         <div className="sidebar-top">
           <Brand admin />
-          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label={tr("Close menu")}>
             <X />
           </button>
         </div>
-        <nav aria-label="Admin sections">
+        <nav aria-label={tr("Admin sections")}>
           {visibleSections.map(({ label, icon: Icon }) => (
             <button className={activeSection === label ? 'active' : ''} key={label} onClick={() => chooseSection(label)}>
               <Icon />
-              {label}
+              {tr(label)}
             </button>
           ))}
         </nav>
@@ -452,9 +459,9 @@ export function AdminPanel({
           <CircleUserRound />
           <div>
             <strong>{profile.fullName}</strong>
-            <span>{profile.role.replace('_', ' ')}</span>
+            <span>{tr(ROLE_LABELS[profile.role])}</span>
           </div>
-          <button aria-label="Sign out" onClick={() => void onSignOut()}>
+          <button aria-label={tr("Sign out")} onClick={() => void onSignOut()}>
             <LogOut />
           </button>
         </div>
@@ -462,21 +469,20 @@ export function AdminPanel({
 
       <div className="admin-main">
         <header className="admin-topbar">
-          <button className="admin-menu" onClick={() => setSidebarOpen(true)} aria-label="Open admin menu" aria-expanded={sidebarOpen}>
+          <button className="admin-menu" onClick={() => setSidebarOpen(true)} aria-label={tr("Open admin menu")} aria-expanded={sidebarOpen}>
             <Menu />
           </button>
-          <h1>{activeSection}</h1>
+          <h1>{tr(activeSection)}</h1>
           <div className="admin-top-actions">
+            <AdminLanguageSwitch />
             <button className="site-switch" onClick={onViewSite}>
-              View site
-            </button>
+              {tr("View site")}</button>
             {/* A shortcut from the dashboard only. Teams has its own "Register New
                 Club" button, and on Players it read as the wrong action. */}
             {activeSection === 'Overview' && allowed('teams') && (
-              <button className="button button-admin" onClick={() => setModal('team')}>
+              <button className="button button-admin" onClick={() => setEditingRegistration(null)}>
                 <Plus />
-                Add Club
-              </button>
+                {tr("Add Club")}</button>
             )}
           </div>
         </header>
@@ -484,20 +490,19 @@ export function AdminPanel({
         <div className="admin-content">
           {error ? (
             <div className="admin-error" role="alert">
-              {error}
+              {tr(error)}
             </div>
           ) : null}
 
           {activeSection === 'Overview' && (
-            <Overview
-              seasonsCount={seasons.length}
+            <SeasonOverview
+              seasons={seasons}
               teams={teams}
               players={players}
               matches={matches}
-              published={published}
-              draft={draft}
-              scheduled={scheduled}
-              onOpenModal={(m) => setModal(m)}
+              stories={stories}
+              role={profile.role}
+              onOpenModal={(m) => m === 'team' ? setEditingRegistration(null) : setModal(m)}
               onManageMatchScore={(match) => setEditingMatch(match)}
             />
           )}
@@ -522,13 +527,22 @@ export function AdminPanel({
           )}
 
           {activeSection === 'Teams' && (
+            <>
+            <ClubRegistry clubs={clubs} seasons={seasons} onNew={() => setEditingRegistration(null)} onEdit={setEditingRegistration}
+              entered={(clubId, seasonId) => teams.some((t) => t.clubId === clubId && t.seasonId === seasonId)}
+              onEnter={(club, seasonId) => {
+                setEditingTeam(null); setCreatedClub(null)
+                setEnteringClub({ team: { id: -club.id, clubId: club.id, seasonId, name: club.name,
+                  countryCode: club.countryCode ?? 'TR', color: club.color ?? '#63e35b', logoUrl: club.logoUrl, played: 0, goalDifference: 0, points: 0 }, squadIds: [] })
+                setModal('team')
+              }} />
             <TeamsManager
               teams={teams}
               seasons={seasons}
               players={players}
               onEnterClub={(team, seasonId) => {
                 setEditingTeam(null)
-                setEnteringClub({ team: { ...team, seasonId }, squadIds: squadOf(players, team.id).map((p) => p.id) })
+                setEnteringClub({ team: { ...team, seasonId }, squadIds: [] })
                 setModal('team')
               }}
               onDelete={confirmDeleteTeam}
@@ -538,13 +552,9 @@ export function AdminPanel({
               }}
               onManageSquad={(team) => setSquadTeam(team)}
               onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
-              onAdd={(seasonId) => {
-                setEditingTeam(null)
-                setEnteringClub(null)
-                setNewClubSeasonId(seasonId)
-                setModal('team')
-              }}
+              onAdd={() => setEditingRegistration(null)}
             />
+            </>
           )}
 
           {activeSection === 'Players' && (
@@ -573,7 +583,7 @@ export function AdminPanel({
               onDelete={confirmDeleteMatch}
               onEditMatch={(match) => setEditingMatch(match)}
               onManageEvents={(match) => setEventMatch(match)}
-              onAdd={() => setModal('match')}
+              onAdd={(seasonId) => { setNewMatchSeasonId(seasonId); setModal('match') }}
             />
             </>
           )}
@@ -687,12 +697,14 @@ export function AdminPanel({
       )}
 
       {modal === 'match' && (
-        <MatchForm teams={teams} seasons={seasons} onClose={() => setModal(null)} onSave={onAddMatch} />
+        <MatchForm teams={teams} seasons={seasons} initialSeasonId={newMatchSeasonId} onClose={() => { setNewMatchSeasonId(undefined); setModal(null) }} onSave={onAddMatch} />
       )}
 
       {editingMatch && (
         <MatchScoreModal
           match={editingMatch}
+          teams={teams}
+          players={players}
           onClose={() => setEditingMatch(null)}
           onSave={onUpdateMatch}
         />
@@ -713,7 +725,6 @@ export function AdminPanel({
           key={teamInModal?.id ?? enteringClub?.team.id ?? 'new'}
           initial={teamInModal}
           template={teamInModal ? undefined : enteringClub ?? undefined}
-          defaultSeasonId={newClubSeasonId}
           hasMatches={!!teamInModal && matches.some((m) => m.homeTeamId === teamInModal.id || m.awayTeamId === teamInModal.id)}
           seasons={seasons}
           teams={teams}
@@ -738,6 +749,11 @@ export function AdminPanel({
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
         />
       )}
+
+      {editingRegistration !== undefined && <RegisteredClubForm initial={editingRegistration} players={players}
+        onClose={() => setEditingRegistration(undefined)} onSave={async (club, added) => {
+          await clubsRepository.save(club, added); await onRefresh()
+        }} />}
 
       {squadTeam && (
         <QuickSquadModal
@@ -812,6 +828,30 @@ export function AdminPanel({
   )
 }
 
+function SeasonOverview({ seasons, teams, players, matches, stories, role, onOpenModal, onManageMatchScore }: {
+  seasons: Season[]; teams: Team[]; players: Player[]; matches: Match[]; stories: Story[]; role: AuthProfile['role']
+  onOpenModal: (value: 'season' | 'match' | 'team' | 'player' | 'story') => void
+  onManageMatchScore: (match: Match) => void
+}) {
+  const { tr } = useAdminLanguage()
+  const [selected, setSelected] = useState<number | undefined>(() => defaultSeasonId(seasons))
+  const id = seasons.some((s) => s.id === selected) ? selected : defaultSeasonId(seasons)
+  const articles = stories.filter((s) => s.seasonId === id)
+  return <>
+    <label className="filter-group">{tr("Tournament")}<select aria-label={tr("Overview tournament")} value={id ?? ''} onChange={(e) => setSelected(Number(e.target.value))}>
+        {seasons.map((s) => <option key={s.id} value={s.id}>{seasonLabel(s)}</option>)}
+      </select>
+    </label>
+    <Overview seasonsCount={id ? 1 : 0} teams={teams.filter((t) => t.seasonId === id)}
+      players={players.filter((p) => p.squads.some((s) => s.seasonId === id))}
+      matches={matches.filter((m) => m.seasonId === id)}
+      published={articles.filter((s) => isStoryPublic(s)).length}
+      draft={articles.filter((s) => s.status === 'Draft').length}
+      scheduled={articles.filter((s) => s.status === 'Scheduled' && !isStoryPublic(s)).length}
+      role={role} onOpenModal={onOpenModal} onManageMatchScore={onManageMatchScore} />
+  </>
+}
+
 function Overview({
   seasonsCount,
   teams,
@@ -820,6 +860,7 @@ function Overview({
   published,
   draft,
   scheduled,
+  role,
   onOpenModal,
   onManageMatchScore,
 }: {
@@ -830,9 +871,11 @@ function Overview({
   published: number
   draft: number
   scheduled: number
+  role: AuthProfile['role']
   onOpenModal: (value: 'season' | 'match' | 'team' | 'player' | 'story') => void
   onManageMatchScore: (match: Match) => void
 }) {
+  const { tr } = useAdminLanguage()
   // Completed fixtures, most recent first. `matches` arrives ordered by
   // kickoff ascending, so the tail is the newest.
   const recentResults = useMemo(
@@ -854,7 +897,7 @@ function Overview({
           <div key={label}>
             <Icon />
             <strong>{value}</strong>
-            <span>{label}</span>
+            <span>{tr(label)}</span>
           </div>
         ))}
       </section>
@@ -862,13 +905,13 @@ function Overview({
       <div className="overview-grid">
         <section className="admin-panel upcoming">
           <div className="panel-header-row">
-            <h2>Live & Upcoming matches</h2>
+            <h2>{tr("Live & Upcoming matches")}</h2>
           </div>
-          <MatchTable matches={matches.filter((match) => match.matchStatus === 'live' || match.matchStatus === 'scheduled').slice(0, 4)} onEdit={onManageMatchScore} />
+          <MatchTable matches={matches.filter((match) => match.matchStatus === 'live' || match.matchStatus === 'scheduled').slice(0, 4)} onEdit={can(role, 'matches') ? onManageMatchScore : undefined} />
         </section>
 
         <section className="admin-panel activity">
-          <h2>Latest results</h2>
+          <h2>{tr("Latest results")}</h2>
           {/*
             This panel used to be four hardcoded rows with invented staff names
             and fabricated timestamps. There is no audit trail to build a real
@@ -878,8 +921,7 @@ function Overview({
           */}
           {recentResults.length === 0 ? (
             <p className="empty-text">
-              No results recorded yet. Completed fixtures appear here as scores are entered.
-            </p>
+              {tr("No results recorded yet. Completed fixtures appear here as scores are entered.")}</p>
           ) : (
             recentResults.map((match) => (
               <div className="activity-row" key={match.id}>
@@ -904,14 +946,14 @@ function Overview({
 
       <div className="overview-lower">
         <section className="admin-panel content-status">
-          <h2>Article status pipeline</h2>
+          <h2>{tr("Article status pipeline")}</h2>
           <div className="pipeline-cards-row">
             <div className="pipeline-card published">
               <div className="pipeline-icon">
                 <CheckCircle2 size={22} />
               </div>
               <div className="pipeline-info">
-                <span>Published</span>
+                <span>{tr("Published")}</span>
                 <strong>{published}</strong>
               </div>
             </div>
@@ -921,7 +963,7 @@ function Overview({
                 <Clock size={22} />
               </div>
               <div className="pipeline-info">
-                <span>Draft</span>
+                <span>{tr("Draft")}</span>
                 <strong>{draft}</strong>
               </div>
             </div>
@@ -931,7 +973,7 @@ function Overview({
                 <CalendarDays size={22} />
               </div>
               <div className="pipeline-info">
-                <span>Scheduled</span>
+                <span>{tr("Scheduled")}</span>
                 <strong>{scheduled}</strong>
               </div>
             </div>
@@ -939,24 +981,24 @@ function Overview({
         </section>
 
         <section className="admin-panel quick-actions">
-          <h2>Quick actions</h2>
+          <h2>{tr("Quick actions")}</h2>
           <div className="quick-actions-grid">
-            <button onClick={() => onOpenModal('season')}>
+            {can(role, 'seasons') && <button onClick={() => onOpenModal('season')}>
               <Trophy size={18} />
-              <span>New season</span>
-            </button>
-            <button onClick={() => onOpenModal('team')}>
+              <span>{tr("New season")}</span>
+            </button>}
+            {can(role, 'teams') && <button onClick={() => onOpenModal('team')}>
               <Shield size={18} />
-              <span>Register Club</span>
-            </button>
-            <button onClick={() => onOpenModal('player')}>
+              <span>{tr("Register Club")}</span>
+            </button>}
+            {can(role, 'players') && <button onClick={() => onOpenModal('player')}>
               <UserPlus size={18} />
-              <span>Add Player</span>
-            </button>
-            <button onClick={() => onOpenModal('match')}>
+              <span>{tr("Add Player")}</span>
+            </button>}
+            {can(role, 'matches') && <button onClick={() => onOpenModal('match')}>
               <CalendarDays size={18} />
-              <span>Schedule Match</span>
-            </button>
+              <span>{tr("Schedule Match")}</span>
+            </button>}
           </div>
         </section>
       </div>
@@ -985,6 +1027,7 @@ function SeasonsManager({
   onOpenGroupLeague: (season: Season) => void
   onAdd: () => void
 }) {
+  const { tr } = useAdminLanguage()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedYearFilter, setSelectedYearFilter] = useState<number | 'all'>(2026)
   const [pageSize, setPageSize] = useState(20)
@@ -1023,12 +1066,12 @@ function SeasonsManager({
       <div className="seasons-page-header">
         <div>
           <div className="admin-breadcrumb">
-            <span>Admin</span>
+            <span>{tr("Admin")}</span>
             <i>/</i>
-            <strong>Seasons</strong>
+            <strong>{tr("Seasons")}</strong>
           </div>
           <h2>
-            Seasons & Tournaments ({filtered.length}
+            {tr("Seasons & Tournaments (")}{filtered.length}
             {selectedYearFilter !== 'all' ? ` · ${selectedYearFilter}` : ''})
           </h2>
         </div>
@@ -1038,8 +1081,7 @@ function SeasonsManager({
         <div className="seasons-controls-bar">
           <div className="seasons-left-actions">
             <button className="button-yeni-ekle" onClick={onAdd}>
-              <Plus size={16} /> New Season
-            </button>
+              <Plus size={16} /> {tr(" New Season")}</button>
 
             <div className="season-year-dropdown-wrap">
               <CalendarDays size={16} className="dropdown-calendar-icon" />
@@ -1051,14 +1093,14 @@ function SeasonsManager({
                   setCurrentPage(1)
                 }}
                 className="season-year-select"
-                title="Filter by year"
+                title={tr("Filter by year")}
               >
-                <option value="all">All years ({seasons.length})</option>
+                <option value="all">{tr("All years (")}{seasons.length})</option>
                 {availableYears.map((yr) => {
                   const count = seasons.filter((s) => s.year === yr).length
                   return (
                     <option key={yr} value={yr}>
-                      {yr} ({count} {count === 1 ? 'competition' : 'competitions'})
+                      {yr} ({count} {count === 1 ? tr("competition") : tr("competitions")})
                     </option>
                   )
                 })}
@@ -1068,13 +1110,13 @@ function SeasonsManager({
 
             <span className="data-source seasons-bar-source">
               {backend === 'supabase' ? <Cloud size={14} /> : <HardDrive size={14} />}
-              {backend === 'supabase' ? 'Supabase' : 'Local persistent'}
+              {backend === 'supabase' ? tr("Supabase") : tr("Local persistent")}
             </span>
           </div>
 
           <div className="seasons-filter-right">
             <div className="gosterim-group">
-              <label>Show:</label>
+              <label>{tr("Show:")}</label>
               <select
                 value={pageSize}
                 onChange={(e) => {
@@ -1090,7 +1132,7 @@ function SeasonsManager({
             </div>
 
             <div className="arama-group">
-              <label>Search:</label>
+              <label>{tr("Search:")}</label>
               <input
                 type="text"
                 value={searchTerm}
@@ -1098,7 +1140,7 @@ function SeasonsManager({
                   setSearchTerm(e.target.value)
                   setCurrentPage(1)
                 }}
-                placeholder="Search seasons or cities…"
+                placeholder={tr("Search seasons or cities…")}
               />
             </div>
           </div>
@@ -1108,14 +1150,14 @@ function SeasonsManager({
           <table className="seasons-table">
             <thead>
               <tr>
-                <th scope="col" style={{ width: '40px' }} aria-label="Sort">
+                <th scope="col" style={{ width: '40px' }} aria-label={tr("Sort")}>
                   <span className="th-sort-icon">▼</span>
                 </th>
-                <th scope="col">Title</th>
-                <th scope="col">City</th>
-                <th scope="col">Year</th>
-                <th scope="col">Status</th>
-                <th scope="col" style={{ width: '150px', textAlign: 'center' }}>Actions</th>
+                <th scope="col">{tr("Title")}</th>
+                <th scope="col">{tr("City")}</th>
+                <th scope="col">{tr("Year")}</th>
+                <th scope="col">{tr("Status")}</th>
+                <th scope="col" style={{ width: '150px', textAlign: 'center' }}>{tr("Actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1136,9 +1178,9 @@ function SeasonsManager({
                   <td>
                     {/* Publication and "current" are separate: a current season can still be a draft. */}
                     <span className={`season-status-pill ${(season.status ?? 'published') === 'published' ? 'active' : 'archived'}`}>
-                      {SEASON_STATUS_LABEL[season.status ?? 'published']}
+                      {tr(SEASON_STATUS_LABEL[season.status ?? 'published'])}
                     </span>
-                    {season.isActive ? <span className="season-status-pill active">Current</span> : null}
+                    {season.status === 'published' && season.id === defaultSeasonId(seasons) ? <span className="season-status-pill active">{tr("Public default")}</span> : null}
                   </td>
                   <td>
                     <div className="seasons-action-buttons">
@@ -1146,8 +1188,8 @@ function SeasonsManager({
                         <button
                           className="btn-season-action group-league"
                           onClick={() => onOpenGroupLeague(season)}
-                          title="Open group tables"
-                          aria-label={`Open group tables for ${season.fullName}`}
+                          title={tr("Open group tables")}
+                          aria-label={tr("Open group tables for {value0}", { value0: season.fullName })}
                         >
                           <Grid size={15} aria-hidden="true" />
                         </button>
@@ -1155,8 +1197,8 @@ function SeasonsManager({
                         <button
                           className="btn-season-action league"
                           onClick={() => onOpenLeague(season)}
-                          title="Open league table"
-                          aria-label={`Open league table for ${season.fullName}`}
+                          title={tr("Open league table")}
+                          aria-label={tr("Open league table for {value0}", { value0: season.fullName })}
                         >
                           <List size={15} aria-hidden="true" />
                         </button>
@@ -1164,8 +1206,8 @@ function SeasonsManager({
                         <button
                           className="btn-season-action bracket"
                           onClick={() => onOpenBracket(season)}
-                          title="Open knockout bracket"
-                          aria-label={`Open knockout bracket for ${season.fullName}`}
+                          title={tr("Open knockout bracket")}
+                          aria-label={tr("Open knockout bracket for {value0}", { value0: season.fullName })}
                         >
                           <Trophy size={15} aria-hidden="true" />
                         </button>
@@ -1173,22 +1215,22 @@ function SeasonsManager({
                       {season.bracket?.qualification ? <button
                         className="btn-season-action bracket"
                         onClick={() => onOpenBracket(season)}
-                        title="Open knockout bracket"
-                        aria-label={`Open knockout bracket for ${season.fullName}`}
+                        title={tr("Open knockout bracket")}
+                        aria-label={tr("Open knockout bracket for {value0}", { value0: season.fullName })}
                       ><Trophy size={15} aria-hidden="true" /></button> : null}
                       <button
                         className="btn-season-action settings"
                         onClick={() => onEdit(season)}
-                        title="Edit season"
-                        aria-label={`Edit season ${season.fullName}`}
+                        title={tr("Edit season")}
+                        aria-label={tr("Edit season {value0}", { value0: season.fullName })}
                       >
                         <Settings size={15} aria-hidden="true" />
                       </button>
                       <button
                         className="btn-season-action delete"
                         onClick={() => void onDelete(season.id)}
-                        title="Delete season"
-                        aria-label={`Delete season ${season.fullName}`}
+                        title={tr("Delete season")}
+                        aria-label={tr("Delete season {value0}", { value0: season.fullName })}
                       >
                         <Trash2 size={15} aria-hidden="true" />
                       </button>
@@ -1199,7 +1241,7 @@ function SeasonsManager({
               {paginated.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: '#8c9bad' }}>
-                    No seasons yet. Use "New Season" to add the first one.
+                    {seasons.length ? tr("No seasons match these filters.") : tr("No seasons yet. Use \"New Season\" to add the first one.")}
                   </td>
                 </tr>
               )}
@@ -1209,16 +1251,15 @@ function SeasonsManager({
 
         <div className="seasons-table-footer">
           <span>
-            Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
-            {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
+            {tr("Showing ")}{filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+            {Math.min(currentPage * pageSize, filtered.length)} {tr(" of ")}{filtered.length}
           </span>
           <div className="seasons-pagination-btns">
             <button
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             >
-              ← Previous
-            </button>
+              {tr("← Previous")}</button>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
               <button
                 key={pageNum}
@@ -1232,8 +1273,7 @@ function SeasonsManager({
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             >
-              Next →
-            </button>
+              {tr("Next →")}</button>
           </div>
         </div>
       </div>
@@ -1253,6 +1293,7 @@ function SeasonModal({
   onClose: () => void
   onSave: (season: Season) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   // The draw builders place this season's club entries only, as the Seasons table's buttons do.
   const seasonTeams = teams.filter((team) => team.seasonId == null || team.seasonId === initial?.id)
   const [city, setCity] = useState(initial?.city ?? 'Antalya')
@@ -1285,7 +1326,8 @@ function SeasonModal({
   const [openBracketBuilder, setOpenBracketBuilder] = useState(false)
   const [openLeagueBuilder, setOpenLeagueBuilder] = useState(false)
   const [openGroupLeagueBuilder, setOpenGroupLeagueBuilder] = useState(false)
-  const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
+  const [endDate, setEndDate] = useState(initial?.endDate ?? '')
   // New seasons start as drafts so they stay off the public site until ready.
   const [status, setStatus] = useState<SeasonStatus>(initial?.status ?? (initial ? 'published' : 'draft'))
   const [saving, setSaving] = useState(false)
@@ -1351,7 +1393,8 @@ function SeasonModal({
         bracket: finalBracket,
         league: seasonType === 'league' ? (league ?? { teamCount: 0, slots: [] }) : undefined,
         groupLeague: seasonType === 'group_league' ? (groupLeague ?? generateEmptyGroupLeague(groupCount)) : undefined,
-        isActive,
+        startDate,
+        endDate: endDate || undefined,
         status,
       })
       onClose()
@@ -1367,11 +1410,10 @@ function SeasonModal({
 
   return (
     <>
-      <Modal title={initial ? `Edit Season: ${initial.fullName}` : 'New Season'} onClose={onClose}>
+      <Modal title={initial ? tr("Edit Season: {value0}", { value0: initial.fullName }) : tr("New Season")} onClose={onClose}>
         <form className="admin-form" onSubmit={submit}>
           <label>
-            City *
-            <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {tr("City *")}<select value={city} onChange={(e) => setCity(e.target.value)}>
               {HOST_CITIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -1381,8 +1423,7 @@ function SeasonModal({
           </label>
 
           <label>
-            Year *
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+            {tr("Year *")}<select value={year} onChange={(e) => setYear(Number(e.target.value))}>
               {yearsList.map((y) => (
                 <option key={y} value={y}>
                   {y}
@@ -1392,18 +1433,16 @@ function SeasonModal({
           </label>
 
           <label className="span-2">
-            Season name *
-            <input
+            {tr("Season name *")}<input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. International Corporate Cup"
+              placeholder={tr("e.g. International Corporate Cup")}
               required
             />
           </label>
 
           <label className={seasonType === 'league' ? 'span-2' : ''}>
-            Format *
-            <select
+            {tr("Format *")}<select
               value={knockout && seasonType !== 'tournament' ? `${seasonType}_knockout` : seasonType}
               onChange={(e) => {
                 const hasKnockout = e.target.value.endsWith('_knockout')
@@ -1422,32 +1461,30 @@ function SeasonModal({
                 }
               }}
             >
-              <option value="tournament">🏆 Tournament (knockout bracket)</option>
-              <option value="league">⚽ League (single table)</option>
-              <option value="group_league">🗂️ Group league (multiple groups)</option>
-              <option value="league_knockout">⚽ League → Knockout (single table, then elimination)</option>
-              <option value="group_league_knockout">🗂️ Groups → Knockout (group tables, then elimination)</option>
+              <option value="tournament">{tr("🏆 Tournament (knockout bracket)")}</option>
+              <option value="league">{tr("⚽ League (single table)")}</option>
+              <option value="group_league">{tr("🗂️ Group league (multiple groups)")}</option>
+              <option value="league_knockout">{tr("⚽ League → Knockout (single table, then elimination)")}</option>
+              <option value="group_league_knockout">{tr("🗂️ Groups → Knockout (group tables, then elimination)")}</option>
             </select>
           </label>
 
           {seasonType === 'tournament' && (
             <label>
-              Number of teams *
-              <select
+              {tr("Number of teams *")}<select
                 value={teamCount}
                 onChange={(e) => handleTournamentTeamCountChange(Number(e.target.value))}
               >
-                <option value={4}>4 teams (semi-finals → final)</option>
-                <option value={8}>8 teams (quarter-finals → final)</option>
-                <option value={16}>16 teams (round of 16 → final)</option>
+                <option value={4}>{tr("4 teams (semi-finals → final)")}</option>
+                <option value={8}>{tr("8 teams (quarter-finals → final)")}</option>
+                <option value={16}>{tr("16 teams (round of 16 → final)")}</option>
               </select>
             </label>
           )}
 
           {seasonType === 'group_league' && (
             <label>
-              Number of groups *
-              <select
+              {tr("Number of groups *")}<select
                 value={groupCount}
                 onChange={(e) => {
                   const count = Number(e.target.value)
@@ -1459,7 +1496,7 @@ function SeasonModal({
               >
                 {groupCountOptions.map((c) => (
                   <option key={c} value={c}>
-                    {c} groups ({c === 2 ? 'A, B' : c === 4 ? 'A, B, C, D' : `${c} groups`})
+                    {c} {tr(" groups (")}{c === 2 ? tr("A, B") : c === 4 ? tr("A, B, C, D") : tr("{value0} groups", { value0: c })})
                   </option>
                 ))}
               </select>
@@ -1468,14 +1505,14 @@ function SeasonModal({
 
           {knockout && seasonType !== 'tournament' ? <div className="span-2 qualification-settings">
             <label>
-              {seasonType === 'group_league' ? 'Qualifiers per group' : 'Qualifiers from the table'}
+              {seasonType === 'group_league' ? tr("Qualifiers per group") : tr("Qualifiers from the table")}
               <select value={qualifiersPerTable} onChange={(event) => setQualifiersPerTable(Number(event.target.value))}>
-                {qualificationOptions(seasonType === 'group_league' ? groupCount : 1).map((count) => <option key={count} value={count}>Top {count}</option>)}
+                {qualificationOptions(seasonType === 'group_league' ? groupCount : 1).map((count) => <option key={count} value={count}>{tr("Top ")}{count}</option>)}
               </select>
             </label>
             <p>{qualificationOptions(seasonType === 'group_league' ? groupCount : 1).length
-              ? `${qualifiersPerTable * (seasonType === 'group_league' ? groupCount : 1)} clubs enter the knockout stage. Assign clubs to the table(s), enter results in Matches, then generate the draw from Standings.`
-              : 'Choose 2, 4 or 8 groups for a knockout stage.'}</p>
+              ? tr("{value0} clubs enter the knockout stage. Assign clubs to the table(s), enter results in Matches, then generate the draw from Standings.", { value0: qualifiersPerTable * (seasonType === 'group_league' ? groupCount : 1) })
+              : tr("Choose 2, 4 or 8 groups for a knockout stage.")}</p>
           </div> : null}
 
           {seasonType === 'tournament' && (
@@ -1483,11 +1520,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>Knockout bracket</strong>
+                  <strong>{tr("Knockout bracket")}</strong>
                   <span>
                     {bracket
-                      ? `${teamCount}-team bracket set up (edit the draw and pairings)`
-                      : `Empty ${teamCount}-team bracket`}
+                      ? tr("{value0}-team bracket set up (edit the draw and pairings)", { value0: teamCount })
+                      : tr("Empty {value0}-team bracket", { value0: teamCount })}
                   </span>
                 </div>
               </div>
@@ -1496,8 +1533,7 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenBracketBuilder(true)}
               >
-                <Trophy size={15} /> Open bracket
-              </button>
+                <Trophy size={15} /> {tr(" Open bracket")}</button>
             </div>
           )}
 
@@ -1506,11 +1542,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>League table</strong>
+                  <strong>{tr("League table")}</strong>
                   <span>
                     {league && league.slots.length > 0
-                      ? `${league.slots.length} teams in the table (edit order and teams)`
-                      : 'Empty league table (drag clubs in)'}
+                      ? tr("{value0} teams in the table (edit order and teams)", { value0: league.slots.length })
+                      : tr("Empty league table (drag clubs in)")}
                   </span>
                 </div>
               </div>
@@ -1519,8 +1555,7 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenLeagueBuilder(true)}
               >
-                ⚽ Open league table
-              </button>
+                {tr("⚽ Open league table")}</button>
             </div>
           )}
 
@@ -1529,11 +1564,11 @@ function SeasonModal({
               <div className="bracket-launch-info">
                 <Trophy size={20} className="trophy-accent" />
                 <div>
-                  <strong>Group tables ({groupCount} groups)</strong>
+                  <strong>{tr("Group tables (")}{groupCount} {tr(" groups)")}</strong>
                   <span>
                     {groupLeague && groupLeague.groups.some((g) => g.slots.length > 0)
-                      ? `${groupLeague.groups.reduce((acc, g) => acc + g.slots.length, 0)} teams assigned to groups`
-                      : `${groupCount} empty groups (drag clubs in)`}
+                      ? tr("{value0} teams assigned to groups", { value0: groupLeague.groups.reduce((acc, g) => acc + g.slots.length, 0) })
+                      : tr("{value0} empty groups (drag clubs in)", { value0: groupCount })}
                   </span>
                 </div>
               </div>
@@ -1542,32 +1577,25 @@ function SeasonModal({
                 className="button button-admin"
                 onClick={() => setOpenGroupLeagueBuilder(true)}
               >
-                🗂️ Open group tables
-              </button>
+                {tr("🗂️ Open group tables")}</button>
             </div>
           )}
 
           <label className="span-2">
-            Visibility
-            <select value={status} onChange={(e) => setStatus(e.target.value as SeasonStatus)}>
-              <option value="draft">Draft — hidden from the public site</option>
-              <option value="published">Published — shown on the public site</option>
-              <option value="archived">Archived — hidden from the public site</option>
+            {tr("Visibility")}<select value={status} onChange={(e) => setStatus(e.target.value as SeasonStatus)}>
+              <option value="draft">{tr("Draft — hidden from the public site")}</option>
+              <option value="published">{tr("Published — shown on the public site")}</option>
+              <option value="archived">{tr("Archived — hidden from the public site")}</option>
             </select>
           </label>
 
-          <label className="checkbox-label span-2">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-            />
-            <span>Mark as the current season (the public site opens on it when it is published)</span>
-          </label>
+          <label>{tr("Start date *")}<input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+          <label>{tr("End date")}<input type="date" min={startDate} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+          <small className="field-hint span-2">{tr("The latest published tournament by start date opens by default across all cities, including future tournaments.")}</small>
 
-          {saveError ? <div className="form-error span-2">{saveError}</div> : null}
+          {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
 
-          <FormActions onClose={onClose} label={initial ? 'Save Changes' : 'Add season'} saving={saving} />
+          <FormActions onClose={onClose} label={initial ? tr("Save Changes") : tr("Add season")} saving={saving} />
         </form>
       </Modal>
 
@@ -1638,6 +1666,7 @@ function TeamsManager({
   /** Register a new club, starting on the season being viewed (if one is). */
   onAdd: (seasonId?: number) => void
 }) {
+  const { tr } = useAdminLanguage()
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   // Each season has its own club entries; the same club can appear once per season.
   const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => defaultSeasonId(seasons) ?? 'all')
@@ -1649,46 +1678,43 @@ function TeamsManager({
   }
   const [searchTerm, setSearchTerm] = useState('')
   const [countryFilter, setCountryFilter] = useState('All')
-  const [formatFilter, setFormatFilter] = useState('All')
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => {
       if (searchTerm && !team.name.toLowerCase().includes(searchTerm.toLowerCase())) return false
       if (countryFilter !== 'All' && team.countryCode !== countryFilter) return false
-      if (formatFilter !== 'All' && team.tournamentFormat !== formatFilter) return false
       return true
     })
-  }, [teams, searchTerm, countryFilter, formatFilter])
+  }, [teams, searchTerm, countryFilter])
 
   return (
     <section className="manager-view">
       <div className="manager-head">
         <div>
-          <h2>Teams & Participating Clubs ({teams.length})</h2>
-          <p>The foundational data entry point: manage club branding, logos, country flags, and rosters.</p>
+          <h2>{tr("Teams & Participating Clubs (")}{teams.length})</h2>
+          <p>{tr("The foundational data entry point: manage club branding, logos, country flags, and rosters.")}</p>
         </div>
         <div className="manager-head-actions">
           {enterable.length > 0 && seasonFilter !== 'all' ? (
             <select
-              aria-label="Enter a club from another season"
+              aria-label={tr("Enter a club from another season")}
               value=""
               onChange={(e) => {
                 const team = enterable.find((item) => item.id === Number(e.target.value))
                 if (team) onEnterClub(team, seasonFilter)
               }}
             >
-              <option value="">Enter an existing club in this season…</option>
+              <option value="">{tr("Enter an existing club in this season…")}</option>
               {enterable.map((team) => (
                 <option key={team.id} value={team.id}>
-                  {team.name} · last in {seasonName(team.seasonId)}
+                  {team.name} {tr(" · last in ")}{seasonName(team.seasonId)}
                 </option>
               ))}
             </select>
           ) : null}
           <button className="button button-admin" onClick={() => onAdd(seasonFilter === 'all' ? undefined : seasonFilter)}>
             <Plus />
-            Register New Club
-          </button>
+            {tr("Register New Club")}</button>
         </div>
       </div>
 
@@ -1696,12 +1722,12 @@ function TeamsManager({
       <div className="filter-bar">
         <div className="filter-group">
           <CalendarDays size={16} />
-          <span>Season:</span>
+          <span>{tr("Season:")}</span>
           <select
             value={seasonFilter}
             onChange={(e) => setSeasonFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
           >
-            <option value="all">All seasons</option>
+            <option value="all">{tr("All seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
@@ -1714,7 +1740,7 @@ function TeamsManager({
           <Search size={16} />
           <input
             type="text"
-            placeholder="Search by club name..."
+            placeholder={tr("Search by club name...")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
@@ -1723,40 +1749,31 @@ function TeamsManager({
 
         <div className="filter-group">
           <Globe size={16} />
-          <span>Country:</span>
+          <span>{tr("Country:")}</span>
           <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-            <option value="All">All Countries</option>
+            <option value="All">{tr("All Countries")}</option>
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.name}
+                {c.flag} {tr(c.name)}
               </option>
             ))}
           </select>
         </div>
 
-        <div className="filter-group">
-          <Trophy size={16} />
-          <span>Tournament:</span>
-          <select value={formatFilter} onChange={(e) => setFormatFilter(e.target.value)}>
-            <option value="All">All Formats</option>
-            <option value="Champions Cup">Champions Cup</option>
-            <option value="Challenge Cup">Challenge Cup</option>
-            <option value="Open League">Open League</option>
-          </select>
-        </div>
+
 
         <div className="view-mode-toggle">
           <button
             className={viewMode === 'table' ? 'active' : ''}
             onClick={() => setViewMode('table')}
-            title="Table View"
+            title={tr("Table View")}
           >
             <List size={16} />
           </button>
           <button
             className={viewMode === 'grid' ? 'active' : ''}
             onClick={() => setViewMode('grid')}
-            title="Grid View"
+            title={tr("Grid View")}
           >
             <Grid size={16} />
           </button>
@@ -1769,20 +1786,19 @@ function TeamsManager({
           <table className="admin-table teams-table">
             <thead>
               <tr>
-                <th scope="col">CLUB & CREST</th>
-                <th scope="col">COUNTRY</th>
-                <th scope="col">TOURNAMENT & GROUP</th>
-                <th scope="col">MANAGER / COACH</th>
-                <th scope="col">SQUAD STATUS</th>
-                <th scope="col">STANDINGS</th>
-                <th scope="col">ACTIONS</th>
+                <th scope="col">{tr("CLUB & CREST")}</th>
+                <th scope="col">{tr("COUNTRY")}</th>
+                <th scope="col">{tr("TOURNAMENT & GROUP")}</th>
+                <th scope="col">{tr("MANAGER / COACH")}</th>
+                <th scope="col">{tr("SQUAD STATUS")}</th>
+                <th scope="col">{tr("STANDINGS")}</th>
+                <th scope="col">{tr("ACTIONS")}</th>
               </tr>
             </thead>
             <tbody>
               {filteredTeams.map((team) => {
                 const squad = squadOf(players, team.id)
                 const country = getCountry(team.countryCode)
-                const isComplete = squad.length >= MIN_SQUAD
 
                 return (
                   <tr key={team.id}>
@@ -1806,38 +1822,31 @@ function TeamsManager({
                     <td>
                       <span className="country-badge">
                         <span className="flag-emoji">{country.flag}</span>
-                        <span>{country.name}</span>
+                        <span>{tr(country.name)}</span>
                       </span>
                     </td>
                     <td>
                       <div className="tournament-tag-group">
-                        <span className="tournament-pill">{team.tournamentFormat ?? 'Champions Cup'}</span>
-                        <span className="group-pill">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? 'Not drawn'}</span>
+                        <span className="tournament-pill">{seasonName(team.seasonId)}</span>
+                        <span className="group-pill">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? tr("Not drawn")}</span>
                       </div>
                     </td>
                     <td>
                       <div className="staff-info">
                         <strong>{team.managerName || '—'}</strong>
-                        <span>Coach: {team.coachName || '—'}</span>
+                        <span>{tr("Coach: ")}{team.coachName || '—'}</span>
                       </div>
                     </td>
                     <td>
                       <div className="squad-indicator">
-                        {isComplete ? (
-                          <span className="squad-badge complete">
-                            <CheckCircle2 size={13} aria-hidden="true" /> {squad.length} Players (Ready)
-                          </span>
-                        ) : (
-                          <span className="squad-badge incomplete" title="Minimum 5 squad members required for matchday">
-                            <AlertCircle size={13} aria-hidden="true" /> {squad.length}/5 (Needs {5 - squad.length} more)
-                          </span>
-                        )}
+                        <span className="squad-badge complete">
+                          <Users size={13} aria-hidden="true" /> {squad.length} {tr(" Players (Registered)")}</span>
                       </div>
                     </td>
                     <td>
                       <div className="standings-mini">
-                        <strong>{team.points} pts</strong>
-                        <span>({team.played}P / GD: {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference})</span>
+                        <strong>{team.points} {tr(" pts")}</strong>
+                        <span>({team.played}{tr("P / GD: ")}{team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference})</span>
                       </div>
                     </td>
                     <td>
@@ -1847,33 +1856,33 @@ function TeamsManager({
                             className="row-action"
                             style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
                             onClick={() => onOpenSquadCanvas(team)}
-                            title="Formation & pitch canvas"
-                            aria-label={`Formation and pitch canvas for ${team.name}`}
+                            title={tr("Formation & pitch canvas")}
+                            aria-label={tr("Formation and pitch canvas for {value0}", { value0: team.name })}
                           >
-                            <Sparkles size={14} aria-hidden="true" /> <span className="row-action-label">Pitch</span>
+                            <Sparkles size={14} aria-hidden="true" /> <span className="row-action-label">{tr("Pitch")}</span>
                           </button>
                         )}
                         <button
                           className="row-action secondary"
                           onClick={() => onManageSquad(team)}
-                          title="Manage Squad Roster"
-                          aria-label={`Manage squad roster for ${team.name}`}
+                          title={tr("Manage Squad Roster")}
+                          aria-label={tr("Manage squad roster for {value0}", { value0: team.name })}
                         >
-                          <Users size={14} aria-hidden="true" /> <span className="row-action-label">Squad</span> ({squad.length})
+                          <Users size={14} aria-hidden="true" /> <span className="row-action-label">{tr("Squad")}</span> ({squad.length})
                         </button>
                         <button
                           className="row-action"
                           onClick={() => onEdit(team)}
-                          title="Edit Club Details"
-                          aria-label={`Edit ${team.name} details`}
+                          title={tr("Edit Club Details")}
+                          aria-label={tr("Edit {value0} details", { value0: team.name })}
                         >
-                          <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">Edit</span>
+                          <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">{tr("Edit")}</span>
                         </button>
                         <button
                           className="row-action danger"
                           onClick={() => void onDelete(team.id)}
-                          title="Delete Club"
-                          aria-label={`Delete club ${team.name}`}
+                          title={tr("Delete Club")}
+                          aria-label={tr("Delete club {value0}", { value0: team.name })}
                         >
                           <Trash2 size={14} aria-hidden="true" />
                         </button>
@@ -1885,8 +1894,7 @@ function TeamsManager({
               {filteredTeams.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: '#8c9bad' }}>
-                    No clubs found matching your search.
-                  </td>
+                    {tr("No clubs found matching your search.")}</td>
                 </tr>
               )}
             </tbody>
@@ -1898,7 +1906,6 @@ function TeamsManager({
           {filteredTeams.map((team) => {
             const squad = squadOf(players, team.id)
             const country = getCountry(team.countryCode)
-            const isComplete = squad.length >= MIN_SQUAD
 
             return (
               <div className="team-admin-card" key={team.id}>
@@ -1909,9 +1916,9 @@ function TeamsManager({
                   }}
                 >
                   <span className="card-flag-badge">
-                    {country.flag} {country.name}
+                    {country.flag} {tr(country.name)}
                   </span>
-                  <span className="card-format-badge">{team.tournamentFormat ?? 'Champions Cup'}</span>
+                  <span className="card-format-badge">{seasonName(team.seasonId)}</span>
                 </div>
 
                 <div className="team-card-body">
@@ -1925,33 +1932,26 @@ function TeamsManager({
                     />
                     <div>
                       <h3>{team.name}</h3>
-                      <span className="card-group-label">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? 'Not drawn'}</span>
+                      <span className="card-group-label">{assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id) ?? tr("Not drawn")}</span>
                     </div>
                   </div>
 
-                  <p className="team-card-bio">{team.bio || 'Participating member in the CCL Cup.'}</p>
+                  <p className="team-card-bio">{team.bio || tr("Participating member in the CCL Cup.")}</p>
 
                   <div className="team-card-meta">
                     <div>
-                      <span>Manager</span>
+                      <span>{tr("Manager")}</span>
                       <strong>{team.managerName || '—'}</strong>
                     </div>
                     <div>
-                      <span>Coach</span>
+                      <span>{tr("Coach")}</span>
                       <strong>{team.coachName || '—'}</strong>
                     </div>
                   </div>
 
                   <div className="team-card-squad-status">
-                    {isComplete ? (
-                      <span className="squad-badge complete">
-                        <CheckCircle2 size={13} /> {squad.length} Players (Complete Squad)
-                      </span>
-                    ) : (
-                      <span className="squad-badge incomplete">
-                        <AlertCircle size={13} /> {squad.length}/5 Players (Minimum 5 required)
-                      </span>
-                    )}
+                    <span className="squad-badge complete">
+                      <Users size={13} aria-hidden="true" /> {squad.length} {tr(" registered players")}</span>
                   </div>
 
                   <div className="team-card-actions">
@@ -1960,17 +1960,15 @@ function TeamsManager({
                         className="button button-secondary"
                         style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
                         onClick={() => onOpenSquadCanvas(team)}
-                        title="Formation & pitch canvas"
+                        title={tr("Formation & pitch canvas")}
                       >
-                        <Sparkles size={14} /> Pitch
-                      </button>
+                        <Sparkles size={14} /> {tr(" Pitch")}</button>
                     )}
                     <button className="button button-secondary" onClick={() => onManageSquad(team)}>
-                      <Users size={14} /> Roster ({squad.length})
+                      <Users size={14} /> {tr(" Roster (")}{squad.length})
                     </button>
                     <button className="button button-admin" onClick={() => onEdit(team)}>
-                      <Edit2 size={14} /> Edit Club
-                    </button>
+                      <Edit2 size={14} /> {tr(" Edit Club")}</button>
                   </div>
                 </div>
               </div>
@@ -1997,6 +1995,7 @@ function PlayersManager({
   onEdit: (player: Player) => void
   onAdd: () => void
 }) {
+  const { tr } = useAdminLanguage()
   const [selectedTeam, setSelectedTeam] = useState<string>('All')
   const [selectedPos, setSelectedPos] = useState<string>('All')
   const [searchPlayer, setSearchPlayer] = useState('')
@@ -2025,13 +2024,12 @@ function PlayersManager({
     <section className="manager-view">
       <div className="manager-head">
         <div>
-          <h2>Players & Rosters ({players.length})</h2>
-          <p>Register squad members, assign shirt numbers, positions, and active seasons.</p>
+          <h2>{tr("Players & Rosters (")}{players.length})</h2>
+          <p>{tr("Register squad members, assign shirt numbers, positions, and active seasons.")}</p>
         </div>
         <button className="button button-admin" onClick={onAdd}>
           <Plus />
-          Register Player
-        </button>
+          {tr("Register Player")}</button>
       </div>
 
       <div className="filter-bar">
@@ -2039,7 +2037,7 @@ function PlayersManager({
           <Search size={16} />
           <input
             type="text"
-            placeholder="Search player name..."
+            placeholder={tr("Search player name...")}
             value={searchPlayer}
             onChange={(e) => setSearchPlayer(e.target.value)}
             className="search-input"
@@ -2047,10 +2045,10 @@ function PlayersManager({
         </div>
         <div className="filter-group">
           <Filter size={16} />
-          <span>Team:</span>
-          <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
-            <option value="All">All Teams</option>
-            <option value="Free Agent">Free agents</option>
+          <span>{tr("Team:")}</span>
+          <select aria-label={tr("Team")} value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+            <option value="All">{tr("All Teams")}</option>
+            <option value="Free Agent">{tr("Free agents")}</option>
             {clubNames.map((clubName) => (
               <option key={clubName} value={clubName}>
                 {clubName}
@@ -2059,13 +2057,13 @@ function PlayersManager({
           </select>
         </div>
         <div className="filter-group">
-          <span>Position:</span>
+          <span>{tr("Position:")}</span>
           <select value={selectedPos} onChange={(e) => setSelectedPos(e.target.value)}>
-            <option value="All">All Positions</option>
-            <option value="Goalkeeper">Goalkeeper</option>
-            <option value="Defender">Defender</option>
-            <option value="Midfielder">Midfielder</option>
-            <option value="Forward">Forward</option>
+            <option value="All">{tr("All Positions")}</option>
+            <option value="Goalkeeper">{tr("Goalkeeper")}</option>
+            <option value="Defender">{tr("Defender")}</option>
+            <option value="Midfielder">{tr("Midfielder")}</option>
+            <option value="Forward">{tr("Forward")}</option>
           </select>
         </div>
       </div>
@@ -2075,12 +2073,12 @@ function PlayersManager({
           <thead>
             <tr>
               <th scope="col">#</th>
-              <th scope="col">PLAYER</th>
-              <th scope="col">TEAM</th>
-              <th scope="col">POSITION</th>
-              <th scope="col">PLAYED SEASONS</th>
-              <th scope="col">STATS</th>
-              <th scope="col">ACTIONS</th>
+              <th scope="col">{tr("PLAYER")}</th>
+              <th scope="col">{tr("TEAM")}</th>
+              <th scope="col">{tr("POSITION")}</th>
+              <th scope="col">{tr("PLAYED SEASONS")}</th>
+              <th scope="col">{tr("STATS")}</th>
+              <th scope="col">{tr("ACTIONS")}</th>
             </tr>
           </thead>
           <tbody>
@@ -2092,7 +2090,7 @@ function PlayersManager({
                 <td>
                   <div className="player-cell">
                     <strong>{player.fullName}</strong>
-                    {player.isCaptain && <span className="captain-badge" title="Team Captain" aria-label="Team Captain">C</span>}
+                    {player.isCaptain && <span className="captain-badge" title={tr("Team Captain")} aria-label={tr("Team Captain")}>{tr("C")}</span>}
                   </div>
                 </td>
                 <td>
@@ -2106,11 +2104,11 @@ function PlayersManager({
                       <span>{currentClub(player)!.name}</span>
                     </span>
                   ) : (
-                    <span className="free-agent-badge">Free agent</span>
+                    <span className="free-agent-badge">{tr("Free agent")}</span>
                   )}
                 </td>
                 <td>
-                  <span className={`position-tag ${player.position}`}>{POSITION_SHORT[player.position]}</span>
+                  <span className={`position-tag ${player.position}`}>{tr(POSITION_SHORT[player.position])}</span>
                 </td>
                 <td>
                   <div className="season-tags-list">
@@ -2131,16 +2129,16 @@ function PlayersManager({
                     <button
                       className="row-action"
                       onClick={() => onEdit(player)}
-                      title="Edit player"
-                      aria-label={`Edit player ${player.fullName}`}
+                      title={tr("Edit player")}
+                      aria-label={tr("Edit player {value0}", { value0: player.fullName })}
                     >
-                      <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">Edit</span>
+                      <Edit2 size={14} aria-hidden="true" /> <span className="row-action-label">{tr("Edit")}</span>
                     </button>
                     <button
                       className="row-action danger"
                       onClick={() => void onDelete(player.id)}
-                      title="Delete player"
-                      aria-label={`Delete player ${player.fullName}`}
+                      title={tr("Delete player")}
+                      aria-label={tr("Delete player {value0}", { value0: player.fullName })}
                     >
                       <Trash2 size={14} aria-hidden="true" />
                     </button>
@@ -2151,8 +2149,7 @@ function PlayersManager({
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: '#8c9bad' }}>
-                  No players found matching current filter.
-                </td>
+                  {tr("No players found matching current filter.")}</td>
               </tr>
             )}
           </tbody>
@@ -2175,8 +2172,9 @@ function MatchesManager({
   onDelete: (id: number) => Promise<void>
   onEditMatch: (match: Match) => void
   onManageEvents: (match: Match) => void
-  onAdd: () => void
+  onAdd: (seasonId?: number) => void
 }) {
+  const { tr } = useAdminLanguage()
   const [filterStatus, setFilterStatus] = useState<string>('All')
   const [filterSeason, setFilterSeason] = useState<string>('All')
 
@@ -2192,30 +2190,29 @@ function MatchesManager({
     <section className="manager-view">
       <div className="manager-head">
         <div>
-          <h2>Matches & Scorekeeping ({matches.length})</h2>
-          <p>Schedule fixtures, record live match scores, and log event timelines.</p>
+          <h2>{tr("Matches & Scorekeeping (")}{matches.length})</h2>
+          <p>{tr("Schedule fixtures, record live match scores, and log event timelines.")}</p>
         </div>
-        <button className="button button-admin" onClick={onAdd}>
+        <button className="button button-admin" onClick={() => onAdd(filterSeason === 'All' ? undefined : Number(filterSeason))}>
           <Plus />
-          Schedule Match
-        </button>
+          {tr("Schedule Match")}</button>
       </div>
 
       <div className="filter-bar">
         <div className="filter-group">
-          <span>Status:</span>
+          <span>{tr("Status:")}</span>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="All">All Matches</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Live">Live</option>
-            <option value="Completed">Completed</option>
-            <option value="Postponed">Postponed</option>
+            <option value="All">{tr("All Matches")}</option>
+            <option value="Scheduled">{tr("Scheduled")}</option>
+            <option value="Live">{tr("Live")}</option>
+            <option value="Completed">{tr("Completed")}</option>
+            <option value="Postponed">{tr("Postponed")}</option>
           </select>
         </div>
         <div className="filter-group">
-          <span>Season:</span>
+          <span>{tr("Season:")}</span>
           <select value={filterSeason} onChange={(e) => setFilterSeason(e.target.value)}>
-            <option value="All">All Seasons</option>
+            <option value="All">{tr("All Seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={String(season.id)}>
                 {seasonLabel(season)}
@@ -2250,28 +2247,28 @@ function ContentManager({
   onEdit: (story: Story) => void
   onAdd: () => void
 }) {
+  const { tr, language } = useAdminLanguage()
   return (
     <section className="manager-view">
       <div className="manager-head">
         <div>
-          <h2>Editorial Content & Stories ({stories.length})</h2>
-          <p>Write match reports, announcements, and headlines for the public portal.</p>
+          <h2>{tr("Editorial Content & Stories (")}{stories.length})</h2>
+          <p>{tr("Write match reports, announcements, and headlines for the public portal.")}</p>
         </div>
         <button className="button button-admin" onClick={onAdd}>
           <Plus />
-          New Story
-        </button>
+          {tr("New Story")}</button>
       </div>
 
       <section className="admin-panel">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>HEADLINE</th>
-              <th>CATEGORY</th>
-              <th>STATUS</th>
-              <th>PUBLISHED DATE</th>
-              <th>ACTIONS</th>
+              <th>{tr("HEADLINE")}</th>
+              <th>{tr("CATEGORY")}</th>
+              <th>{tr("STATUS")}</th>
+              <th>{tr("PUBLISHED DATE")}</th>
+              <th>{tr("ACTIONS")}</th>
             </tr>
           </thead>
           <tbody>
@@ -2281,24 +2278,23 @@ function ContentManager({
                   <strong>{story.title}</strong>
                 </td>
                 <td>
-                  <span className="category-pill">{story.category?.replace('_', ' ') ?? 'news'}</span>
+                  <span className="category-pill">{tr(story.category ?? 'news')}</span>
                 </td>
                 <td>
                   <span className="status-label">
                     <span className={`status-dot ${story.status.toLowerCase()}`} />
-                    {story.status}
+                    {tr(story.status)}
                   </span>
                 </td>
-                <td>{story.publishedAt ?? '—'}</td>
+                <td>{publicationDate(story.publishedAt, language === 'tr' ? 'tr-TR' : 'en-GB')}</td>
                 <td>
                   <div className="row-actions-group">
                     <button className="row-action" onClick={() => onEdit(story)}>
-                      <Edit2 size={14} /> Edit
-                    </button>
+                      <Edit2 size={14} /> {tr(" Edit")}</button>
                     <button className="row-action secondary" onClick={() => void onToggle(story.id)}>
-                      {story.status === 'Published' ? 'Unpublish' : 'Publish'}
+                      {story.status === 'Published' ? tr("Unpublish") : tr("Publish")}
                     </button>
-                    <button className="row-action danger" onClick={() => void onDelete(story.id)} aria-label={`Delete ${story.title}`} title="Delete article">
+                    <button className="row-action danger" onClick={() => void onDelete(story.id)} aria-label={tr("Delete {value0}", { value0: story.title })} title={tr("Delete article")}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -2329,9 +2325,10 @@ function StandingsManager({
   onUpdateSeason: (season: Season) => Promise<void>
   onOpenBracket: (season: Season) => void
 }) {
+  const { tr } = useAdminLanguage()
+  const [lotsOpen, setLotsOpen] = useState(false)
   const [seasonFilter, setSeasonFilter] = useState<number | 'all'>(() => {
-    const active = seasons.find((season) => season.isActive)
-    return active ? active.id : 'all'
+    return defaultSeasonId(seasons) ?? 'all'
   })
 
   const selectedSeason = useMemo(
@@ -2369,23 +2366,21 @@ function StandingsManager({
     <section className="manager-view">
       <div className="manager-head">
         <div>
-          <h2>Standings & Statistics</h2>
+          <h2>{tr("Standings & Statistics")}</h2>
           <p>
-            Calculated automatically from completed results. Tie-breaks: Points → Goal Difference → Goals Scored
-            → Head-to-Head.
-          </p>
+            {tr("Calculated from completed results: Points → Head-to-head (reapplied to remaining ties) → Goal difference → Goals scored → Fewer forfeits → Discipline → Recorded lots.")}</p>
         </div>
       </div>
 
       <div className="filter-bar">
         <div className="filter-group">
           <Filter size={16} />
-          <span>Season:</span>
+          <span>{tr("Season:")}</span>
           <select
             value={seasonFilter}
             onChange={(e) => setSeasonFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
           >
-            <option value="all">All seasons</option>
+            <option value="all">{tr("All seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.fullName}
@@ -2395,12 +2390,16 @@ function StandingsManager({
         </div>
       </div>
 
+      {selectedSeason && canManage && <button className="button button-admin" onClick={() => setLotsOpen(true)}>{tr("Record drawing-of-lots order")}</button>}
+      {groups.some((g) => g.rows.some((r) => r.lotsPending)) && <p className="module-note">{tr("Some clubs remain tied. Their displayed order is provisional until staff records the drawing of lots.")}</p>}
+      {lotsOpen && selectedSeason && <LotsOrderForm season={selectedSeason} teams={scopedTeams} onSave={onUpdateSeason} onClose={() => setLotsOpen(false)} />}
+
       <section className="metric-strip">
         {metrics.map(({ icon: Icon, value, label }) => (
           <div key={label}>
             <Icon />
             <strong>{value}</strong>
-            <span>{label}</span>
+            <span>{tr(label)}</span>
           </div>
         ))}
       </section>
@@ -2411,9 +2410,7 @@ function StandingsManager({
         <section className="admin-panel standings-hint">
           <Info size={16} />
           <span>
-            No completed matches yet. Enter a score on the Matches screen and every table below updates
-            immediately.
-          </span>
+            {tr("No completed matches yet. Enter a score on the Matches screen and every table below updates immediately.")}</span>
         </section>
       ) : null}
 
@@ -2427,22 +2424,22 @@ function StandingsManager({
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>CLUB</th>
-                  <th>P</th>
-                  <th>W</th>
-                  <th>D</th>
-                  <th>L</th>
-                  <th>GF</th>
-                  <th>GA</th>
-                  <th>GD</th>
-                  <th>PTS</th>
-                  <th>FORM</th>
+                  <th>{tr("CLUB")}</th>
+                  <th>{tr("P")}</th>
+                  <th>{tr("W")}</th>
+                  <th>{tr("D")}</th>
+                  <th>{tr("L")}</th>
+                  <th>{tr("GF")}</th>
+                  <th>{tr("GA")}</th>
+                  <th>{tr("GD")}</th>
+                  <th>{tr("PTS")}</th>
+                  <th>{tr("FORM")}</th>
                 </tr>
               </thead>
               <tbody>
                 {group.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={11}>No clubs assigned to this group yet.</td>
+                    <td colSpan={11}>{tr("No clubs assigned to this group yet.")}</td>
                   </tr>
                 ) : (
                   group.rows.map((row) => {
@@ -2460,7 +2457,7 @@ function StandingsManager({
                             />
                             <div className="team-name-cell">
                               <strong>{row.teamName}</strong>
-                              <span className="team-flag-country" title={country.name}>
+                              <span className="team-flag-country" title={tr(country.name)}>
                                 {country.flag}
                               </span>
                             </div>
@@ -2501,24 +2498,24 @@ function StandingsManager({
 
       <section className="admin-panel">
         <div className="admin-panel-head">
-          <h3>Top scorers</h3>
+          <h3>{tr("Top scorers")}</h3>
         </div>
         <div className="table-scroll">
           <table className="admin-table">
             <thead>
               <tr>
                 <th>#</th>
-                <th>PLAYER</th>
-                <th>CLUB</th>
-                <th>GOALS</th>
-                <th>YELLOW</th>
-                <th>RED</th>
+                <th>{tr("PLAYER")}</th>
+                <th>{tr("CLUB")}</th>
+                <th>{tr("GOALS")}</th>
+                <th>{tr("YELLOW")}</th>
+                <th>{tr("RED")}</th>
               </tr>
             </thead>
             <tbody>
               {topScorers.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>No goals logged yet. Add goal events to a completed match to build this list.</td>
+                  <td colSpan={6}>{tr("No goals logged yet. Add goal events to a completed match to build this list.")}</td>
                 </tr>
               ) : (
                 topScorers.map((scorer, index) => (
@@ -2527,9 +2524,8 @@ function StandingsManager({
                     <td>
                       <strong>{scorer.playerName}</strong>
                       {scorer.playerId === undefined ? (
-                        <span className="category-pill" title="No matching player on any roster">
-                          unlinked
-                        </span>
+                        <span className="category-pill" title={tr("No matching player on any roster")}>
+                          {tr("unlinked")}</span>
                       ) : null}
                     </td>
                     <td>{scorer.teamName}</td>
@@ -2577,20 +2573,21 @@ const SCREENING_ACTION_LABELS: Record<NonNullable<Comment['screening']>['action'
 }
 
 function ScreeningNote({ screening }: { screening: Comment['screening'] }) {
-  if (!screening) return <p className="screening-note is-empty">Not screened by Jev.</p>
+  const { tr } = useAdminLanguage()
+  if (!screening) return <p className="screening-note is-empty">{tr("Not screened by Jev.")}</p>
   return (
     <div className={`screening-note screening-${screening.action}`}>
       <strong>
-        <Sparkles size={13} /> {SCREENING_ACTION_LABELS[screening.action]}
+        <Sparkles size={13} /> {tr(SCREENING_ACTION_LABELS[screening.action])}
       </strong>
       {screening.reasons.map((reason) => (
         <span key={reason} className="screening-reason">
-          {SCREENING_REASON_LABELS[reason] ?? reason}
+          {tr(SCREENING_REASON_LABELS[reason] ?? reason)}
           {reason in screening.hazards ? ` ${Math.round(screening.hazards[reason] * 100)}%` : ''}
         </span>
       ))}
-      <span className="screening-meta" title={`Model ${screening.model}, policy ${screening.policy}`}>
-        severity {screening.severity.toFixed(1)}/3
+      <span className="screening-meta" title={tr("Model {value0}, policy {value1}", { value0: screening.model, value1: screening.policy })}>
+        {tr("severity ")}{screening.severity.toFixed(1)}/3
       </span>
     </div>
   )
@@ -2604,6 +2601,7 @@ const COMMENT_FILTERS: { key: Comment['status'] | 'all'; label: string }[] = [
 ]
 
 function CommentsManager({ seasons }: { seasons: Season[] }) {
+  const { tr } = useAdminLanguage()
   const { confirm, confirmDialog } = useConfirm()
   const [comments, setComments] = useState<Comment[]>([])
   const [filter, setFilter] = useState<Comment['status'] | 'all'>('pending')
@@ -2656,29 +2654,29 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
     <section className="module-section">
       <div className="module-head">
         <div>
-          <h2>Comment moderation</h2>
+          <h2>{tr("Comment moderation")}</h2>
           <p className="module-sub">
             {pendingCount === 0
-              ? 'Nothing is waiting for review.'
-              : `${pendingCount} comment${pendingCount === 1 ? '' : 's'} awaiting review.`}
+              ? tr("Nothing is waiting for review.")
+              : tr("{value0} comment{value1} awaiting review.", { value0: pendingCount, value1: pendingCount === 1 ? '' : 's' })}
           </p>
         </div>
       </div>
 
       <div className="filter-bar">
         <div className="filter-group">
-          <span>Season:</span>
+          <span>{tr("Season:")}</span>
           <select
             value={seasonFilter}
             onChange={(e) => setSeasonFilter(e.target.value === 'all' || e.target.value === 'none' ? e.target.value : Number(e.target.value))}
           >
-            <option value="all">All seasons</option>
+            <option value="all">{tr("All seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
               </option>
             ))}
-            <option value="none">No season</option>
+            <option value="none">{tr("No season")}</option>
           </select>
         </div>
       </div>
@@ -2695,18 +2693,18 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
               className={filter === option.key ? 'chip is-active' : 'chip'}
               onClick={() => setFilter(option.key)}
             >
-              {option.label} <span>{count}</span>
+              {tr(option.label)} <span>{count}</span>
             </button>
           )
         })}
       </div>
 
-      {error ? <div className="form-error">{error}</div> : null}
+      {error ? <div className="form-error">{tr(error)}</div> : null}
 
       {loading ? (
-        <p className="empty-text">Loading comments…</p>
+        <p className="empty-text">{tr("Loading comments…")}</p>
       ) : visible.length === 0 ? (
-        <p className="empty-text">No comments in this view.</p>
+        <p className="empty-text">{tr("No comments in this view.")}</p>
       ) : (
         <div className="moderation-list">
           {visible.map((comment) => (
@@ -2717,7 +2715,7 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                   {comment.createdAt ? <time>{comment.createdAt}</time> : null}
                   {seasonFilter === 'all' ? <small>{seasonName(comment.seasonId)}</small> : null}
                 </div>
-                <span className={`status-chip status-${comment.status}`}>{comment.status}</span>
+                <span className={`status-chip status-${comment.status}`}>{tr(comment.status)}</span>
               </header>
               <p>{comment.body}</p>
               <ScreeningNote screening={comment.screening} />
@@ -2726,10 +2724,10 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                   <button
                     className="mini-button"
                     disabled={busyId === comment.id}
-                    title="Ask TypeSafe (Jev) to screen this comment again"
+                    title={tr("Ask TypeSafe (Jev) to screen this comment again")}
                     onClick={() => void act(comment.id, () => moderationRepository.rescreen(comment.id))}
                   >
-                    <Sparkles size={14} /> {comment.screening ? 'Re-screen' : 'Screen with Jev'}
+                    <Sparkles size={14} /> {comment.screening ? tr("Re-screen") : tr("Screen with Jev")}
                   </button>
                 )}
                 {comment.status !== 'approved' && (
@@ -2738,8 +2736,7 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                     disabled={busyId === comment.id}
                     onClick={() => void act(comment.id, () => moderationRepository.setStatus(comment.id, 'approved'))}
                   >
-                    <Check size={14} /> Approve
-                  </button>
+                    <Check size={14} /> {tr(" Approve")}</button>
                 )}
                 {comment.status !== 'rejected' && (
                   <button
@@ -2747,8 +2744,7 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                     disabled={busyId === comment.id}
                     onClick={() => void act(comment.id, () => moderationRepository.setStatus(comment.id, 'rejected'))}
                   >
-                    <Ban size={14} /> Reject
-                  </button>
+                    <Ban size={14} /> {tr(" Reject")}</button>
                 )}
                 <button
                   className="mini-button danger"
@@ -2758,7 +2754,7 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                       title: 'Delete comment',
                       body: (
                         <>
-                          Delete this comment from <strong>{comment.authorName}</strong>?
+                          {tr("Delete this comment from ")}<strong>{comment.authorName}</strong>?
                         </>
                       ),
                       consequences: ['Rejecting instead keeps the comment on record without publishing it'],
@@ -2767,8 +2763,7 @@ function CommentsManager({ seasons }: { seasons: Season[] }) {
                     if (ok) await act(comment.id, () => moderationRepository.remove(comment.id))
                   }}
                 >
-                  <Trash2 size={14} /> Delete
-                </button>
+                  <Trash2 size={14} /> {tr(" Delete")}</button>
               </footer>
             </article>
           ))}
@@ -2819,6 +2814,7 @@ function MediaManager({
   sponsors: Sponsor[]
   onRefresh: () => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<MediaAsset | null>(null)
   const [error, setError] = useState('')
@@ -2841,22 +2837,19 @@ function MediaManager({
     <section className="module-section">
       <div className="module-head">
         <div>
-          <h2>Media library</h2>
+          <h2>{tr("Media library")}</h2>
           <p className="module-sub">
-            {media.length} asset{media.length === 1 ? '' : 's'} · publish an item to show it in Highlights for its season
-          </p>
+            {media.length} {tr(" asset")}{media.length === 1 ? '' : tr("s")} {tr(" · publish an item to show it in Highlights for its season")}</p>
         </div>
         <button className="button button-admin" onClick={() => setEditing(emptyMedia())}>
-          <Plus size={16} /> Add asset
-        </button>
+          <Plus size={16} /> {tr(" Add asset")}</button>
       </div>
 
-      {error ? <div className="form-error">{error}</div> : null}
+      {error ? <div className="form-error">{tr(error)}</div> : null}
 
       {media.length === 0 ? (
         <p className="empty-text">
-          No media yet. Add a highlight video or photo and publish it to replace the placeholder cards on the public site.
-        </p>
+          {tr("No media yet. Add a highlight video or photo and publish it to replace the placeholder cards on the public site.")}</p>
       ) : (
         <div className="media-admin-grid">
           {media.map((asset) => (
@@ -2865,26 +2858,25 @@ function MediaManager({
                 {asset.thumbnailUrl ? (
                   <img src={asset.thumbnailUrl} alt="" />
                 ) : (
-                  <span className="media-admin-kind">{MEDIA_KIND_LABELS[asset.kind] ?? asset.kind}</span>
+                  <span className="media-admin-kind">{tr(MEDIA_KIND_LABELS[asset.kind] ?? asset.kind)}</span>
                 )}
               </div>
               <div className="media-admin-body">
                 <strong>{asset.title}</strong>
                 <span className={`status-chip ${asset.isPublished ? 'status-approved' : 'status-pending'}`}>
-                  {asset.isPublished ? 'Published' : 'Draft'}
+                  {asset.isPublished ? tr("Published") : tr("Draft")}
                 </span>
                 <small className="field-hint">
-                  {asset.seasonId == null ? 'All seasons' : seasonLabelsForIds([asset.seasonId], seasons).join(', ')}
+                  {asset.seasonId == null ? tr("All seasons") : seasonLabelsForIds([asset.seasonId], seasons).join(', ')}
                 </small>
                 {asset.sponsorId ? (
                   <small className="field-hint">
-                    Presented by {sponsors.find((s) => s.id === asset.sponsorId)?.name ?? 'a sponsor'}
+                    {tr("Presented by ")}{sponsors.find((s) => s.id === asset.sponsorId)?.name ?? tr("a sponsor")}
                   </small>
                 ) : null}
                 {asset.externalUrl ? (
                   <a href={asset.externalUrl} target="_blank" rel="noopener noreferrer" className="media-admin-link">
-                    <ExternalLink size={13} /> Open
-                  </a>
+                    <ExternalLink size={13} /> {tr(" Open")}</a>
                 ) : null}
               </div>
               <footer>
@@ -2893,21 +2885,20 @@ function MediaManager({
                   disabled={busyId === asset.id}
                   onClick={() => void act(asset.id, () => mediaRepository.togglePublished(asset.id, !asset.isPublished))}
                 >
-                  {asset.isPublished ? 'Unpublish' : 'Publish'}
+                  {asset.isPublished ? tr("Unpublish") : tr("Publish")}
                 </button>
                 <button className="mini-button" onClick={() => setEditing(asset)}>
-                  <Edit2 size={13} /> Edit
-                </button>
+                  <Edit2 size={13} /> {tr(" Edit")}</button>
                 <button
                   className="mini-button danger"
-                  aria-label={`Delete media ${asset.title}`}
+                  aria-label={tr("Delete media {value0}", { value0: asset.title })}
                   disabled={busyId === asset.id}
                   onClick={async () => {
                     const ok = await confirm({
                       title: 'Delete media asset',
                       body: (
                         <>
-                          Delete <strong>{asset.title}</strong>?
+                          {tr('Delete {name}?', { name: asset.title })}
                         </>
                       ),
                       consequences: asset.isPublished ? ['It is published, so it will disappear from the public site'] : [],
@@ -2954,6 +2945,7 @@ function MediaModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const [saving, setSaving] = useState(false)
   const [seasonId, setSeasonId] = useState(initial.seasonId ? String(initial.seasonId) : '')
   // A season-wide asset can carry any sponsor; a season asset only that season's or season-wide ones.
@@ -2966,7 +2958,8 @@ function MediaModal({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await mediaRepository.save({
         id: initial.id,
@@ -2981,6 +2974,7 @@ function MediaModal({
       })
       await onSaved()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save this asset.')
     } finally {
       setSaving(false)
@@ -2988,57 +2982,51 @@ function MediaModal({
   })
 
   return (
-    <Modal title={initial.id ? 'Edit media asset' : 'Add media asset'} onClose={onClose}>
+    <Modal title={initial.id ? tr("Edit media asset") : tr("Add media asset")} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <label className="span-2">
-          Title *
-          <input name="title" defaultValue={initial.title} placeholder="e.g. Matchday 3 highlights" required />
+          {tr("Title *")}<input name="title" defaultValue={initial.title} placeholder={tr("e.g. Matchday 3 highlights")} required />
         </label>
         <label className="span-2">
-          Season
-          <select name="seasonId" value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
-            <option value="">All seasons</option>
+          {tr("Season")}<select name="seasonId" value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+            <option value="">{tr("All seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
               </option>
             ))}
           </select>
-          <small className="field-hint">Shown in the public media rail only while this season is selected.</small>
+          <small className="field-hint">{tr("Shown in the public media rail only while this season is selected.")}</small>
         </label>
         <label className="span-2">
-          Presented by
-          <select
+          {tr("Presented by")}<select
             name="sponsorId"
             key={seasonId}
             defaultValue={sponsorOptions.some((s) => s.id === initial.sponsorId) ? initial.sponsorId : ''}
           >
-            <option value="">No sponsor</option>
+            <option value="">{tr("No sponsor")}</option>
             {sponsorOptions.map((sponsor) => (
               <option key={sponsor.id} value={sponsor.id}>
                 {sponsor.name}
               </option>
             ))}
           </select>
-          <small className="field-hint">Optional. Shows a “Presented by” badge with the sponsor’s logo on the public card.</small>
+          <small className="field-hint">{tr("Optional. Shows a “Presented by” badge with the sponsor’s logo on the public card.")}</small>
         </label>
         <label>
-          Type
-          <select name="kind" defaultValue={initial.kind}>
+          {tr("Type")}<select name="kind" defaultValue={initial.kind}>
             {MEDIA_KINDS.map((kind) => (
               <option key={kind} value={kind}>
-                {MEDIA_KIND_LABELS[kind]}
+                {tr(MEDIA_KIND_LABELS[kind])}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Duration (seconds)
-          <input name="duration" type="number" min={0} defaultValue={initial.durationSeconds ?? ''} placeholder="e.g. 180" />
+          {tr("Duration (seconds)")}<input name="duration" type="number" min={0} defaultValue={initial.durationSeconds ?? ''} placeholder={tr("e.g. 180")} />
         </label>
         <label className="span-2">
-          Link URL *
-          <input
+          {tr("Link URL *")}<input
             name="externalUrl"
             type="url"
             defaultValue={initial.externalUrl ?? ''}
@@ -3046,23 +3034,20 @@ function MediaModal({
             required
           />
           <small className="field-hint">
-            Required — media are shared as links (YouTube, Instagram, a hosted file). Only the thumbnail
-            below is uploaded.
-          </small>
+            {tr("Required — media are shared as links (YouTube, Instagram, a hosted file). Only the thumbnail below is uploaded.")}</small>
         </label>
         <ImageUploadField
           name="thumbnailUrl"
-          label="Thumbnail image"
+          label={tr("Thumbnail image")}
           folder="media"
           defaultValue={initial.thumbnailUrl ?? ''}
-          hint="Shown as the card image on the public site."
+          hint={tr("Shown as the card image on the public site.")}
         />
         <label className="checkbox-label span-2">
           <input type="checkbox" name="isPublished" defaultChecked={initial.isPublished} />
-          Publish to the public site
-        </label>
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label="Save asset" saving={saving} />
+          {tr("Publish to the public site")}</label>
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={tr("Save asset")} saving={saving} />
       </form>
     </Modal>
   )
@@ -3082,6 +3067,7 @@ const emptySponsor = (order: number): Sponsor => ({
 })
 
 function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]; seasons: Season[]; onRefresh: () => Promise<void> }) {
+  const { tr } = useAdminLanguage()
   const { confirm, confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<Sponsor | null>(null)
   const [error, setError] = useState('')
@@ -3104,33 +3090,31 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
     <section className="module-section">
       <div className="module-head">
         <div>
-          <h2>Sponsors</h2>
+          <h2>{tr("Sponsors")}</h2>
           <p className="module-sub">
-            {sponsors.length} partner{sponsors.length === 1 ? '' : 's'} · active partners appear in Sponsors for their season
-          </p>
+            {sponsors.length} {tr(" partner")}{sponsors.length === 1 ? '' : tr("s")} {tr(" · active partners appear in Sponsors for their season")}</p>
         </div>
         <button
           className="button button-admin"
           onClick={() => setEditing(emptySponsor(sponsors.length))}
         >
-          <Plus size={16} /> Add sponsor
-        </button>
+          <Plus size={16} /> {tr(" Add sponsor")}</button>
       </div>
 
-      {error ? <div className="form-error">{error}</div> : null}
+      {error ? <div className="form-error">{tr(error)}</div> : null}
 
       {sponsors.length === 0 ? (
-        <p className="empty-text">No sponsors yet.</p>
+        <p className="empty-text">{tr("No sponsors yet.")}</p>
       ) : (
         <div className="table-wrap">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>ORDER</th>
-                <th>LOGO</th>
-                <th>NAME</th>
-                <th>WEBSITE</th>
-                <th>STATUS</th>
+                <th>{tr("ORDER")}</th>
+                <th>{tr("LOGO")}</th>
+                <th>{tr("NAME")}</th>
+                <th>{tr("WEBSITE")}</th>
+                <th>{tr("STATUS")}</th>
                 <th />
               </tr>
             </thead>
@@ -3148,21 +3132,20 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
                   <td>
                     <strong>{sponsor.name}</strong>
                     <div className="field-hint">
-                      {sponsor.seasonId == null ? 'All seasons' : seasonLabelsForIds([sponsor.seasonId], seasons).join(', ')}
+                      {sponsor.seasonId == null ? tr("All seasons") : seasonLabelsForIds([sponsor.seasonId], seasons).join(', ')}
                     </div>
                   </td>
                   <td>
                     {sponsor.websiteUrl ? (
                       <a href={sponsor.websiteUrl} target="_blank" rel="noopener noreferrer" className="media-admin-link">
-                        <ExternalLink size={13} /> Visit
-                      </a>
+                        <ExternalLink size={13} /> {tr(" Visit")}</a>
                     ) : (
                       <span className="empty-text">—</span>
                     )}
                   </td>
                   <td>
                     <span className={`status-chip ${sponsor.isActive ? 'status-approved' : 'status-pending'}`}>
-                      {sponsor.isActive ? 'Active' : 'Hidden'}
+                      {sponsor.isActive ? tr("Active") : tr("Hidden")}
                     </span>
                   </td>
                   <td className="row-actions">
@@ -3171,21 +3154,21 @@ function SponsorsManager({ sponsors, seasons, onRefresh }: { sponsors: Sponsor[]
                       disabled={busyId === sponsor.id}
                       onClick={() => void act(sponsor.id, () => sponsorsRepository.toggleActive(sponsor.id, !sponsor.isActive))}
                     >
-                      {sponsor.isActive ? 'Hide' : 'Show'}
+                      {sponsor.isActive ? tr("Hide") : tr("Show")}
                     </button>
-                    <button className="mini-button" onClick={() => setEditing(sponsor)} aria-label={`Edit sponsor ${sponsor.name}`}>
+                    <button className="mini-button" onClick={() => setEditing(sponsor)} aria-label={tr("Edit sponsor {value0}", { value0: sponsor.name })}>
                       <Edit2 size={13} />
                     </button>
                     <button
                       className="mini-button danger"
-                      aria-label={`Delete sponsor ${sponsor.name}`}
+                      aria-label={tr("Delete sponsor {value0}", { value0: sponsor.name })}
                       disabled={busyId === sponsor.id}
                       onClick={async () => {
                         const ok = await confirm({
                           title: 'Delete sponsor',
                           body: (
                             <>
-                              Delete <strong>{sponsor.name}</strong>?
+                              {tr('Delete {name}?', { name: sponsor.name })}
                             </>
                           ),
                           consequences: sponsor.isActive ? ['It is active, so it will disappear from the public partner rail'] : [],
@@ -3231,6 +3214,7 @@ function SponsorModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -3240,7 +3224,8 @@ function SponsorModal({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await sponsorsRepository.save({
         id: initial.id,
@@ -3253,6 +3238,7 @@ function SponsorModal({
       })
       await onSaved()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save this sponsor.')
     } finally {
       setSaving(false)
@@ -3260,17 +3246,15 @@ function SponsorModal({
   })
 
   return (
-    <Modal title={initial.id ? 'Edit sponsor' : 'Add sponsor'} onClose={onClose}>
+    <Modal title={initial.id ? tr("Edit sponsor") : tr("Add sponsor")} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <label className="span-2">
-          Sponsor name *
-          <input name="name" defaultValue={initial.name} placeholder="e.g. Anadolu Enerji" required />
+          {tr("Sponsor name *")}<input name="name" defaultValue={initial.name} placeholder={tr("e.g. Anadolu Enerji")} required />
         </label>
 
         <label className="span-2">
-          Season
-          <select name="seasonId" defaultValue={initial.seasonId ?? ''}>
-            <option value="">All seasons</option>
+          {tr("Season")}<select name="seasonId" defaultValue={initial.seasonId ?? ''}>
+            <option value="">{tr("All seasons")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
@@ -3278,32 +3262,27 @@ function SponsorModal({
             ))}
           </select>
           <small className="field-hint">
-            Shown in the public sponsor rail only while this season is selected. Leave on
-            &ldquo;All seasons&rdquo; for a partner backing the whole competition.
-          </small>
+            {tr("Shown in the public sponsor rail only while this season is selected. Leave on “All seasons” for a partner backing the whole competition.")}</small>
         </label>
         <ImageUploadField
           name="logoUrl"
-          label="Logo"
+          label={tr("Logo")}
           folder="sponsors"
           defaultValue={initial.logoUrl ?? ''}
-          hint="Shown in the public sponsor rail."
+          hint={tr("Shown in the public sponsor rail.")}
         />
         <label>
-          Website
-          <input name="websiteUrl" type="url" defaultValue={initial.websiteUrl ?? ''} placeholder="https://example.com" />
+          {tr("Website")}<input name="websiteUrl" type="url" defaultValue={initial.websiteUrl ?? ''} placeholder="https://example.com" />
         </label>
         <label>
-          Display order
-          <input name="displayOrder" type="number" min={0} defaultValue={initial.displayOrder} />
-          <small className="field-hint">Lower numbers appear first.</small>
+          {tr("Display order")}<input name="displayOrder" type="number" min={0} defaultValue={initial.displayOrder} />
+          <small className="field-hint">{tr("Lower numbers appear first.")}</small>
         </label>
         <label className="checkbox-label span-2">
           <input type="checkbox" name="isActive" defaultChecked={initial.isActive} />
-          Show on the public site
-        </label>
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label="Save sponsor" saving={saving} />
+          {tr("Show on the public site")}</label>
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={tr("Save sponsor")} saving={saving} />
       </form>
     </Modal>
   )
@@ -3330,6 +3309,7 @@ const ROLE_LABELS: Record<AdminUser['role'], string> = {
 
 /** About copy, competition rules and contact links shown on the public site. */
 function SettingsManager() {
+  const { tr } = useAdminLanguage()
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -3377,63 +3357,53 @@ function SettingsManager() {
     <section className="module-section">
       <div className="module-head">
         <div>
-          <h2>Site settings</h2>
-          <p className="module-sub">The About section, competition rules and contact links on the public site.</p>
+          <h2>{tr("Site settings")}</h2>
+          <p className="module-sub">{tr("The About section, competition rules and contact links on the public site.")}</p>
         </div>
       </div>
 
       {!loaded ? (
-        <p className="empty-text">Loading settings…</p>
+        <p className="empty-text">{tr("Loading settings…")}</p>
       ) : (
         <form className="admin-form" onSubmit={submit}>
           <label className="span-2">
-            About — introduction
-            <textarea rows={3} {...field('aboutIntro')} />
+            {tr("About — introduction")}<textarea rows={3} {...field('aboutIntro')} />
           </label>
           <label className="span-2">
-            About — history
-            <textarea rows={3} {...field('aboutHistory')} />
+            {tr("About — history")}<textarea rows={3} {...field('aboutHistory')} />
           </label>
           <label className="span-2">
-            About — vision
-            <textarea rows={3} {...field('aboutVision')} />
+            {tr("About — vision")}<textarea rows={3} {...field('aboutVision')} />
           </label>
           <label className="span-2">
-            Competition rules (one per line)
-            <textarea rows={6} {...field('rules')} />
+            {tr("Competition rules (one per line)")}<textarea rows={6} {...field('rules')} />
           </label>
           <label className="span-2">
-            Venue note
-            <input {...field('venueNote')} />
+            {tr("Venue note")}<input {...field('venueNote')} />
           </label>
           <label>
-            Instagram link
-            <input type="url" placeholder="https://instagram.com/…" {...field('instagramUrl')} />
+            {tr("Instagram link")}<input type="url" placeholder="https://instagram.com/…" {...field('instagramUrl')} />
           </label>
           <label>
-            YouTube link
-            <input type="url" placeholder="https://youtube.com/@…" {...field('youtubeUrl')} />
+            {tr("YouTube link")}<input type="url" placeholder="https://youtube.com/@…" {...field('youtubeUrl')} />
           </label>
           <label>
-            LinkedIn link
-            <input type="url" placeholder="https://linkedin.com/company/…" {...field('linkedinUrl')} />
+            {tr("LinkedIn link")}<input type="url" placeholder="https://linkedin.com/company/…" {...field('linkedinUrl')} />
           </label>
           <label>
-            WhatsApp number
-            <input inputMode="tel" placeholder="Country code first, digits only" {...field('whatsappNumber')} />
+            {tr("WhatsApp number")}<input inputMode="tel" placeholder={tr("Country code first, digits only")} {...field('whatsappNumber')} />
           </label>
           <label className="span-2">
-            WhatsApp greeting
-            <input {...field('whatsappMessage')} />
+            {tr("WhatsApp greeting")}<input {...field('whatsappMessage')} />
           </label>
-          <small className="field-hint span-2">Empty links and an empty WhatsApp number are hidden on the public site.</small>
+          <small className="field-hint span-2">{tr("Empty links and an empty WhatsApp number are hidden on the public site.")}</small>
 
-          {error ? <div className="form-error span-2">{error}</div> : null}
-          {saved ? <p className="span-2" role="status">Saved. The public site shows the new settings on its next load.</p> : null}
+          {error ? <div className="form-error span-2">{tr(error)}</div> : null}
+          {saved ? <p className="span-2" role="status">{tr("Saved. The public site shows the new settings on its next load.")}</p> : null}
 
           <div className="form-actions span-2">
             <button className="button button-admin" type="submit" disabled={saving}>
-              {saving ? 'Saving…' : 'Save settings'}
+              {saving ? tr("Saving…") : tr("Save settings")}
             </button>
           </div>
         </form>
@@ -3443,6 +3413,7 @@ function SettingsManager() {
 }
 
 function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
+  const { tr } = useAdminLanguage()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -3485,34 +3456,31 @@ function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
     <section className="module-section">
       <div className="module-head">
         <div>
-          <h2>Staff &amp; roles</h2>
+          <h2>{tr("Staff & roles")}</h2>
           <p className="module-sub">
-            {users.length} account{users.length === 1 ? '' : 's'} · roles take effect immediately
-          </p>
+            {users.length} {tr(" account")}{users.length === 1 ? '' : tr("s")} {tr(" · roles take effect immediately")}</p>
         </div>
       </div>
 
       <p className="module-note">
         <ShieldCheck size={15} />
-        Accounts are created in the Supabase dashboard (Authentication → Users); the staff login only signs in. Email addresses live in Supabase Auth and
-        are not readable from here, so accounts are listed by profile name.
-      </p>
+        {tr("Accounts are created in the Supabase dashboard (Authentication → Users); the staff login only signs in. Email addresses live in Supabase Auth and are not readable from here, so accounts are listed by profile name.")}</p>
 
-      {error ? <div className="form-error">{error}</div> : null}
+      {error ? <div className="form-error">{tr(error)}</div> : null}
 
       {loading ? (
-        <p className="empty-text">Loading accounts…</p>
+        <p className="empty-text">{tr("Loading accounts…")}</p>
       ) : users.length === 0 ? (
-        <p className="empty-text">No staff accounts found.</p>
+        <p className="empty-text">{tr("No staff accounts found.")}</p>
       ) : (
         <div className="table-wrap">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>NAME</th>
-                <th>ROLE</th>
-                <th>CREATED</th>
-                <th>CHANGE ROLE</th>
+                <th>{tr("NAME")}</th>
+                <th>{tr("ROLE")}</th>
+                <th>{tr("CREATED")}</th>
+                <th>{tr("CHANGE ROLE")}</th>
               </tr>
             </thead>
             <tbody>
@@ -3522,18 +3490,19 @@ function UsersManager({ currentRole }: { currentRole: AuthProfile['role'] }) {
                     <strong>{user.fullName}</strong>
                   </td>
                   <td>
-                    <span className={`role-chip role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+                    <span className={`role-chip role-${user.role}`}>{tr(ROLE_LABELS[user.role])}</span>
                   </td>
                   <td>{user.createdAt ?? '—'}</td>
                   <td>
                     <select
+                      aria-label={tr("Role for {value0}", { value0: user.fullName || 'unnamed account' })}
                       value={user.role}
-                      disabled={busyId === user.id}
+                      disabled={busyId === user.id || (user.role === 'super_admin' && (!canGrantSuper || users.filter((u) => u.role === 'super_admin').length === 1))}
                       onChange={(event) => void changeRole(user, event.target.value as AdminUser['role'])}
                     >
-                      {ASSIGNABLE_ROLES.filter((role) => role !== 'super_admin' || canGrantSuper).map((role) => (
+                      {ASSIGNABLE_ROLES.filter((role) => role !== 'super_admin' || canGrantSuper || user.role === 'super_admin').map((role) => (
                         <option key={role} value={role}>
-                          {ROLE_LABELS[role]}
+                          {tr(ROLE_LABELS[role])}
                         </option>
                       ))}
                     </select>
@@ -3559,17 +3528,18 @@ function MatchTable({
   onManageEvents?: (match: Match) => void
   onDelete?: (id: number) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   return (
     <div className="table-scroll">
       <table className="admin-table">
         <thead>
           <tr>
-            <th>MATCH</th>
-            <th>SCORE / STATUS</th>
-            <th>STAGE</th>
-            <th>DATE</th>
-            <th>VENUE</th>
-            <th>ACTIONS</th>
+            <th>{tr("MATCH")}</th>
+            <th>{tr("SCORE / STATUS")}</th>
+            <th>{tr("STAGE")}</th>
+            <th>{tr("DATE")}</th>
+            <th>{tr("VENUE")}</th>
+            <th>{tr("ACTIONS")}</th>
           </tr>
         </thead>
         <tbody>
@@ -3579,7 +3549,7 @@ function MatchTable({
               <tr key={match.id}>
                 <td>
                   <strong>
-                    {match.home} vs {match.away}
+                    {match.home} {tr(" vs ")}{match.away}
                   </strong>
                 </td>
                 <td>
@@ -3588,19 +3558,14 @@ function MatchTable({
                       <span className="score-badge">
                         {match.homeScore} - {match.awayScore}
                         {match.homePenalties != null && match.awayPenalties != null && (
-                          <small className="admin-pen-tag"> ({match.homePenalties}–{match.awayPenalties}p)</small>
+                          <small className="admin-pen-tag"> ({match.homePenalties}–{match.awayPenalties}{tr("p)")}</small>
                         )}
                       </span>
                     ) : (
-                      <span className="score-badge empty">vs</span>
+                      <span className="score-badge empty">{tr("vs")}</span>
                     )}
                     <span className={`status-dot ${match.matchStatus}`}></span>
-                    <span className="status-text">{match.matchStatus}</span>
-                    {match.status === 'Draft' ? (
-                      <span className="status-chip status-pending" title="Not shown on the public site until published">
-                        Draft
-                      </span>
-                    ) : null}
+                    <span className="status-text">{tr(match.matchStatus)}</span>
                   </div>
                 </td>
                 <td>{match.stage}</td>
@@ -3611,18 +3576,18 @@ function MatchTable({
                 <td>
                   <div className="row-actions-group">
                     {onEdit && (
-                      <button className="row-action" onClick={() => onEdit(match)} title="Edit score & details">
-                        <Edit2 size={14} /> <span className="row-action-label">Score / Edit</span>
+                      <button className="row-action" onClick={() => onEdit(match)} title={tr("Edit score & details")}>
+                        <Edit2 size={14} /> <span className="row-action-label">{tr("Score / Edit")}</span>
                       </button>
                     )}
                     {onManageEvents && (
-                      <button className="row-action secondary" onClick={() => onManageEvents(match)} title="Manage events">
-                        <Flame size={14} /> <span className="row-action-label">Events</span> (
+                      <button className="row-action secondary" onClick={() => onManageEvents(match)} title={tr("Manage events")}>
+                        <Flame size={14} /> <span className="row-action-label">{tr("Events")}</span> (
                         {match.events?.length ?? 0})
                       </button>
                     )}
                     {onDelete && (
-                      <button className="row-action danger" onClick={() => void onDelete(match.id)} title="Delete match">
+                      <button className="row-action danger" onClick={() => void onDelete(match.id)} title={tr("Delete match")}>
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -3641,7 +3606,7 @@ function MatchTable({
 function TeamModal({
   initial,
   template,
-  defaultSeasonId,
+  defaultSeasonId: preselectedSeasonId,
   hasMatches = false,
   players,
   allPlayers = [],
@@ -3671,6 +3636,7 @@ function TeamModal({
   onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
+  const { tr } = useAdminLanguage()
   const base = initial ?? template?.team ?? null
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
   const [saving, setSaving] = useState(false)
@@ -3689,9 +3655,8 @@ function TeamModal({
     if (initial?.seasonId) return initial.seasonId
     // A club entering again starts on the season the caller chose for it.
     if (template?.team.seasonId) return template.team.seasonId
-    if (defaultSeasonId && seasons.some((s) => s.id === defaultSeasonId)) return defaultSeasonId
-    const active = seasons.find((s) => s.isActive)
-    return active?.id ?? seasons[0]?.id ?? 1
+    if (preselectedSeasonId && seasons.some((s) => s.id === preselectedSeasonId)) return preselectedSeasonId
+    return defaultSeasonId(seasons) ?? 1
   })
 
   const currentSelectedSeason = useMemo(() => {
@@ -3780,7 +3745,7 @@ function TeamModal({
       }
 
       if (!initial && squadSize < MIN_SQUAD) {
-        setSaveError(`Add at least ${MIN_SQUAD} players in the Squad tab before registering (${squadSize} so far).`)
+        setSaveError(tr("Add at least {value0} players in the Squad tab before registering ({value1} so far).", { value0: MIN_SQUAD, value1: squadSize }))
         setTab('squad')
         setSaving(false)
         return
@@ -3907,8 +3872,10 @@ function TeamModal({
       // The season picker sits on the third tab, so a new entry names its season up front.
       title={
         initial
-          ? `Manage Club: ${initial.name}`
-          : `${template ? `Enter ${template.team.name}` : 'Register New Club'} in ${currentSelectedSeason ? seasonLabel(currentSelectedSeason) : 'a season'}`
+          ? tr("Manage Club: {value0}", { value0: initial.name })
+          : template
+            ? tr('Enter {club} in {season}', { club: template.team.name, season: currentSelectedSeason ? seasonLabel(currentSelectedSeason) : tr('a season') })
+            : tr('Register New Club in {season}', { season: currentSelectedSeason ? seasonLabel(currentSelectedSeason) : tr('a season') })
       }
       onClose={onClose}
     >
@@ -3919,28 +3886,25 @@ function TeamModal({
             className={tab === 'identity' ? 'active' : ''}
             onClick={() => setTab('identity')}
           >
-            1. Identity & Crest
-          </button>
+            {tr("1. Identity & Crest")}</button>
           <button
             type="button"
             className={tab === 'staff' ? 'active' : ''}
             onClick={() => setTab('staff')}
           >
-            2. Staff & Bio
-          </button>
+            {tr("2. Staff & Bio")}</button>
           <button
             type="button"
             className={tab === 'tournament' ? 'active' : ''}
             onClick={() => setTab('tournament')}
           >
-            3. Tournament & Group
-          </button>
+            {tr("3. Tournament & Group")}</button>
           <button
             type="button"
             className={tab === 'squad' ? 'active' : ''}
             onClick={() => setTab('squad')}
           >
-            4. Squad Roster ({squadSize}{initial ? '' : `/${MIN_SQUAD}+`})
+            {tr("4. Squad Roster (")}{squadSize}{initial ? '' : `/${MIN_SQUAD}+`})
           </button>
         </div>
 
@@ -3957,19 +3921,19 @@ function TeamModal({
           </div>
           <div className="preview-info">
             <div className="preview-name-row">
-              <h3>{name || 'Club Name'}</h3>
+              <h3>{name || tr("Club Name")}</h3>
               {shortName && <span className="short-pill">{shortName}</span>}
-              <span className="preview-country-flag">{selectedCountry.flag} {selectedCountry.name}</span>
+              <span className="preview-country-flag">{selectedCountry.flag} {tr(selectedCountry.name)}</span>
             </div>
             <span className="preview-colors-hint">
-              Primary: <i style={{ background: color }} /> Secondary: <i style={{ background: secondaryColor }} />
+              {tr("Primary: ")}<i style={{ background: color }} /> {tr(" Secondary: ")}<i style={{ background: secondaryColor }} />
             </span>
           </div>
           <div className="preview-squad-status">
             {squadSize >= MIN_SQUAD ? (
-              <span className="squad-badge complete">✅ Squad Complete ({squadSize}/{MIN_SQUAD} min)</span>
+              <span className="squad-badge complete">{tr("✅ Squad Complete (")}{squadSize}/{MIN_SQUAD} {tr(" min)")}</span>
             ) : (
-              <span className="squad-badge incomplete">⚠️ {squadSize}/{MIN_SQUAD} (Min {MIN_SQUAD} players needed)</span>
+              <span className="squad-badge incomplete">⚠️ {squadSize}/{MIN_SQUAD} {tr(" (Min ")}{MIN_SQUAD} {tr(" players needed)")}</span>
             )}
           </div>
         </div>
@@ -3979,40 +3943,36 @@ function TeamModal({
               all fields; rendering only the open tab saved "null" for the rest. */}
           <div className="tab-panel" style={{ display: tab === 'identity' ? 'contents' : 'none' }}>
               <label>
-                Club Full Name *
-                <input
+                {tr("Club Full Name *")}<input
                   name="name"
                   value={name}
                   onChange={(e) => setName(e.target.value.toUpperCase())}
-                  placeholder="e.g. NOVA FC"
+                  placeholder={tr("e.g. NOVA FC")}
                   required
                 />
               </label>
 
               <label>
-                Short Name / Code (3-4 chars)
-                <input
+                {tr("Short Name / Code (3-4 chars)")}<input
                   name="shortName"
                   value={shortName}
                   onChange={(e) => setShortName(e.target.value.toUpperCase())}
-                  placeholder="e.g. NOV"
+                  placeholder={tr("e.g. NOV")}
                   maxLength={5}
                 />
               </label>
 
               <label className="span-2">
-                Country / Flag *
-                <select
+                {tr("Country / Flag *")}<select
                   value={countryCode}
                   onChange={(e) => setCountryCode(e.target.value)}
                   required
                 >
                   <option value="" disabled>
-                    Select a country…
-                  </option>
+                    {tr("Select a country…")}</option>
                   {COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
-                      {c.flag} {c.name} ({c.code})
+                      {c.flag} {tr(c.name)} ({c.code})
                     </option>
                   ))}
                 </select>
@@ -4026,8 +3986,7 @@ function TeamModal({
               />
 
               <label>
-                Primary Club Color *
-                <div className="color-input-wrapper">
+                {tr("Primary Club Color *")}<div className="color-input-wrapper">
                   <input
                     name="color"
                     type="color"
@@ -4044,8 +4003,7 @@ function TeamModal({
               </label>
 
               <label>
-                Secondary Accent Color
-                <div className="color-input-wrapper">
+                {tr("Secondary Accent Color")}<div className="color-input-wrapper">
                   <input
                     name="secondaryColor"
                     type="color"
@@ -4064,38 +4022,34 @@ function TeamModal({
 
           <div className="tab-panel" style={{ display: tab === 'staff' ? 'contents' : 'none' }}>
               <label>
-                Manager / Director Name
-                <input
+                {tr("Manager / Director Name")}<input
                   name="managerName"
                   defaultValue={base?.managerName ?? ''}
-                  placeholder="e.g. Ahmet Yılmaz"
+                  placeholder={tr("e.g. Ahmet Yılmaz")}
                 />
               </label>
 
               <label>
-                Head Coach Name
-                <input
+                {tr("Head Coach Name")}<input
                   name="coachName"
                   defaultValue={base?.coachName ?? ''}
-                  placeholder="e.g. Roberto Mancini"
+                  placeholder={tr("e.g. Roberto Mancini")}
                 />
               </label>
 
               <label className="span-2">
-                Club Biography & Background
-                <textarea
+                {tr("Club Biography & Background")}<textarea
                   name="bio"
                   rows={4}
                   defaultValue={base?.bio ?? ''}
-                  placeholder="Brief description of the club, corporate background, and history..."
+                  placeholder={tr("Brief description of the club, corporate background, and history...")}
                 />
               </label>
           </div>
 
           <div className="tab-panel" style={{ display: tab === 'tournament' ? 'contents' : 'none' }}>
               <label className="span-2">
-                Season *
-                <select
+                {tr("Season *")}<select
                   name="seasonId"
                   value={selectedSeasonId}
                   onChange={(e) => setSelectedSeasonId(Number(e.target.value))}
@@ -4106,11 +4060,11 @@ function TeamModal({
                     <option key={s.id} value={s.id}>
                       {s.year} - {s.fullName || s.name || s.city} (
                       {s.seasonType === 'tournament'
-                        ? '🏆 Knockout'
+                        ? tr("🏆 Knockout")
                         : s.seasonType === 'league'
-                        ? '📋 League'
-                        : '👥 Groups'}
-                      {s.isActive ? ' • Active' : ''})
+                        ? tr("📋 League")
+                        : tr("👥 Groups")}
+                      {s.isActive ? tr(" • Active") : ''})
                     </option>
                   ))}
                 </select>
@@ -4118,10 +4072,9 @@ function TeamModal({
 
 {hasMatches ? (
                 <small className="span-2 field-hint">
-                  This club has fixtures in this season, so it stays here. Enter the club again to play another season.
-                </small>
+                  {tr("This club has fixtures in this season, so it stays here. Enter the club again to play another season.")}</small>
               ) : initial ? (
-                <small className="span-2 field-hint">Changing the season moves this club and its squad.</small>
+                <small className="span-2 field-hint">{tr("Changing the season moves this club and its squad.")}</small>
               ) : null}
           </div>
 
@@ -4139,32 +4092,30 @@ function TeamModal({
                       onOpenSquadCanvas(initial)
                     }}
                   >
-                    <Sparkles size={14} /> Formation & pitch canvas
-                  </button>
+                    <Sparkles size={14} /> {tr(" Formation & pitch canvas")}</button>
                 )}
                 <button
                   type="button"
                   className={`mode-btn ${squadAddMode === 'pool' ? 'active' : ''}`}
                   onClick={() => setSquadAddMode('pool')}
                 >
-                  👥 Add an existing player ({availablePoolPlayers.length})
+                  {tr("👥 Add an existing player (")}{availablePoolPlayers.length})
                 </button>
                 <button
                   type="button"
                   className={`mode-btn ${squadAddMode === 'new' ? 'active' : ''}`}
                   onClick={() => setSquadAddMode('new')}
                 >
-                  ➕ Create a new player
-                </button>
+                  {tr("➕ Create a new player")}</button>
               </div>
 
               {squadAddMode === 'pool' ? (
                 <div className="inline-add-player-box">
-                  <h4>Add an existing player to {initial?.name ?? (name || 'this club')}</h4>
+                  <h4>{tr("Add an existing player to ")}{initial?.name ?? (name || 'this club')}</h4>
                   <div className="inline-player-fields">
                     <input
                       type="text"
-                      placeholder="Search players (name, club, position)…"
+                      placeholder={tr("Search players (name, club, position)…")}
                       value={poolPlayerSearch}
                       onChange={(e) => setPoolPlayerSearch(e.target.value)}
                       style={{ flex: 1, minWidth: '180px' }}
@@ -4176,12 +4127,12 @@ function TeamModal({
                     >
                       <option value="">
                         {filteredPoolPlayers.length === 0
-                          ? 'No available players found'
-                          : `-- Choose a player to add (${filteredPoolPlayers.length}) --`}
+                          ? tr("No available players found")
+                          : tr("-- Choose a player to add ({value0}) --", { value0: filteredPoolPlayers.length })}
                       </option>
                       {filteredPoolPlayers.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.fullName} ({p.position.toUpperCase()}) · This season: {clubThisSeason(p) ?? 'free agent'}
+                          {p.fullName} ({p.position.toUpperCase()}{tr(") · This season: ")}{clubThisSeason(p) ?? tr("free agent")}
                         </option>
                       ))}
                     </select>
@@ -4191,17 +4142,17 @@ function TeamModal({
                       onClick={handleAssignPoolPlayer}
                       disabled={assigningPoolPlayer || !selectedPoolPlayerId}
                     >
-                      {assigningPoolPlayer ? 'Adding…' : '+ Add to squad'}
+                      {assigningPoolPlayer ? tr("Adding…") : tr("+ Add to squad")}
                     </button>
                   </div>
-                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
+                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{tr(squadActionError)}</div> : null}
                 </div>
               ) : (
                 <div className="inline-add-player-box">
-                  <h4>Register a new player for {initial?.name ?? (name || 'this club')}</h4>
+                  <h4>{tr("Register a new player for ")}{initial?.name ?? (name || 'this club')}</h4>
                   <div className="inline-player-fields">
                     <input
-                      placeholder="Player full name *"
+                      placeholder={tr("Player full name *")}
                       value={newPlayerName}
                       onChange={(e) => setNewPlayerName(e.target.value)}
                     />
@@ -4209,7 +4160,7 @@ function TeamModal({
                       type="number"
                       min={1}
                       max={99}
-                      placeholder="Forma #"
+                      placeholder={tr("Forma #")}
                       value={newPlayerNumber}
                       onChange={(e) => setNewPlayerNumber(e.target.value)}
                       style={{ width: '85px' }}
@@ -4218,10 +4169,10 @@ function TeamModal({
                       value={newPlayerPosition}
                       onChange={(e) => setNewPlayerPosition(e.target.value as PlayerPosition)}
                     >
-                      <option value="goalkeeper">🧤 Goalkeeper</option>
-                      <option value="defender">🛡️ Defender</option>
-                      <option value="midfielder">⚙️ Midfielder</option>
-                      <option value="forward">⚡ Forward</option>
+                      <option value="goalkeeper">{tr("🧤 Goalkeeper")}</option>
+                      <option value="defender">{tr("🛡️ Defender")}</option>
+                      <option value="midfielder">{tr("⚙️ Midfielder")}</option>
+                      <option value="forward">{tr("⚡ Forward")}</option>
                     </select>
                     <button
                       type="button"
@@ -4229,10 +4180,10 @@ function TeamModal({
                       onClick={handleInlineAddPlayer}
                       disabled={addingPlayer || !newPlayerName.trim()}
                     >
-                      {addingPlayer ? 'Adding…' : '+ Add to squad'}
+                      {addingPlayer ? tr("Adding…") : tr("+ Add to squad")}
                     </button>
                   </div>
-                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{squadActionError}</div> : null}
+                  {squadActionError ? <div className="form-error" style={{ marginTop: '8px' }}>{tr(squadActionError)}</div> : null}
                 </div>
               )}
 
@@ -4251,10 +4202,10 @@ function TeamModal({
                   return (
                     <div key={pos} className="pos-group-section">
                       <h5>
-                        {posLabels[pos]} ({posPlayers.length + posNew.length})
+                        {tr(posLabels[pos])} ({posPlayers.length + posNew.length})
                       </h5>
                       {posPlayers.length + posNew.length === 0 ? (
-                        <p className="no-pos-players">No {pos}s registered yet.</p>
+                        <p className="no-pos-players">{tr("No ")}{pos}{tr("s registered yet.")}</p>
                       ) : (
                         <div className="pos-players-list">
                           {posPlayers.map((p) => (
@@ -4263,15 +4214,14 @@ function TeamModal({
                               <div className="squad-player-meta">
                                 <strong>{p.fullName}</strong>
                                 <span>
-                                  Active Seasons:{' '}
+                                  {tr("Active Seasons:")}{' '}
                                   {seasonLabelsForIds(p.activeSeasonIds, seasons).join(', ') || '—'}
                                 </span>
                               </div>
                               <button
                                 type="button"
                                 className="delete-player-inline-btn"
-                                disabled={!!initial && squadSize <= MIN_SQUAD}
-                                aria-label={`Remove ${p.fullName} from the squad`}
+                                aria-label={tr("Remove {value0} from the squad", { value0: p.fullName })}
                                 onClick={() => {
                                   if (!initial) {
                                     setStagedIds((ids) => ids.filter((id) => id !== p.id))
@@ -4282,11 +4232,7 @@ function TeamModal({
                                     setSquadActionError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
                                   )
                                 }}
-                                title={
-                                  initial && squadSize <= MIN_SQUAD
-                                    ? shrinkError(initial, squadSize)
-                                    : 'Remove from squad (keeps the player in the pool)'
-                                }
+                                title={tr("Remove from squad (keeps the player in the pool)")}
                               >
                                 <UserMinus size={14} />
                               </button>
@@ -4297,12 +4243,12 @@ function TeamModal({
                               <span className="shirt-badge">{p.shirtNumber ?? '-'}</span>
                               <div className="squad-player-meta">
                                 <strong>{p.fullName}</strong>
-                                <span>New player · saved with the club</span>
+                                <span>{tr("New player · saved with the club")}</span>
                               </div>
                               <button
                                 type="button"
                                 className="delete-player-inline-btn"
-                                aria-label={`Remove ${p.fullName}`}
+                                aria-label={tr("Remove {value0}", { value0: p.fullName })}
                                 onClick={() => setStagedNew((list) => list.filter((item) => item !== p))}
                               >
                                 <UserMinus size={14} />
@@ -4318,14 +4264,13 @@ function TeamModal({
             </div>
           )}
 
-          {saveError ? <div className="form-error span-2">{saveError}</div> : null}
+          {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
 
           <div className="form-actions span-2">
             <button type="button" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
+              {tr("Cancel")}</button>
             <button className="button button-admin" type="submit" disabled={saving}>
-              {saving ? 'Saving…' : initial ? 'Save Club Changes' : 'Register Club'}
+              {saving ? tr("Saving…") : initial ? tr("Save Club Changes") : tr("Register Club")}
             </button>
           </div>
         </form>
@@ -4356,6 +4301,7 @@ function QuickSquadModal({
   onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
 }) {
+  const { tr } = useAdminLanguage()
   const seasonId = team.seasonId ?? defaultSeasonId(seasons) ?? 1
   const [squadMode, setSquadMode] = useState<'pool' | 'new'>('pool')
   const [name, setName] = useState('')
@@ -4450,7 +4396,7 @@ function QuickSquadModal({
   const groupName = assignedGroupName(seasons.find((season) => season.id === team.seasonId), team.id)
 
   return (
-    <Modal title={`Squad Roster Hub: ${team.name}`} onClose={onClose}>
+    <Modal title={tr("Squad Roster Hub: {value0}", { value0: team.name })} onClose={onClose}>
       <div className="quick-squad-modal-inner">
         <div className="quick-squad-header">
           <TeamMark
@@ -4463,15 +4409,15 @@ function QuickSquadModal({
           <div>
             <h3>{team.name}</h3>
             <span>
-              {country.flag} {country.name} · {team.tournamentFormat ?? 'Champions Cup'}
+              {country.flag} {tr(country.name)} · {team.tournamentFormat ?? "Champions Cup"}
               {groupName ? ` (${groupName})` : ''}
             </span>
           </div>
           <div className="header-status">
             {players.length >= 5 ? (
-              <span className="squad-badge complete">✅ {players.length} Players (Ready)</span>
+              <span className="squad-badge complete">✅ {players.length} {tr(" Players (Ready)")}</span>
             ) : (
-              <span className="squad-badge incomplete">⚠️ {players.length}/5 (Min 5 required)</span>
+              <span className="squad-badge incomplete">⚠️ {players.length}{tr("/5 (Min 5 required)")}</span>
             )}
           </div>
         </div>
@@ -4488,32 +4434,30 @@ function QuickSquadModal({
                 onOpenSquadCanvas(team)
               }}
             >
-              <Sparkles size={14} /> Formation & pitch canvas
-            </button>
+              <Sparkles size={14} /> {tr(" Formation & pitch canvas")}</button>
           )}
           <button
             type="button"
             className={`mode-btn ${squadMode === 'pool' ? 'active' : ''}`}
             onClick={() => setSquadMode('pool')}
           >
-            👥 Add an existing player ({availablePoolPlayers.length})
+            {tr("👥 Add an existing player (")}{availablePoolPlayers.length})
           </button>
           <button
             type="button"
             className={`mode-btn ${squadMode === 'new' ? 'active' : ''}`}
             onClick={() => setSquadMode('new')}
           >
-            ➕ Create a new player
-          </button>
+            {tr("➕ Create a new player")}</button>
         </div>
 
         {squadMode === 'pool' ? (
           <div className="inline-add-player-box">
-            <h4>Move an existing player to {team.name}</h4>
+            <h4>{tr("Move an existing player to ")}{team.name}</h4>
             <div className="inline-player-fields">
               <input
                 type="text"
-                placeholder="Search players (name, club, position)…"
+                placeholder={tr("Search players (name, club, position)…")}
                 value={poolSearch}
                 onChange={(e) => setPoolSearch(e.target.value)}
                 style={{ flex: 1, minWidth: '180px' }}
@@ -4525,12 +4469,12 @@ function QuickSquadModal({
               >
                 <option value="">
                   {filteredPoolPlayers.length === 0
-                    ? 'No available players found'
-                    : `-- Choose a player to add (${filteredPoolPlayers.length}) --`}
+                    ? tr("No available players found")
+                    : tr("-- Choose a player to add ({value0}) --", { value0: filteredPoolPlayers.length })}
                 </option>
                 {filteredPoolPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.fullName} ({p.position.toUpperCase()}) · This season: {clubThisSeason(p) ?? 'free agent'}
+                    {p.fullName} ({p.position.toUpperCase()}{tr(") · This season: ")}{clubThisSeason(p) ?? tr("free agent")}
                   </option>
                 ))}
               </select>
@@ -4540,17 +4484,17 @@ function QuickSquadModal({
                 onClick={handleAssignPool}
                 disabled={assigning || !selectedPoolId}
               >
-                {assigning ? 'Adding…' : '+ Add to squad'}
+                {assigning ? tr("Adding…") : tr("+ Add to squad")}
               </button>
             </div>
-            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
+            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{tr(addError)}</div> : null}
           </div>
         ) : (
           <div className="inline-add-player-box">
-            <h4>Register a new player for {team.name}</h4>
+            <h4>{tr("Register a new player for ")}{team.name}</h4>
             <div className="inline-player-fields">
               <input
-                placeholder="Player Full Name *"
+                placeholder={tr("Player Full Name *")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -4558,16 +4502,16 @@ function QuickSquadModal({
                 type="number"
                 min={1}
                 max={99}
-                placeholder="Shirt #"
+                placeholder={tr("Shirt #")}
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
                 style={{ width: '85px' }}
               />
               <select value={pos} onChange={(e) => setPos(e.target.value as PlayerPosition)}>
-                <option value="goalkeeper">🧤 Goalkeeper</option>
-                <option value="defender">🛡️ Defender</option>
-                <option value="midfielder">⚙️ Midfielder</option>
-                <option value="forward">⚡ Forward</option>
+                <option value="goalkeeper">{tr("🧤 Goalkeeper")}</option>
+                <option value="defender">{tr("🛡️ Defender")}</option>
+                <option value="midfielder">{tr("⚙️ Midfielder")}</option>
+                <option value="forward">{tr("⚡ Forward")}</option>
               </select>
               <button
                 type="button"
@@ -4575,10 +4519,10 @@ function QuickSquadModal({
                 onClick={handleAdd}
                 disabled={adding || !name.trim()}
               >
-                {adding ? 'Adding…' : '+ Register'}
+                {adding ? tr("Adding…") : tr("+ Register")}
               </button>
             </div>
-            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{addError}</div> : null}
+            {addError ? <div className="form-error" style={{ marginTop: '8px' }}>{tr(addError)}</div> : null}
           </div>
         )}
 
@@ -4588,10 +4532,10 @@ function QuickSquadModal({
             <thead>
               <tr>
                 <th>#</th>
-                <th>PLAYER</th>
-                <th>POSITION</th>
-                <th>PLAYED SEASONS</th>
-                <th>ACTION</th>
+                <th>{tr("PLAYER")}</th>
+                <th>{tr("POSITION")}</th>
+                <th>{tr("PLAYED SEASONS")}</th>
+                <th>{tr("ACTION")}</th>
               </tr>
             </thead>
             <tbody>
@@ -4605,7 +4549,7 @@ function QuickSquadModal({
                   </td>
                   <td>
                     <span className={`position-tag ${p.position}`}>
-                      {p.position.slice(0, 3).toUpperCase()}
+                      {tr({ goalkeeper: 'GK', defender: 'DEF', midfielder: 'MID', forward: 'FWD' }[p.position])}
                     </span>
                   </td>
                   <td>
@@ -4620,25 +4564,22 @@ function QuickSquadModal({
                   <td>
                     <button
                       className="row-action danger"
-                      disabled={players.length <= MIN_SQUAD}
                       onClick={() => {
                         setAddError('')
                         onSetSquad(p.id, seasonId, null).catch((reason: unknown) =>
                           setAddError(reason instanceof Error ? reason.message : 'Unable to remove this player.'),
                         )
                       }}
-                      title={players.length <= MIN_SQUAD ? shrinkError(team, players.length) : 'Remove from squad (keeps the player in the pool)'}
+                      title={tr("Remove from squad (keeps the player in the pool)")}
                     >
-                      <UserMinus size={14} /> Remove
-                    </button>
+                      <UserMinus size={14} /> {tr(" Remove")}</button>
                   </td>
                 </tr>
               ))}
               {players.length === 0 && (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#8c9bad' }}>
-                    No players registered in this squad yet. Use the form above to add the starting 5+ players.
-                  </td>
+                    {tr("No players registered in this squad yet. Use the form above to add the starting 5+ players.")}</td>
                 </tr>
               )}
             </tbody>
@@ -4652,15 +4593,18 @@ function QuickSquadModal({
 function MatchForm({
   teams,
   seasons,
+  initialSeasonId,
   onClose,
   onSave,
 }: {
   teams: Team[]
   seasons: Season[]
+  initialSeasonId?: number
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {
-  const [seasonId, setSeasonId] = useState<number | undefined>(() => defaultSeasonId(seasons))
+  const { tr } = useAdminLanguage()
+  const [seasonId, setSeasonId] = useState<number | undefined>(() => initialSeasonId ?? defaultSeasonId(seasons))
 
   // Only clubs registered for the chosen season can contest its fixtures.
   // Clubs with no season recorded stay selectable rather than disappearing.
@@ -4681,6 +4625,9 @@ function MatchForm({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    const streamUrl = String(data.get('streamUrl')).trim()
+    const streamProblem = broadcastUrlError(streamUrl)
+    if (streamProblem) { setSaveError(streamProblem); setSaving(false); return }
     const home = String(data.get('home'))
     const away = String(data.get('away'))
     if (home === away) {
@@ -4699,9 +4646,9 @@ function MatchForm({
         time: String(data.get('time')),
         venue: String(data.get('venue')),
         referee: String(data.get('referee')) || undefined,
-        streamUrl: String(data.get('streamUrl')).trim() || undefined,
+        streamUrl: streamUrl || undefined,
         matchStatus: 'scheduled',
-        status: String(data.get('status')) as Match['status'],
+        status: 'Scheduled',
         events: [],
       })
       onClose()
@@ -4713,11 +4660,10 @@ function MatchForm({
   })
 
   return (
-    <Modal title="Create match fixture" onClose={onClose}>
+    <Modal title={tr("Create match fixture")} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <label className="span-2">
-          Season *
-          <select
+          {tr("Season *")}<select
             name="seasonId"
             value={seasonId ?? ''}
             onChange={(event) => setSeasonId(Number(event.target.value) || undefined)}
@@ -4730,66 +4676,50 @@ function MatchForm({
             ))}
           </select>
           <small className="field-hint">
-            Fixtures are recorded against a season, so concurrent competitions stay separate.
-          </small>
+            {tr("Fixtures are recorded against a season, so concurrent competitions stay separate.")}</small>
         </label>
         <label>
-          Home team
-          <select name="home" defaultValue={names[0]}>
+          {tr("Home team")}<select name="home" defaultValue={names[0]}>
             {names.map((name) => (
-              <option key={name}>{name}</option>
+              <option value={name} key={name}>{name}</option>
             ))}
           </select>
         </label>
         <label>
-          Away team
-          <select name="away" defaultValue={names[1] ?? names[0]}>
+          {tr("Away team")}<select name="away" defaultValue={names[1] ?? names[0]}>
             {names.map((name) => (
-              <option key={name}>{name}</option>
+              <option value={name} key={name}>{name}</option>
             ))}
           </select>
         </label>
         <label>
-          Stage
-          <input name="stage" defaultValue="Group A" list="fixture-stages" required />
+          {tr("Stage")}<input name="stage" defaultValue="Group A" list="fixture-stages" required />
           <datalist id="fixture-stages">
             {(seasons.find((season) => season.id === seasonId)?.groupLeague?.groups.map((group) => group.name) ?? ['Group A', 'Group B', 'Group Stage']).map((stage) => <option key={stage} value={stage} />)}
             {['Round of 16', 'Quarter-final', 'Semi-final', 'Final', 'Third-place Play-off'].map((stage) => <option key={stage} value={stage} />)}
           </datalist>
-          <small className="field-hint">For knockout fixtures, use Round of 16, Quarter-final, Semi-final or Final so the score updates the draw.</small>
+          <small className="field-hint">{tr("For knockout fixtures, use Round of 16, Quarter-final, Semi-final or Final so the score updates the draw.")}</small>
         </label>
         <label>
-          Venue
-          <input name="venue" defaultValue="Central Arena" required />
+          {tr("Venue")}<input name="venue" defaultValue="Central Arena" required />
         </label>
         <label>
-          Date
-          <input name="date" defaultValue="18 Aug" placeholder="e.g. 18 Aug" required />
+          {tr("Date")}<input name="date" defaultValue="18 Aug" placeholder={tr("e.g. 18 Aug")} required />
         </label>
         <label>
-          Kickoff Time
-          <input name="time" type="time" defaultValue="20:30" required />
+          {tr("Kickoff Time")}<input name="time" type="time" defaultValue="20:30" required />
         </label>
         <label className="span-2">
-          Referee Name
-          <input name="referee" placeholder="e.g. Mehmet Ali Yılmaz" />
+          {tr("Referee Name")}<input name="referee" placeholder={tr("e.g. Mehmet Ali Yılmaz")} />
         </label>
         <label className="span-2">
-          Live Stream URL
-          <input name="streamUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
+          {tr("Broadcast URL")}<input name="streamUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
           <small className="field-hint">
-            Optional. While the match is Live, the public site turns the LIVE badge into a link to this address.
-          </small>
+            {tr("Optional. A YouTube video or scheduled live link adds a player before kickoff. Other services open in a new tab.")}</small>
         </label>
-        <label className="span-2">
-          Publication Status
-          <select name="status">
-            <option>Scheduled</option>
-            <option>Draft</option>
-          </select>
-        </label>
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label="Create fixture" saving={saving} />
+        <p className="field-hint span-2">{tr("All fixtures are public when their tournament is published.")}</p>
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={tr("Create fixture")} saving={saving} />
       </form>
     </Modal>
   )
@@ -4797,13 +4727,23 @@ function MatchForm({
 
 function MatchScoreModal({
   match,
+  teams,
+  players,
   onClose,
   onSave,
 }: {
   match: Match
+  teams: Team[]
+  players: Player[]
   onClose: () => void
   onSave: (match: Match) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
+  const [lineup, setLineup] = useState(() => defaultMatchLineups(match, teams, players))
+  const [resultKind, setResultKind] = useState(match.resultKind ?? 'normal')
+  const [forfeitTeamId, setForfeitTeamId] = useState(match.forfeitTeamId)
+  const [status, setStatus] = useState(match.matchStatus)
+  const scores = resultKind === 'forfeit' && forfeitTeamId != null ? (forfeitTeamId === match.homeTeamId ? [0, 3] : [3, 0]) : match.scoreSource === 'legacy' ? [match.homeScore ?? 0, match.awayScore ?? 0] : goalScore(match)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -4814,20 +4754,20 @@ function MatchScoreModal({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    const streamUrl = String(data.get('streamUrl')).trim()
+    const streamProblem = broadcastUrlError(streamUrl)
+    if (streamProblem) { setSaveError(streamProblem); setSaving(false); return }
     const homeScoreVal = data.get('homeScore')
     const awayScoreVal = data.get('awayScore')
     const homePenVal = data.get('homePenalties')
     const awayPenVal = data.get('awayPenalties')
     // A shootout needs both sides; a half-filled pair is treated as none.
     const hasShootout = !!homePenVal && !!awayPenVal
-    // A scheduled match cannot have a score. Saving one while the status was
-    // left on "Scheduled" kept the result out of the table and scorer list,
-    // which only count finished matches, so a score marks it as full time.
-    const hasScore = homeScoreVal !== '' && homeScoreVal != null && awayScoreVal !== '' && awayScoreVal != null
+    // Recording goals and completing play are separate staff decisions.
     const chosenStatus = String(data.get('matchStatus')) as MatchStatus
-    const matchStatus: MatchStatus = hasScore && chosenStatus === 'scheduled' ? 'completed' : chosenStatus
+    const matchStatus: MatchStatus = chosenStatus
     // A 2–2 shootout was accepted and then shown nowhere, since it has no winner.
-    const penaltyProblem = hasShootout
+    const penaltyProblem = (!!homePenVal !== !!awayPenVal) ? 'Enter both shootout scores.' : resultKind !== 'forfeit' && matchStatus === 'completed' && knockoutRoundSize(String(data.get('stage'))) != null && Number(homeScoreVal) === Number(awayScoreVal) && !hasShootout ? 'A drawn knockout match requires direct penalties with a winner.' : hasShootout
       ? shootoutError(Number(homeScoreVal), Number(awayScoreVal), Number(homePenVal), Number(awayPenVal))
       : ''
     if (penaltyProblem) {
@@ -4844,13 +4784,17 @@ function MatchScoreModal({
         date: String(data.get('date')),
         time: String(data.get('time')),
         referee: String(data.get('referee')) || undefined,
-        streamUrl: String(data.get('streamUrl')).trim() || undefined,
+        streamUrl: streamUrl || undefined,
         matchStatus,
+        squads: lineup,
+        resultKind,
+        forfeitTeamId: resultKind === 'forfeit' ? forfeitTeamId : undefined,
+        decisionNote: String(data.get('decisionNote')).trim() || undefined,
         homeScore: homeScoreVal !== '' ? Number(homeScoreVal) : undefined,
         awayScore: awayScoreVal !== '' ? Number(awayScoreVal) : undefined,
         homePenalties: hasShootout ? Number(homePenVal) : undefined,
         awayPenalties: hasShootout ? Number(awayPenVal) : undefined,
-        status: String(data.get('status')) as Match['status'],
+        status: 'Scheduled',
       })
       onClose()
     } catch (reason) {
@@ -4861,7 +4805,7 @@ function MatchScoreModal({
   })
 
   return (
-    <Modal title={`Match Scorekeeper: ${match.home} vs ${match.away}`} onClose={onClose}>
+    <Modal title={tr("Match Scorekeeper: {value0} vs {value1}", { value0: match.home, value1: match.away })} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <div className="scorekeeper-banner span-2">
           <div className="scorekeeper-team">
@@ -4870,8 +4814,8 @@ function MatchScoreModal({
             <input
               type="number"
               name="homeScore"
-              aria-label={`${match.home} score`}
-              defaultValue={match.homeScore ?? ''}
+              aria-label={tr("{value0} score", { value0: match.home })}
+              value={scores[0]} readOnly
               placeholder="0"
               min={0}
               className="score-input"
@@ -4882,8 +4826,8 @@ function MatchScoreModal({
             <input
               type="number"
               name="awayScore"
-              aria-label={`${match.away} score`}
-              defaultValue={match.awayScore ?? ''}
+              aria-label={tr("{value0} score", { value0: match.away })}
+              value={scores[1]} readOnly
               placeholder="0"
               min={0}
               className="score-input"
@@ -4893,15 +4837,26 @@ function MatchScoreModal({
           </div>
         </div>
 
+        <small className="field-hint span-2">{tr("Normal scores come from registered-player goal events. Fixed duration: two 25-minute halves plus stoppage time; drawn knockout matches go straight to penalties.")}</small>
+        {match.scoreSource === 'legacy' && <p className="module-note span-2">{tr("Historical result: its original score is preserved. Its goal ledger needs staff reconciliation before score changes.")}</p>}
+        <label>{tr("Result type")}<select value={resultKind} onChange={(e) => { setResultKind(e.target.value as 'normal' | 'forfeit'); if (e.target.value === 'forfeit') setStatus('completed') }}>
+          <option value="normal">{tr("Played match · goals from players")}</option><option value="forfeit">{tr("Administrative 3–0 forfeit")}</option>
+        </select></label>
+        {resultKind === 'forfeit' && <label>{tr("Forfeiting club *")}<select required value={forfeitTeamId ?? ''} onChange={(e) => setForfeitTeamId(Number(e.target.value))}>
+          <option value="">{tr("Select a club")}</option><option value={match.homeTeamId}>{match.home}</option><option value={match.awayTeamId}>{match.away}</option>
+        </select></label>}
+        <label className="span-2">{tr("Staff decision / reason")}<textarea name="decisionNote" defaultValue={match.decisionNote ?? ''} required={resultKind === 'forfeit' || status === 'stopped'} /></label>
+        <MatchLineupFields match={match} players={players} value={lineup} onChange={setLineup} />
+
         <div className="penalties-keeper-row span-2">
-          <small className="penalties-label">Penalty shootout (only for knockout matches level after full time)</small>
+          <small className="penalties-label">{tr("Penalty shootout (only for knockout matches level after full time)")}</small>
           <div className="penalties-inputs">
             <input
               type="number"
               name="homePenalties"
-              aria-label={`${match.home} penalties`}
+              aria-label={tr("{value0} penalties", { value0: match.home })}
               defaultValue={match.homePenalties ?? ''}
-              placeholder="Home"
+              placeholder={tr("Home")}
               min={0}
               className="score-input pen-score-input"
             />
@@ -4909,9 +4864,9 @@ function MatchScoreModal({
             <input
               type="number"
               name="awayPenalties"
-              aria-label={`${match.away} penalties`}
+              aria-label={tr("{value0} penalties", { value0: match.away })}
               defaultValue={match.awayPenalties ?? ''}
-              placeholder="Away"
+              placeholder={tr("Away")}
               min={0}
               className="score-input pen-score-input"
             />
@@ -4919,64 +4874,50 @@ function MatchScoreModal({
         </div>
 
         <label>
-          Match Status
-          <select name="matchStatus" defaultValue={match.matchStatus}>
-            <option value="scheduled">Scheduled</option>
-            <option value="live">Live (In Progress)</option>
-            <option value="completed">Completed (Final)</option>
-            <option value="postponed">Postponed</option>
+          {tr("Match Status")}<select aria-label={tr("Match Status")} name="matchStatus" value={status} onChange={(e) => setStatus(e.target.value as MatchStatus)}>
+            <option value="scheduled">{tr("Scheduled")}</option>
+            <option value="live">{tr("Live (In Progress)")}</option>
+            <option value="completed">{tr("Completed (Final)")}</option>
+            <option value="postponed">{tr("Postponed")}</option><option value="stopped">{tr("Stopped · staff decision required")}</option>
           </select>
-          <small className="field-hint">Saving a score on a scheduled match marks it Completed, so it counts in the table.</small>
+          <small className="field-hint">{tr("Choose Completed after play, or Stopped when play cannot continue. Staff decides the outcome; no automatic forfeit.")}</small>
         </label>
 
         <label>
-          Stage
-          <input name="stage" defaultValue={match.stage} required />
+          {tr("Stage")}<input name="stage" defaultValue={match.stage} required />
         </label>
 
         <label>
-          Date
-          <input name="date" defaultValue={match.date} required />
+          {tr("Date")}<input name="date" defaultValue={match.date} required />
         </label>
 
         <label>
-          Time
-          <input name="time" defaultValue={match.time} required />
+          {tr("Time")}<input name="time" defaultValue={match.time} required />
         </label>
 
         <label>
-          Venue
-          <input name="venue" defaultValue={match.venue} required />
+          {tr("Venue")}<input name="venue" defaultValue={match.venue} required />
         </label>
 
         <label>
-          Referee
-          <input name="referee" defaultValue={match.referee ?? ''} placeholder="Referee Name" />
+          {tr("Referee")}<input name="referee" defaultValue={match.referee ?? ''} placeholder={tr("Referee Name")} />
         </label>
 
         <label className="span-2">
-          Live Stream URL
-          <input
+          {tr("Broadcast URL")}<input
             name="streamUrl"
             type="url"
             defaultValue={match.streamUrl ?? ''}
             placeholder="https://youtube.com/watch?v=…"
           />
           <small className="field-hint">
-            Set this while the match status is Live to turn the public LIVE badge into a link out.
-          </small>
+            {tr("A YouTube video or scheduled live link embeds on the public site before kickoff. Leave empty to remove the broadcast.")}</small>
         </label>
 
-        <label className="span-2">
-          Public Visibility
-          <select name="status" defaultValue={match.status}>
-            <option value="Scheduled">Scheduled (Visible)</option>
-            <option value="Draft">Draft (Hidden from public)</option>
-          </select>
-        </label>
+        <p className="field-hint span-2">{tr("All fixtures and their broadcast links are public when their tournament is published.")}</p>
 
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label="Save match result" saving={saving} />
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={tr("Save match result")} saving={saving} />
       </form>
     </Modal>
   )
@@ -4995,8 +4936,10 @@ function MatchEventsModal({
   onAddEvent: (event: MatchEvent) => Promise<void>
   onDeleteEvent: (eventId: number) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const [saving, setSaving] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<string>(match.home)
+  const [eventType, setEventType] = useState<MatchEventType>('goal')
   const [error, setError] = useState('')
   const selectedTeamId = selectedTeam === match.home ? match.homeTeamId : match.awayTeamId
 
@@ -5014,6 +4957,7 @@ function MatchEventsModal({
     const data = new FormData(form)
     try {
       const player = matchPlayers.find((p) => p.id === Number(data.get('playerId')))
+      if (!player) throw new Error('Select a registered squad player. Free-text scorers are not allowed.')
       await onAddEvent({
         id: Date.now(),
         matchId: match.id,
@@ -5024,6 +4968,9 @@ function MatchEventsModal({
         eventType: String(data.get('eventType')) as MatchEventType,
         minute: Number(data.get('minute')),
         notes: String(data.get('notes')) || undefined,
+        extraMinute: data.get('extraMinute') ? Number(data.get('extraMinute')) : undefined,
+        incomingPlayerId: eventType === 'substitution' ? Number(data.get('incomingPlayerId')) : undefined,
+        isGoalkeeperChange: data.get('isGoalkeeperChange') === 'on',
       })
       form.reset()
     } catch (reason) {
@@ -5034,12 +4981,12 @@ function MatchEventsModal({
   })
 
   return (
-    <Modal title={`Match Events Timeline: ${match.home} vs ${match.away}`} onClose={onClose}>
+    <Modal title={tr("Match Events Timeline: {value0} vs {value1}", { value0: match.home, value1: match.away })} onClose={onClose}>
       <div className="match-events-container">
         <div className="current-events-list">
-          <h3>Logged Events ({(match.events ?? []).length})</h3>
+          <h3>{tr("Logged Events (")}{(match.events ?? []).length})</h3>
           {(match.events ?? []).length === 0 ? (
-            <p className="empty-text">No events logged yet for this match.</p>
+            <p className="empty-text">{tr("No events logged yet for this match.")}</p>
           ) : (
             <div className="events-timeline">
               {match.events?.map((ev) => (
@@ -5054,7 +5001,7 @@ function MatchEventsModal({
                   <button
                     className="delete-event-btn"
                     onClick={() => void onDeleteEvent(ev.id)}
-                    title="Remove event"
+                    title={tr("Remove event")}
                   >
                     <X size={14} />
                   </button>
@@ -5065,62 +5012,62 @@ function MatchEventsModal({
         </div>
 
         <div className="add-event-section">
-          <h3>Log New Event</h3>
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <h3>{tr("Log New Event")}</h3>
+          {error ? <p className="form-error" role="alert">{tr(error)}</p> : null}
           <form className="admin-form" onSubmit={submitEvent}>
             <label>
-              Team
-              <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+              {tr("Team")}<select aria-label={tr("Team")} value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
                 <option value={match.home}>{match.home}</option>
                 <option value={match.away}>{match.away}</option>
               </select>
             </label>
 
             <label>
-              Player
-              {matchPlayers.length > 0 ? (
-                <select key={selectedTeam} name="playerId" required>
+              {tr("Player")}<select aria-label={tr("Player")} key={selectedTeam} name="playerId" required disabled={!matchPlayers.length}>
+                  {!matchPlayers.length && <option value="">{tr("Register squad players first")}</option>}
                   {matchPlayers.map((p) => (
                     <option key={p.id} value={p.id}>
                       #{p.shirtNumber ?? '-'} {p.fullName}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <input name="playerName" placeholder="Player name" required />
-              )}
             </label>
 
             <label>
-              Event Type
-              <select name="eventType">
-                <option value="goal">⚽ Goal</option>
-                <option value="assist">🅰️ Assist</option>
-                <option value="penalty_scored">🎯 Penalty Scored</option>
-                <option value="own_goal">🥅 Own Goal</option>
-                <option value="yellow_card">🟨 Yellow Card</option>
-                <option value="red_card">🟥 Red Card</option>
-                <option value="substitution">🔄 Substitution</option>
+              {tr("Event Type")}<select name="eventType" value={eventType} onChange={(e) => setEventType(e.target.value as MatchEventType)}>
+                <option value="goal">{tr("⚽ Goal")}</option>
+                <option value="assist">{tr("🅰️ Assist")}</option>
+                <option value="penalty_scored">{tr("🎯 Penalty Scored")}</option>
+                <option value="own_goal">{tr("🥅 Own Goal")}</option>
+                <option value="yellow_card">{tr("🟨 Yellow Card")}</option>
+                <option value="red_card">{tr("🟥 Red Card")}</option>
+                <option value="substitution">{tr("🔄 Substitution")}</option>
               </select>
             </label>
 
             <label>
-              Minute (0 - 120)
-              <input name="minute" type="number" min={1} max={120} defaultValue={45} required />
+              {tr("Minute (0–50)")}<input name="minute" type="number" min={0} max={50} defaultValue={25} required />
             </label>
+            <label>{tr("Stoppage minute")}<input name="extraMinute" type="number" min={0} max={30} placeholder={tr("e.g. 2 for 25+2")} /></label>
+            {eventType === 'substitution' && <>
+              <label>{tr("Incoming substitute *")}<select name="incomingPlayerId" required>
+                <option value="">{tr("Choose a match-day substitute")}</option>
+                {matchPlayers.filter((p) => match.squads?.some((s) => s.playerId === p.id && s.lineupRole === 'bench')).map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+              </select></label>
+              <label className="checkbox-label"><input name="isGoalkeeperChange" type="checkbox" />{tr("Goalkeeper exchange (one allowed)")}</label>
+              <small className="field-hint span-2">{tr("Player above is outgoing. Five outfield changes plus one goalkeeper change; substituted players cannot return.")}</small>
+            </>}
 
             <label className="span-2">
-              Notes (e.g. Header, Assist, Free kick)
-              <input name="notes" placeholder="Optional notes" />
+              {tr("Notes (e.g. Header, Assist, Free kick)")}<input name="notes" placeholder={tr("Optional notes")} />
             </label>
 
             <small className="field-hint span-2">
-              Goals and scored penalties add one to the club&rsquo;s score, an own goal to the other club&rsquo;s; deleting them takes it back off.
-            </small>
+              {tr("Goals and scored penalties add one to the club’s score, an own goal to the other club’s; deleting them takes it back off.")}</small>
 
             <div className="form-actions span-2">
-              <button className="button button-admin" type="submit" disabled={saving}>
-                {saving ? 'Adding…' : 'Add Event to Timeline'}
+              <button className="button button-admin" type="submit" disabled={saving || !matchPlayers.length || match.scoreSource === 'legacy'}>
+                {saving ? tr("Adding…") : tr("Add Event to Timeline")}
               </button>
             </div>
           </form>
@@ -5139,14 +5086,17 @@ function MatchEventsModal({
  */
 function useSingleFlight() {
   const busy = useRef(false)
-  return useCallback(async (event: { preventDefault?: () => void } | undefined, fn: () => Promise<void>) => {
+  return useCallback(async (event: { preventDefault?: () => void; currentTarget?: EventTarget | null } | undefined, fn: () => Promise<void>) => {
     event?.preventDefault?.()
     if (busy.current) return
     busy.current = true
+    const form = event?.currentTarget instanceof HTMLFormElement ? event.currentTarget : null
+    if (form) form.dataset.saving = 'true'
     try {
       await fn()
     } finally {
       busy.current = false
+      if (form) delete form.dataset.saving
     }
   }, [])
 }
@@ -5172,6 +5122,7 @@ function PlayerForm({
   onSave: (player: Player) => Promise<void>
   onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -5189,7 +5140,8 @@ function PlayerForm({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     const teamId = Number(data.get('teamId')) || undefined
     const foundTeam = teams.find((t) => t.id === teamId)
 
@@ -5209,6 +5161,7 @@ function PlayerForm({
       if (initial && teamId !== currentTeamId) await onSetSquad(initial.id, squadSeasonId, teamId ?? null)
       onClose()
     } catch (reason: unknown) {
+      reportAssetSaveFailure(form, reason)
       console.error('Player save failed:', reason)
       const msg =
         reason instanceof Error
@@ -5223,16 +5176,14 @@ function PlayerForm({
   })
 
   return (
-    <Modal title={initial ? `Edit Player: ${initial.fullName}` : 'Register New Player'} onClose={onClose}>
+    <Modal title={initial ? tr("Edit Player: {value0}", { value0: initial.fullName }) : tr("Register New Player")} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <label className="span-2">
-          Full Name *
-          <input name="fullName" defaultValue={initial?.fullName ?? ''} placeholder="e.g. Emre Yılmaz" required />
+          {tr("Full Name *")}<input name="fullName" defaultValue={initial?.fullName ?? ''} placeholder={tr("e.g. Emre Yılmaz")} required />
         </label>
 
         <label>
-          Season
-          <select value={squadSeasonId} onChange={(e) => setSquadSeasonId(Number(e.target.value))}>
+          {tr("Season")}<select value={squadSeasonId} onChange={(e) => setSquadSeasonId(Number(e.target.value))}>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
@@ -5242,9 +5193,8 @@ function PlayerForm({
         </label>
 
         <label>
-          Club this season
-          <select name="teamId" key={squadSeasonId} defaultValue={currentTeamId ? String(currentTeamId) : ''}>
-            <option value="">No club this season</option>
+          {tr("Club this season")}<select name="teamId" key={squadSeasonId} defaultValue={currentTeamId ? String(currentTeamId) : ''}>
+            <option value="">{tr("No club this season")}</option>
             {seasonClubs.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({getCountry(t.countryCode).flag})
@@ -5254,8 +5204,7 @@ function PlayerForm({
         </label>
 
         <label>
-          Shirt Number (1–99)
-          <input
+          {tr("Shirt Number (1–99)")}<input
             name="shirtNumber"
             type="number"
             min={1}
@@ -5266,18 +5215,16 @@ function PlayerForm({
         </label>
 
         <label>
-          Position
-          <select name="position" defaultValue={initial?.position ?? 'forward'}>
-            <option value="goalkeeper">🧤 Goalkeeper (GK)</option>
-            <option value="defender">🛡️ Defender (DEF)</option>
-            <option value="midfielder">⚙️ Midfielder (MID)</option>
-            <option value="forward">⚡ Forward (FWD)</option>
+          {tr("Position")}<select name="position" defaultValue={initial?.position ?? 'forward'}>
+            <option value="goalkeeper">{tr("🧤 Goalkeeper (GK)")}</option>
+            <option value="defender">{tr("🛡️ Defender (DEF)")}</option>
+            <option value="midfielder">{tr("⚙️ Midfielder (MID)")}</option>
+            <option value="forward">{tr("⚡ Forward (FWD)")}</option>
           </select>
         </label>
 
         <label>
-          Birth Year
-          <input
+          {tr("Birth Year")}<input
             name="birthYear"
             type="number"
             min={1960}
@@ -5288,33 +5235,32 @@ function PlayerForm({
         </label>
 
         <label>
-          Nationality
-          <select name="nationality" defaultValue={initial?.nationality ?? 'TR'}>
+          {tr("Nationality")}<select name="nationality" defaultValue={initial?.nationality ?? 'TR'}>
             {COUNTRIES.map((country) => (
               <option key={country.code} value={country.code}>
-                {country.flag} {country.name}
+                {country.flag} {tr(country.name)}
               </option>
             ))}
           </select>
-          <small className="field-hint">Drives the flag behind this player's roster card.</small>
+          <small className="field-hint">{tr("Drives the flag behind this player's roster card.")}</small>
         </label>
 
         <ImageUploadField
           name="photoUrl"
-          label="Cutout Photo"
+          label={tr("Cutout Photo")}
           folder="players"
           defaultValue={initial?.photoUrl ?? ''}
-          hint="A background-free PNG works best — it is layered over the player's flag on roster cards."
+          hint={tr("A background-free PNG works best — it is layered over the player's flag on roster cards.")}
         />
         {initial && initial.squads.length > 0 ? (
           <div className="span-2 season-picker-field">
-            <span className="field-label">Squads by season</span>
+            <span className="field-label">{tr("Squads by season")}</span>
             <div className="season-picker-chips">
               {initial.squads.map((entry) => {
                 const season = seasons.find((item) => item.id === entry.seasonId)
                 return (
                   <span key={entry.seasonId} className="season-chip-btn active">
-                    {season ? seasonLabel(season) : 'Season'} · {teams.find((team) => team.id === entry.teamId)?.name ?? 'Club'}
+                    {season ? seasonLabel(season) : tr("Season")} · {teams.find((team) => team.id === entry.teamId)?.name ?? tr("Club")}
                   </span>
                 )
               })}
@@ -5328,12 +5274,13 @@ function PlayerForm({
             type="checkbox"
             defaultChecked={initial?.isCaptain}
           />
-          <span>Team Captain (C)</span>
+          <span>{tr("Team Captain (C)")}</span>
         </label>
 
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label={initial ? 'Save Changes' : 'Register Player'} saving={saving} />
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={initial ? tr("Save Changes") : tr("Register Player")} saving={saving} />
       </form>
+      {initial && <PlayerSuspensions player={initial} seasons={seasons} />}
     </Modal>
   )
 }
@@ -5349,6 +5296,8 @@ function StoryForm({
   onClose: () => void
   onSave: (story: Story) => Promise<void>
 }) {
+  const { tr } = useAdminLanguage()
+  const [publicationStatus, setPublicationStatus] = useState<Story['status']>(initial?.status ?? 'Draft')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -5358,7 +5307,8 @@ function StoryForm({
     event.preventDefault()
     setSaving(true)
     setSaveError('')
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
       await onSave({
         id: initial?.id ?? Date.now(),
@@ -5369,10 +5319,11 @@ function StoryForm({
         coverImageUrl: String(data.get('coverImageUrl')) || undefined,
         status: String(data.get('status')) as Story['status'],
         seasonId: Number(data.get('seasonId')) || undefined,
-        publishedAt: initial?.publishedAt ?? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
+        publishedAt: publicationStatus === 'Scheduled' ? new Date(`${String(data.get('publishedAt'))}:00+03:00`).toISOString() : initial?.publishedAt,
       })
       onClose()
     } catch (reason) {
+      reportAssetSaveFailure(form, reason)
       setSaveError(reason instanceof Error ? reason.message : 'Unable to save story.')
     } finally {
       setSaving(false)
@@ -5380,17 +5331,15 @@ function StoryForm({
   })
 
   return (
-    <Modal title={initial ? 'Edit Story Article' : 'Write New Story'} onClose={onClose}>
+    <Modal title={initial ? tr("Edit Story Article") : tr("Write New Story")} onClose={onClose}>
       <form className="admin-form" onSubmit={submit}>
         <label className="span-2">
-          Headline / Title *
-          <input name="title" defaultValue={initial?.title ?? ''} placeholder="Enter article headline" required />
+          {tr("Headline / Title *")}<input name="title" defaultValue={initial?.title ?? ''} placeholder={tr("Enter article headline")} required />
         </label>
 
         <label className="span-2">
-          Season
-          <select name="seasonId" defaultValue={initial?.seasonId ?? ''}>
-            <option value="">All seasons — not tied to one campaign</option>
+          {tr("Season")}<select name="seasonId" defaultValue={initial?.seasonId ?? ''}>
+            <option value="">{tr("All seasons — not tied to one campaign")}</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {seasonLabel(season)}
@@ -5398,78 +5347,75 @@ function StoryForm({
             ))}
           </select>
           <small className="field-hint">
-            The public newsroom shows this story only while its season is selected. Leave on
-            &ldquo;All seasons&rdquo; for evergreen pieces such as rules or venue guides.
-          </small>
+            {tr("The public newsroom shows this story only while its season is selected. Leave on “All seasons” for evergreen pieces such as rules or venue guides.")}</small>
         </label>
 
         <label>
-          Category
-          <select name="category" defaultValue={initial?.category ?? 'news'}>
-            <option value="news">News</option>
-            <option value="match_report">Match Report</option>
-            <option value="announcement">Announcement</option>
-            <option value="press">Press Conference</option>
-            <option value="panorama">Weekly Panorama</option>
+          {tr("Category")}<select name="category" defaultValue={initial?.category ?? 'news'}>
+            <option value="news">{tr("News")}</option>
+            <option value="match_report">{tr("Match Report")}</option>
+            <option value="announcement">{tr("Announcement")}</option>
+            <option value="press">{tr("Press Conference")}</option>
+            <option value="panorama">{tr("Weekly Panorama")}</option>
           </select>
         </label>
 
         <label>
-          Publication Status
-          <select name="status" defaultValue={initial?.status ?? 'Published'}>
-            <option value="Published">Published</option>
-            <option value="Draft">Draft</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Archived">Archived</option>
+          {tr("Publication Status")}<select name="status" value={publicationStatus} onChange={(e) => setPublicationStatus(e.target.value as Story['status'])}>
+            <option value="Published">{tr("Published")}</option>
+            <option value="Draft">{tr("Draft")}</option>
+            <option value="Scheduled">{tr("Scheduled")}</option>
+            <option value="Archived">{tr("Archived")}</option>
           </select>
           <small className="field-hint">
-            Archived keeps a story on record without publishing it. It is hidden from the public site.
-          </small>
+            {tr("Archived keeps a story on record without publishing it. It is hidden from the public site.")}</small>
         </label>
+
+        {publicationStatus === 'Scheduled' && <label className="span-2">{tr("Publish at (Istanbul time) *")}<input name="publishedAt" type="datetime-local" required defaultValue={publicationInput(initial?.publishedAt)} />
+          <small className="field-hint">{tr("Appears automatically at this time. Open pages refresh within one minute.")}</small>
+        </label>}
 
         <ImageUploadField
           name="coverImageUrl"
-          label="Cover Image"
+          label={tr("Cover Image")}
           folder="articles"
           defaultValue={initial?.coverImageUrl ?? ''}
-          hint="Used as the hero image on the newsroom carousel and the article page."
+          hint={tr("Used as the hero image on the newsroom carousel and the article page.")}
         />
 
         <label className="span-2">
-          Summary (Brief teaser)
-          <textarea
+          {tr("Summary (Brief teaser)")}<textarea
             name="summary"
             rows={2}
             defaultValue={initial?.summary ?? ''}
-            placeholder="One or two sentences summarizing the story..."
+            placeholder={tr("One or two sentences summarizing the story...")}
           />
         </label>
 
         <label className="span-2">
-          Full Article Body
-          <textarea
+          {tr("Full Article Body")}<textarea
             name="body"
             rows={6}
             defaultValue={initial?.body ?? ''}
-            placeholder="Write the full match report or article here..."
+            placeholder={tr("Write the full match report or article here...")}
           />
         </label>
 
-        {saveError ? <div className="form-error span-2">{saveError}</div> : null}
-        <FormActions onClose={onClose} label={initial ? 'Update Story' : 'Publish Story'} saving={saving} />
+        {saveError ? <div className="form-error span-2">{tr(saveError)}</div> : null}
+        <FormActions onClose={onClose} label={publicationStatus === 'Draft' ? tr("Save Draft") : publicationStatus === 'Scheduled' ? tr("Schedule Story") : publicationStatus === 'Published' ? tr("Publish Story") : tr("Archive Story")} saving={saving} />
       </form>
     </Modal>
   )
 }
 
 function FormActions({ onClose, label, saving }: { onClose: () => void; label: string; saving: boolean }) {
+  const { tr } = useAdminLanguage()
   return (
-    <div className="form-actions span-2">
+    <div className="form-actions span-2" data-saving={saving ? 'true' : undefined}>
       <button type="button" onClick={onClose} disabled={saving}>
-        Cancel
-      </button>
+        {tr("Cancel")}</button>
       <button className="button button-admin" type="submit" disabled={saving}>
-        {saving ? 'Saving…' : label}
+        {saving ? tr("Saving…") : label}
       </button>
     </div>
   )

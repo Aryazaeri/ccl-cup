@@ -49,5 +49,11 @@ export function seasonBadgesForIds(
 
 /** The season a newly added player should default to. */
 export function defaultSeasonId(seasons: Season[]): number | undefined {
-  return (seasons.find((season) => season.isActive) ?? seasons[0])?.id
+  return (latestSeasons(seasons.filter((s) => (s.status ?? 'published') === 'published'))[0] ?? latestSeasons(seasons)[0])?.id
+}
+
+export function latestSeasons(seasons: Season[]): Season[] {
+  return [...seasons].sort((a, b) =>
+    (b.startDate ?? '').localeCompare(a.startDate ?? '') ||
+    (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id)
 }

@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { useMemo, useRef, useState } from 'react'
 import { Trophy } from 'lucide-react'
 import type { Match, Season, Team } from '../types'
@@ -13,6 +14,7 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
   onUpdateSeason: (season: Season) => Promise<void>
   onOpenBracket: (season: Season) => void
 }) {
+  const { tr } = useAdminLanguage()
   const preview = useMemo(() => qualificationPreview(season, teams, matches), [season, teams, matches])
   const bracket = useMemo(() => season.bracket ? bracketWithResults(season.bracket, matches) : null, [season.bracket, matches])
   const [saving, setSaving] = useState(false)
@@ -46,19 +48,19 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
   }
 
   return (
-    <section className="admin-panel qualification-panel" aria-label="Knockout qualification">
+    <section className="admin-panel qualification-panel" aria-label={tr("Knockout qualification")}>
       <div className="admin-panel-head">
-        <div><h3><Trophy size={18} /> Table stage → Knockout</h3><p>Top {preview.perTable} from {preview.groups.length === 1 ? 'the table' : 'each group'} qualify · {preview.teamCount} clubs</p></div>
+        <div><h3><Trophy size={18} /> {tr(" Table stage → Knockout")}</h3><p>{tr("Top ")}{preview.perTable} {tr(" from ")}{preview.groups.length === 1 ? tr("the table") : tr("each group")} {tr(" qualify · ")}{preview.teamCount} {tr(" clubs")}</p></div>
         {canManage ? <div className="qualification-actions">
-          {seeded ? <button className="button button-admin" onClick={() => onOpenBracket(season)}>Open knockout draw</button> : null}
-          <button className="button button-admin" disabled={saving || !preview.ready} onClick={() => void generate()}>{saving ? 'Saving…' : seeded ? 'Regenerate draw' : 'Generate knockout draw'}</button>
+          {seeded ? <button className="button button-admin" onClick={() => onOpenBracket(season)}>{tr("Open knockout draw")}</button> : null}
+          <button className="button button-admin" disabled={saving || !preview.ready} onClick={() => void generate()}>{saving ? tr("Saving…") : seeded ? tr("Regenerate draw") : tr("Generate knockout draw")}</button>
         </div> : null}
       </div>
-      {!preview.ready ? <p className="qualification-message">{preview.reason}</p> : !seeded ? <p className="qualification-message">All entered table fixtures are complete. Check the schedule, then generate the draw to confirm qualification.</p> : null}
-      {seeded && expected !== saved ? <p className="qualification-message">Table positions have changed since qualification. The saved draw stays fixed until you regenerate it.</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      {seeded && bracket ? <><p className="qualification-message">Enter knockout fixtures with the round shown below. Completed scores and penalty shootouts advance winners automatically.</p><KnockoutBracket bracket={bracket} matches={matches} /></> : (
-        <div className="qualification-preview">{preview.qualifiers.map((row) => <span key={`${row.groupId}-${row.teamId}`}><small>{row.qualificationLabel}</small><strong>{row.teamName}</strong><span>{row.points} pts</span></span>)}</div>
+      {!preview.ready ? <p className="qualification-message">{tr(preview.reason)}</p> : !seeded ? <p className="qualification-message">{tr("All entered table fixtures are complete. Check the schedule, then generate the draw to confirm qualification.")}</p> : null}
+      {seeded && expected !== saved ? <p className="qualification-message">{tr("Table positions have changed since qualification. The saved draw stays fixed until you regenerate it.")}</p> : null}
+      {error ? <p className="form-error" role="alert">{tr(error)}</p> : null}
+      {seeded && bracket ? <><p className="qualification-message">{tr("Enter knockout fixtures with the round shown below. Completed scores and penalty shootouts advance winners automatically.")}</p><KnockoutBracket bracket={bracket} matches={matches} /></> : (
+        <div className="qualification-preview">{preview.qualifiers.map((row) => <span key={`${row.groupId}-${row.teamId}`}><small>{row.qualificationLabel}</small><strong>{row.teamName}</strong><span>{row.points} {tr(" pts")}</span></span>)}</div>
       )}
       {confirmDialog}
     </section>

@@ -52,11 +52,22 @@ export function can(role: UserRole | undefined, area: PermissionArea): boolean {
   return (PERMISSIONS[area] as readonly UserRole[]).includes(role)
 }
 
-async function fetchProfile(user: User): Promise<AuthProfile> {
+async function readProfile(user: User): Promise<AuthProfile> {
   if (!supabase) throw new Error('Supabase is not configured.')
   const { data, error } = await supabase.from('profiles').select('full_name,role').eq('id', user.id).single()
   if (error) throw error
   return { id: user.id, fullName: data.full_name || user.email || 'CCL User', email: user.email ?? '', role: data.role as UserRole }
+}
+
+// Initial session notification and signIn can arrive together. Share only the
+// in-flight authenticated profile read; roles are always obtained from RLS.
+const pendingProfiles = new Map<string, Promise<AuthProfile>>()
+async function fetchProfile(user: User): Promise<AuthProfile> {
+  const existing = pendingProfiles.get(user.id)
+  if (existing) return existing
+  const pending = readProfile(user)
+  pendingProfiles.set(user.id, pending)
+  try { return await pending } finally { if (pendingProfiles.get(user.id) === pending) pendingProfiles.delete(user.id) }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -76,23 +87,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!mounted) return
-      if (data.user) {
-        try { setProfile(await fetchProfile(data.user)) } catch { setProfile(null) }
-      }
-      setLoading(false)
-    })
+    let generation = 0
+    // Supabase emits INITIAL_SESSION after its own initialization. A separate
+    // getUser request duplicated that work and held up the first render.
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const version = ++generation
       if (!mounted) return
       if (!session?.user) {
         setProfile(null)
         setLoading(false)
         return
       }
-      queueMicrotask(() => fetchProfile(session.user).then(setProfile).catch(() => setProfile(null)).finally(() => setLoading(false)))
+      queueMicrotask(() => {
+        if (!mounted || version !== generation) return
+        fetchProfile(session.user)
+          .then((next) => { if (mounted && version === generation) setProfile(next) })
+          .catch(() => { if (mounted && version === generation) setProfile(null) })
+          .finally(() => { if (mounted && version === generation) setLoading(false) })
+      })
     })
-    return () => { mounted = false; listener.subscription.unsubscribe() }
+    return () => { mounted = false; generation++; listener.subscription.unsubscribe() }
   }, [])
 
   const value = useMemo<AuthContextValue>(() => ({

@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import {
   Check,
   Dices,
@@ -34,6 +35,7 @@ export function GroupLeagueCanvasModal({
   onClose,
   onSave,
 }: Props) {
+  const { tr } = useAdminLanguage()
   const [groupCount, setGroupCount] = useState<number>(
     initialGroupLeague?.groupCount ?? initialGroupCount ?? 4
   )
@@ -226,7 +228,7 @@ export function GroupLeagueCanvasModal({
 
   return (
     <Modal
-      title={`🗂️ ${seasonTitle || 'Group league'} - Group tables`}
+      title={tr("🗂️ {value0} - Group tables", { value0: seasonTitle || 'Group league' })}
       onClose={() => { if (!savingRef.current) onClose() }}
       className={`bracket-canvas-modal-dialog ${isFullScreen ? 'is-fullscreen' : ''}`}
     >
@@ -234,7 +236,7 @@ export function GroupLeagueCanvasModal({
         {/* TOP TOOLBAR */}
         <header className="bracket-builder-toolbar">
           <div className="toolbar-left">
-            <span className="toolbar-label">Groups:</span>
+            <span className="toolbar-label">{tr("Groups:")}</span>
             <select
               className="league-count-select" disabled={saving}
               value={groupCount}
@@ -242,37 +244,34 @@ export function GroupLeagueCanvasModal({
             >
               {groupCountOptions.map((c) => (
                 <option key={c} value={c}>
-                  {c} groups ({c === 2 ? 'A, B' : c === 4 ? 'A, B, C, D' : `${c} groups`})
+                  {c} {tr(" groups (")}{c === 2 ? tr("A, B") : c === 4 ? tr("A, B, C, D") : tr("{value0} groups", { value0: c })})
                 </option>
               ))}
             </select>
 
             <div className="count-pill-btn active" style={{ marginLeft: 8 }}>
-              Total: {totalPlacedCount} teams placed
-            </div>
+              {tr("Total: ")}{totalPlacedCount} {tr(" teams placed")}</div>
           </div>
 
           <div className="toolbar-right">
-            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title="Random draw">
-              <Dices size={16} /> Auto draw
-            </button>
-            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title="Clear all groups">
-              <RotateCcw size={16} /> Clear
-            </button>
+            <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title={tr("Random draw")}>
+              <Dices size={16} /> {tr(" Auto draw")}</button>
+            <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title={tr("Clear all groups")}>
+              <RotateCcw size={16} /> {tr(" Clear")}</button>
             <button
               type="button"
               className="toolbar-btn icon-only"
               onClick={() => setIsFullScreen(!isFullScreen)}
-              title="Tam Ekran"
+              title={tr("Tam Ekran")}
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button type="button" className="toolbar-btn primary" disabled={saving} onClick={() => void handleSave()}>
-              <Check size={16} /> {saving ? 'Saving…' : `Save groups (${totalPlacedCount} teams)`}
+              <Check size={16} /> {saving ? tr("Saving…") : tr("Save groups ({value0} teams)", { value0: totalPlacedCount })}
             </button>
           </div>
         </header>
-        {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
+        {saveError ? <p className="form-error" role="alert">{tr(saveError)}</p> : null}
 
         {/* WORKSPACE GRID: SIDEBAR + MULTI GROUP CANVAS */}
         <div className="bracket-workspace-grid" inert={saving}>
@@ -282,17 +281,16 @@ export function GroupLeagueCanvasModal({
               <Search size={15} />
               <input
                 type="text"
-                placeholder="Search clubs…"
+                placeholder={tr("Search clubs…")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <div className="sidebar-stats-row">
-              <span>Placed:</span>
+              <span>{tr("Placed:")}</span>
               <strong>
-                {totalPlacedCount} / {teams.length} clubs
-              </strong>
+                {totalPlacedCount} / {teams.length}{tr(" clubs")}</strong>
             </div>
 
             <div className="draggable-teams-list">
@@ -326,11 +324,11 @@ export function GroupLeagueCanvasModal({
                     <div className="team-card-info">
                       <strong>{team.name}</strong>
                       <small>
-                        {country.flag} {country.name}
+                        {country.flag} {tr(country.name)}
                       </small>
                     </div>
                     {isPlaced && (
-                      <span className="placed-indicator-badge" title={`In ${assignedGroupName}`}>
+                      <span className="placed-indicator-badge" title={tr("In {value0}", { value0: assignedGroupName })}>
                         {assignedGroupName?.replace(/^Gr(?:ou|u)p /, '')}
                       </span>
                     )}
@@ -339,7 +337,7 @@ export function GroupLeagueCanvasModal({
               })}
 
               {filteredTeams.length === 0 && (
-                <div className="empty-teams-notice">No clubs found.</div>
+                <div className="empty-teams-notice">{tr("No clubs found.")}</div>
               )}
             </div>
           </aside>
@@ -363,8 +361,7 @@ export function GroupLeagueCanvasModal({
                           <h4>{group.name}</h4>
                         </div>
                         <span className="group-team-badge">
-                          {group.slots.length} teams
-                        </span>
+                          {group.slots.length} {tr(" teams")}</span>
                       </div>
 
                       {/* GROUP SLOTS */}
@@ -410,7 +407,7 @@ export function GroupLeagueCanvasModal({
                                   <strong className="slot-team-title">{slot.teamName}</strong>
                                   {country && (
                                     <small className="slot-country-tag">
-                                      {country.flag} {country.name}
+                                      {country.flag} {tr(country.name)}
                                     </small>
                                   )}
                                 </div>
@@ -418,7 +415,7 @@ export function GroupLeagueCanvasModal({
                                   type="button"
                                   className="btn-slot-remove"
                                   onClick={(e) => removeTeamFromGroup(group.id, pos, e)}
-                                  title="Remove from group"
+                                  title={tr("Remove from group")}
                                 >
                                   <X size={14} />
                                 </button>
@@ -444,8 +441,8 @@ export function GroupLeagueCanvasModal({
                             <Plus size={15} className="empty-plus" />
                             <span>
                               {isDragOverPlusOne
-                                ? `Drop (position ${nextPlusOnePos})`
-                                : `+ Position ${nextPlusOnePos}`}
+                                ? tr("Drop (position {value0})", { value0: nextPlusOnePos })
+                                : tr("+ Position {value0}", { value0: nextPlusOnePos })}
                             </span>
                           </div>
                         </div>

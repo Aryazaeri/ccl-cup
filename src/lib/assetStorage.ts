@@ -32,14 +32,31 @@ export function assetPath(value: string | undefined): string | undefined {
   return canonical?.startsWith(prefix) ? canonical.slice(prefix.length) : undefined
 }
 
+/** Sign each unique object once, in bounded batches rather than one request per image. */
+export async function assetDisplayUrls(values: string[]): Promise<Map<string, string | undefined>> {
+  const result = new Map(values.map((value) => [value, value as string | undefined]))
+  if (!supabase) return result
+  const paths = new Map<string, string[]>()
+  for (const value of values) {
+    const object = assetPath(value)
+    if (object) paths.set(object, [...(paths.get(object) ?? []), value])
+  }
+  const unique = [...paths.keys()]
+  await Promise.all(Array.from({ length: Math.ceil(unique.length / 100) }, async (_, index) => {
+    const batch = unique.slice(index * 100, index * 100 + 100)
+    const { data, error } = await supabase!.storage.from(BUCKET).createSignedUrls(batch, 120)
+    const signed = new Map((data ?? []).map((entry) => [entry.path, entry.signedUrl]))
+    for (const object of batch) for (const value of paths.get(object)!) {
+      const url = !error ? signed.get(object) : undefined
+      result.set(value, url ?? canonicalAssetUrl(value))
+    }
+  }))
+  return result
+}
+
 export async function assetDisplayUrl(value: string | undefined): Promise<string | undefined> {
-  const path = assetPath(value)
-  if (!path || !supabase) return value
-  // A short signature limits access retained after unpublishing. Canonical
-  // references stay in Postgres and are authorized afresh on every load.
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 120)
-  if (error) return canonicalAssetUrl(value)
-  return data.signedUrl
+  if (!value) return value
+  return (await assetDisplayUrls([value])).get(value)
 }
 
 /** Folders inside the bucket, one per kind of subject. */

@@ -18,6 +18,10 @@ Register a club independently, then enter it into a tournament with a new squad 
 
 Select actual match starters/substitutes from the club default, record player goal events, then explicitly mark the match completed. Normal scores are calculated; staff forfeits are separate decisions. Complete table games before qualification. Configure the qualifier count and first-round pairings per tournament; generate later knockout rounds once opponents are known. Unresolved football ties require staff-recorded drawing-of-lots order.
 
+Use **Broadcast URL** when scheduling or editing a match. A specific YouTube video or live-event link adds an embedded player before kickoff and promotes the next scheduled broadcast on the public page. Visitors press Play to load YouTube; its scripts are absent from the initial page load. Live broadcasts take priority, and postponed matches are not promoted. Other broadcast services retain an external link.
+
+The public portal loads the tournament list plus the selected tournament's records, and fetches another tournament when selected or opened through a shared detail link. Initial reads are deduplicated, pagination uses exact counts to avoid empty final requests, and Storage image signatures are batched. Staff login loads its workspace only after the profile is verified. Connection failures remain visible with Retry; they never substitute sample data.
+
 Stories and media start as drafts. Scheduled stories use an Istanbul publication date/time. Uploaded draft files remain private. Visitor comments always require a human moderator.
 
 ## Verification

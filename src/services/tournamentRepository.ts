@@ -7,9 +7,10 @@ import { scoreAfterEvent } from '../lib/standingsUtils'
 import type { Lineup } from '../lib/formations'
 import { DEFAULT_SITE_SETTINGS, cleanSiteSettings, type SiteSettings } from '../lib/siteSettings'
 import { saveWithAsset, type UploadedAsset } from '../lib/assetSaveUtils'
-import { assetDisplayUrl, canonicalAssetUrl, discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
+import { assetDisplayUrls, canonicalAssetUrl, discardUploadedAsset, prepareUploadedAsset } from '../lib/assetStorage'
 import { mapAssetReferences } from '../lib/assetReferences'
 import { goalScore } from '../lib/matchRules'
+import { defaultSeasonId } from '../lib/seasonLabels'
 import { knockoutRoundSize } from '../lib/matchStages'
 import type {
   AdminUser,
@@ -43,18 +44,18 @@ export type TournamentData = {
   media: MediaAsset[]
   sponsors: Sponsor[]
   /** Set when an optional section failed to load, so the UI can say so instead of showing it empty. */
+  loadedSeasonId?: number | null
   loadWarning?: string
   /** Offline twin of the database's tournament_player_clubs lock. */
   registrationHistory?: { playerId: number; seasonId: number; clubId: number }[]
 }
 
+export type LoadOptions = { mode?: 'admin' | 'public'; seasonId?: number | null; detail?: { kind: 'match' | 'team' | 'story' | 'player'; id: number } }
+
 export async function resolveTournamentAssets(data: TournamentData): Promise<TournamentData> {
-  const urls = new Map<string, Promise<string | undefined>>()
-  mapAssetReferences(data, (url) => {
-    if (!urls.has(url)) urls.set(url, assetDisplayUrl(url))
-    return url
-  })
-  const resolved = new Map(await Promise.all([...urls].map(async ([url, pending]) => [url, await pending] as const)))
+  const urls = new Set<string>()
+  mapAssetReferences(data, (url) => { urls.add(url); return url })
+  const resolved = await assetDisplayUrls([...urls])
   return mapAssetReferences(data, (url) => resolved.get(url))
 }
 
@@ -280,31 +281,85 @@ async function currentSeasonId(): Promise<number | null> {
   return data ? Number(data.id) : null
 }
 
-async function loadRemote(): Promise<TournamentData> {
+async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
   if (!supabase) throw new Error('Supabase is not configured.')
 
   // Every list is read page by page: a single request stops at the API's row cap
   // (1000), which hid players and squads once the archive seasons were imported.
   // Each order ends with `id` so pages neither overlap nor skip rows.
   const db = supabase
+  const publicOnly = options.mode === 'public'
+  const countFirst = (from: number) => from === 0 ? { count: 'exact' as const } : undefined
+  const readSeasons = () => allRows((from, to) => {
+    let query = db.from('seasons').select('*', countFirst(from))
+    if (publicOnly) query = query.eq('status', 'published')
+    return query.order('created_at', { ascending: false }).order('id').range(from, to)
+  })
+  // Public visitors need the tournament list and one tournament's records.
+  // Staff retain the complete workspace for cross-tournament administration.
+  const publicSeasons = publicOnly ? await readSeasons() : undefined
+  if (publicSeasons?.error) throw publicSeasons.error
+  const available = (publicSeasons?.data ?? []).map((s) => ({ id: Number(s.id), status: s.status as Season['status'],
+    startDate: s.starts_on ? String(s.starts_on) : undefined, createdAt: String(s.created_at),
+    year: Number(s.year), city: String(s.city), name: String(s.name), fullName: String(s.full_name ?? s.name) }))
+  let seasonId = available.some((s) => s.id === options.seasonId) ? options.seasonId : defaultSeasonId(available)
+  // Shared links must still open their own published tournament when it is
+  // different from the current default or a visitor's remembered selection.
+  if (publicOnly && options.detail && available.length) {
+    const { kind, id } = options.detail
+    const result = kind === 'player'
+      ? await db.from('squad_memberships').select('season_id').eq('player_id', id).in('season_id', available.map((s) => s.id))
+      : await db.from(kind === 'match' ? 'matches' : kind === 'team' ? 'teams' : 'articles').select('season_id').eq('id', id)
+    if (result.error) throw result.error
+    const ids = new Set((result.data ?? []).map((r) => Number(r.season_id)))
+    const candidates = available.filter((s) => ids.has(s.id))
+    if (candidates.length && !candidates.some((s) => s.id === seasonId)) seasonId = defaultSeasonId(candidates)
+  }
   const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes, squadsRes, clubsRes, clubRosterRes] = await Promise.all([
-    allRows((from, to) => db.from('seasons').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
-    allRows((from, to) => db.from('teams').select('*').order('name').order('id').range(from, to)),
-    allRows((from, to) => db
-      .from('matches')
-      .select(
-        '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players!match_events_player_id_fkey(full_name), incoming:players!match_events_incoming_player_id_fkey(full_name)), match_squads(team_id, player_id, player_name, shirt_number, lineup_role, is_goalkeeper)',
-      )
-      .order('kickoff_at', { ascending: true })
-      .order('id')
-      .range(from, to)),
-    allRows((from, to) => db.from('articles').select('*').order('published_at', { ascending: false }).order('id').range(from, to)),
-    allRows((from, to) => db.from('players').select('*').order('full_name').order('id').range(from, to)),
-    allRows((from, to) => db.from('media_assets').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
-    allRows((from, to) => db.from('sponsors').select('*').order('display_order', { ascending: true }).order('id').range(from, to)),
-    allRows((from, to) => db.from('squad_memberships').select('player_id, team_id, season_id').order('id').range(from, to)),
-    allRows((from, to) => db.from('clubs').select('*').order('id').range(from, to)),
-    allRows((from, to) => db.from('club_roster').select('*').order('club_id').order('player_id').range(from, to)),
+    publicSeasons ?? readSeasons(),
+    allRows((from, to) => {
+      let query = db.from('teams').select('*', countFirst(from))
+      if (publicOnly) query = query.eq('season_id', seasonId ?? -1)
+      return query.order('name').order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      let query = db.from('matches').select(
+      '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players!match_events_player_id_fkey(full_name), incoming:players!match_events_incoming_player_id_fkey(full_name)), match_squads(team_id, player_id, player_name, shirt_number, lineup_role, is_goalkeeper)',
+      countFirst(from))
+      if (publicOnly) query = query.eq('season_id', seasonId ?? -1)
+      return query.order('kickoff_at', { ascending: true }).order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      let query = db.from('articles').select('*', countFirst(from))
+      if (publicOnly) query = query.or(seasonId ? `season_id.eq.${seasonId},season_id.is.null` : 'season_id.is.null')
+      if (publicOnly) query = query.in('status', ['published', 'scheduled']).lte('published_at', new Date().toISOString())
+      return query.order('published_at', { ascending: false }).order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      const query = publicOnly
+        ? db.from('players').select('*, squad_memberships!inner(season_id)', countFirst(from)).eq('squad_memberships.season_id', seasonId ?? -1)
+        : db.from('players').select('*', countFirst(from))
+      return query.order('full_name').order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      let query = db.from('media_assets').select('*', countFirst(from))
+      if (publicOnly) query = query.or(seasonId ? `season_id.eq.${seasonId},season_id.is.null` : 'season_id.is.null')
+      if (publicOnly) query = query.eq('is_published', true)
+      return query.order('created_at', { ascending: false }).order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      let query = db.from('sponsors').select('*', countFirst(from))
+      if (publicOnly) query = query.or(seasonId ? `season_id.eq.${seasonId},season_id.is.null` : 'season_id.is.null')
+      if (publicOnly) query = query.eq('is_active', true)
+      return query.order('display_order', { ascending: true }).order('id').range(from, to)
+    }),
+    allRows((from, to) => {
+      let query = db.from('squad_memberships').select('player_id, team_id, season_id', countFirst(from))
+      if (publicOnly) query = query.eq('season_id', seasonId ?? -1)
+      return query.order('id').range(from, to)
+    }),
+    publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('clubs').select('*', countFirst(from)).order('id').range(from, to)),
+    publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('club_roster').select('*', countFirst(from)).order('club_id').order('player_id').range(from, to)),
   ])
 
   if (teamsRes.error) throw teamsRes.error
@@ -499,6 +554,7 @@ async function loadRemote(): Promise<TournamentData> {
   }))
 
   return resolveTournamentAssets({
+    loadedSeasonId: publicOnly ? seasonId ?? null : undefined,
     clubs: (clubsRes.data ?? []).map((c: Record<string, unknown>) => {
       const profile = (c.profile ?? {}) as Partial<Club>
       const entry = teams.find((t) => t.clubId === Number(c.id))
@@ -540,17 +596,25 @@ async function reloadAfterClubSave(): Promise<TournamentData> {
   catch { throw new Error('Club saved, but the data could not be refreshed. Reload before trying to save again.') }
 }
 
+const pendingLoads = new Map<string, Promise<TournamentData>>()
+
 export const tournamentRepository = {
   mode: isSupabaseConfigured ? ('supabase' as const) : ('local' as const),
 
-  async load(): Promise<TournamentData> {
+  async load(options: LoadOptions = {}): Promise<TournamentData> {
     // Dev-only stress fixtures (?data=worst|empty|one); see src/dev/worstCase.ts.
     if (import.meta.env.DEV) {
       const kind = new URLSearchParams(window.location.search).get('data')
       if (kind) return (await import('../dev/worstCase')).fixture(kind, initialData())
     }
     if (!isSupabaseConfigured || !supabase) return loadLocal()
-    return loadRemote()
+    const { data: { session } } = await supabase.auth.getSession()
+    const key = `${options.mode ?? 'admin'}:${options.seasonId ?? ''}:${options.detail?.kind ?? ''}:${options.detail?.id ?? ''}:${session?.access_token ?? 'anonymous'}`
+    const existing = pendingLoads.get(key)
+    if (existing) return existing
+    const pending = loadRemote(options)
+    pendingLoads.set(key, pending)
+    try { return await pending } finally { if (pendingLoads.get(key) === pending) pendingLoads.delete(key) }
   },
 
   // SEASONS CRUD

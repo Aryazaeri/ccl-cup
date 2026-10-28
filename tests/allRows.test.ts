@@ -25,4 +25,18 @@ await check('an error stops and is returned', async () => {
   assert.match(String(error), /boom/)
 })
 
+await check('an exact count avoids the final empty request even below the server cap', async () => {
+  let calls = 0
+  const { data } = await allRows((from, to) => { calls++; return api(300)(from, to).then((page) => ({ ...page, count: from === 0 ? table.length : null })) })
+  assert.deepEqual(data, table)
+  assert.equal(calls, 9)
+})
+
+await check('a count failure or absence never silently truncates the records', async () => {
+  let calls = 0
+  const { data } = await allRows((from, to) => { calls++; return api(300)(from, to) })
+  assert.deepEqual(data, table)
+  assert.equal(calls, 10)
+})
+
 console.log(`allRows: ${checks} checks passed`)

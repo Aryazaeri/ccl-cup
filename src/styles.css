@@ -5269,3 +5269,26 @@ main:focus,
   .scorekeeper-team strong { grid-row: 2; }
   .scorekeeper-team .score-input { grid-row: 3; }
 }
+
+.public-data-loading { padding: 10px 20px; background: #edf8ee; color: #155b23; text-align: center; font-size: .85rem; }
+
+.pg-broadcast { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr); align-items: center; gap: 28px; margin-block: 28px; padding: 24px; border-radius: 12px; background: #071525; color: #fff; }
+.pg-broadcast-copy { min-width: 0; }
+.pg-broadcast-label { display: inline-flex; align-items: center; gap: 7px; color: #9be78f; font-size: .75rem; font-weight: 750; text-transform: uppercase; letter-spacing: .09em; }
+.pg-broadcast h2 { margin: 12px 0; font-family: var(--display); font-size: clamp(1.5rem, 3vw, 2.5rem); line-height: 1.1; overflow-wrap: anywhere; }
+.pg-broadcast p { margin: 10px 0; color: #c6d0dc; font-size: .85rem; line-height: 1.55; }
+.pg-broadcast a { display: inline-flex; align-items: center; gap: 6px; color: #a9ee9d; font-size: .82rem; text-underline-offset: 4px; }
+.pg-broadcast-screen { min-width: 0; min-height: 200px; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background: linear-gradient(135deg, #142d3d, #0b1c2e); }
+.pg-broadcast iframe { display: block; width: 100%; height: 100%; min-height: 200px; border: 0; }
+.pg-broadcast-play { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 100%; min-height: 200px; padding: 20px; border: 1px solid #365165; border-radius: 8px; color: #fff; background: transparent; cursor: pointer; }
+.pg-broadcast-play-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #9be78f; color: #071525; }
+.pg-broadcast-play > span:last-child { color: #c6d0dc; font-size: .8rem; }
+.pg-broadcast-play:hover { background: #183348; }
+.pg-broadcast :focus-visible { outline: 3px solid #9be78f; outline-offset: 3px; }
+.modal .pg-broadcast { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
+.modal .pg-broadcast h2 { font-size: 1.6rem; }
+@media (max-width: 700px) {
+  .pg-broadcast { grid-template-columns: minmax(0, 1fr); padding: 18px; gap: 18px; }
+}
+/* Preserve YouTube's 200px minimum height without forcing a 356px mobile width. */
+.pg-broadcast-screen { width: 100%; max-width: 100%; }

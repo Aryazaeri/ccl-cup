@@ -1,3 +1,4 @@
+import { broadcastUrlError } from '../lib/broadcast'
 import {
   BarChart3,
   CalendarDays,
@@ -4695,6 +4696,9 @@ function MatchForm({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    const streamUrl = String(data.get('streamUrl')).trim()
+    const streamProblem = broadcastUrlError(streamUrl)
+    if (streamProblem) { setSaveError(streamProblem); setSaving(false); return }
     const home = String(data.get('home'))
     const away = String(data.get('away'))
     if (home === away) {
@@ -4713,7 +4717,7 @@ function MatchForm({
         time: String(data.get('time')),
         venue: String(data.get('venue')),
         referee: String(data.get('referee')) || undefined,
-        streamUrl: String(data.get('streamUrl')).trim() || undefined,
+        streamUrl: streamUrl || undefined,
         matchStatus: 'scheduled',
         status: 'Scheduled',
         events: [],
@@ -4789,10 +4793,10 @@ function MatchForm({
           <input name="referee" placeholder="e.g. Mehmet Ali Yılmaz" />
         </label>
         <label className="span-2">
-          Live Stream URL
+          Broadcast URL
           <input name="streamUrl" type="url" placeholder="https://youtube.com/watch?v=…" />
           <small className="field-hint">
-            Optional. While the match is Live, the public site turns the LIVE badge into a link to this address.
+            Optional. A YouTube video or scheduled live link adds a player before kickoff. Other services open in a new tab.
           </small>
         </label>
         <p className="field-hint span-2">All fixtures are public when their tournament is published.</p>
@@ -4831,6 +4835,9 @@ function MatchScoreModal({
     setSaving(true)
     setSaveError('')
     const data = new FormData(event.currentTarget)
+    const streamUrl = String(data.get('streamUrl')).trim()
+    const streamProblem = broadcastUrlError(streamUrl)
+    if (streamProblem) { setSaveError(streamProblem); setSaving(false); return }
     const homeScoreVal = data.get('homeScore')
     const awayScoreVal = data.get('awayScore')
     const homePenVal = data.get('homePenalties')
@@ -4858,7 +4865,7 @@ function MatchScoreModal({
         date: String(data.get('date')),
         time: String(data.get('time')),
         referee: String(data.get('referee')) || undefined,
-        streamUrl: String(data.get('streamUrl')).trim() || undefined,
+        streamUrl: streamUrl || undefined,
         matchStatus,
         squads: lineup,
         resultKind,
@@ -4984,7 +4991,7 @@ function MatchScoreModal({
         </label>
 
         <label className="span-2">
-          Live Stream URL
+          Broadcast URL
           <input
             name="streamUrl"
             type="url"
@@ -4992,17 +4999,11 @@ function MatchScoreModal({
             placeholder="https://youtube.com/watch?v=…"
           />
           <small className="field-hint">
-            Set this while the match status is Live to turn the public LIVE badge into a link out.
+            A YouTube video or scheduled live link embeds on the public site before kickoff. Leave empty to remove the broadcast.
           </small>
         </label>
 
-        <label className="span-2">
-          Public Visibility
-          <select name="status" defaultValue={match.status}>
-            <option value="Scheduled">Scheduled (Visible)</option>
-            <option value="Draft">Draft (Hidden from public)</option>
-          </select>
-        </label>
+        <p className="field-hint span-2">All fixtures and their broadcast links are public when their tournament is published.</p>
 
         {saveError ? <div className="form-error span-2">{saveError}</div> : null}
         <FormActions onClose={onClose} label="Save match result" saving={saving} />

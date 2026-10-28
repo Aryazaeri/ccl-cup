@@ -26,6 +26,8 @@ import { DEFAULT_SITE_SETTINGS, whatsappLink, type SiteSettings } from '../lib/s
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
+import { MatchBroadcast } from './MatchBroadcast'
+import { featuredBroadcast, youtubeVideoId } from '../lib/broadcast'
 import { TeamMark } from './TeamMark'
 import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
 import { bracketWithResults, tableStageMatches } from '../lib/qualificationUtils'
@@ -76,6 +78,7 @@ type Props = {
   media: MediaAsset[]
   sponsors: Sponsor[]
   selectedSeasonId: number | null
+  loadingSeason?: boolean
   onSelectSeason: (id: number) => void
   onAdmin: () => void
 }
@@ -173,7 +176,7 @@ function useCarousel(count: number) {
   }
 }
 
-export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, selectedSeasonId, onSelectSeason, onAdmin }: Props) {
+export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, selectedSeasonId, loadingSeason = false, onSelectSeason, onAdmin }: Props) {
   // About copy, rules and contact links are edited in admin → Settings.
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
   useEffect(() => {
@@ -370,6 +373,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const latestResult = liveMatch ?? recentResults.find((m) => m.matchStatus === 'completed') ?? null
   const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
   const upcomingMatch = scheduledMatches[0] ?? null
+  const broadcastMatch = featuredBroadcast(seasonMatches)
   // Postponed fixtures are still to be played, so they stay in "Coming up", marked.
   const comingUp = seasonMatches.filter((m) => m.matchStatus === 'scheduled' || m.matchStatus === 'postponed')
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
@@ -475,7 +479,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               className="season-button"
               aria-haspopup="listbox"
               aria-expanded={seasonMenuOpen}
-              disabled={seasonOptions.length === 0}
+              disabled={seasonOptions.length === 0 || loadingSeason}
               onClick={() => setSeasonMenuOpen((open) => !open)}
             >
               {activeSeason ? `${activeSeason.city} ${activeSeason.year}` : 'Season'}
@@ -724,6 +728,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       ) : null}
 
       <main id="main-content" tabIndex={-1}>
+        {broadcastMatch && <div className="content-width"><MatchBroadcast key={`${broadcastMatch.id}:${broadcastMatch.streamUrl}`} match={broadcastMatch} /></div>}
         <section className="pg-section content-width" id="fixtures">
           <h2 className="pg-heading">Fixtures and results</h2>
           {seasonMatches.length === 0 ? (
@@ -1721,7 +1726,7 @@ function MatchDetailsModal({
             <span className={`status-pill ${match.matchStatus}`}>
               {MATCH_STATUS_LABELS[match.matchStatus] ?? match.matchStatus}
             </span>
-            {match.streamUrl ? (
+            {match.streamUrl && !youtubeVideoId(match.streamUrl) ? (
               <a
                 className="watch-live-button"
                 href={match.streamUrl}
@@ -1748,6 +1753,7 @@ function MatchDetailsModal({
           </div>
         </div>
 
+        {youtubeVideoId(match.streamUrl) && <MatchBroadcast key={`${match.id}:${match.streamUrl}`} match={match} />}
         {/* Match Meta Strip */}
         <div className="match-info-strip">
           <span>

@@ -45,3 +45,9 @@ Build with `npm run build`; publish `dist/`. Vercel and Netlify SPA routing file
 The owner requires separate approval for every production change. Nothing in this local work authorizes deployment or production data changes.
 
 Daily encrypted off-site backups with 30-day retention are prepared but activation is deferred. See the [backup and restore runbook](docs/BACKUP_RESTORE.md). Backups must include actual uploaded bytes, and a hosted restore drill remains required after setup.
+
+### Admin language
+
+The sign-in page and admin header include an **English / Türkçe** selector. English is the default; the selected admin language is remembered in this browser. Navigation, forms, status labels, draw tools, confirmations and known validation messages are translated. The Turkish message file loads only when entering admin. If it cannot load, reload using the displayed recovery button.
+
+Changing the interface language does not translate saved team/player names, tournament/group names, articles, media titles or site settings. Form values, permission roles and URLs retain their original identities. The public website stays in English. Unknown backend/provider diagnostics remain in their original language. Translation copy is maintained in `src/i18n/admin.tr.json`.

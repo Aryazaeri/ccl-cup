@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { X } from 'lucide-react'
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 
@@ -14,6 +15,7 @@ export function Modal({
   onClose: () => void
   className?: string
 }) {
+  const { tr } = useAdminLanguage()
   const dialogRef = useRef<HTMLDivElement>(null)
   const requestClose = () => {
     // Every form using FormActions marks its pending write. Prevent closing
@@ -70,7 +72,7 @@ export function Modal({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button aria-label="Close" onClick={requestClose}>
+          <button aria-label={tr("Close")} onClick={requestClose}>
             <X size={20} aria-hidden="true" />
           </button>
         </div>

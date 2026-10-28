@@ -1,3 +1,5 @@
+import { useAdminLanguage } from './i18n/AdminLanguageContext'
+import { AdminLanguageProvider } from './i18n/AdminLanguageProvider'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canAccessAdmin, useAuth } from './auth/AuthContext'
 import { PublicSite, parsePublicRoute } from './components/PublicSite'
@@ -13,12 +15,16 @@ import type { Club, Match, MatchEvent, MediaAsset, Player, Season, Sponsor, Stor
 const AdminPanel = lazy(() => import('./components/AdminPanel').then((module) => ({ default: module.AdminPanel })))
 const LoginPage = lazy(() => import('./components/LoginPage').then((module) => ({ default: module.LoginPage })))
 
-const loadingScreen = (
+function LoadingScreen() {
+  const { tr } = useAdminLanguage()
+  return (
   <div className="app-loading">
     <span />
-    <strong>Loading CCL Cup…</strong>
+    <strong>{tr('Loading CCL Cup…')}</strong>
   </div>
-)
+  )
+}
+const loadingScreen = <LoadingScreen />
 
 const currentView = (): View => (window.location.hash.startsWith('#admin') ? 'admin' : 'site')
 
@@ -28,6 +34,17 @@ function publicDetail(): LoadOptions['detail'] {
 }
 
 export default function App() {
+  const [admin, setAdmin] = useState(() => currentView() === 'admin')
+  useEffect(() => {
+    const onHash = () => setAdmin(currentView() === 'admin')
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  return <AdminLanguageProvider enabled={admin}><Application /></AdminLanguageProvider>
+}
+
+function Application() {
+  const { tr } = useAdminLanguage()
   const auth = useAuth()
   const [view, setView] = useState<View>(currentView)
   const lastAdminHash = useRef(window.location.hash.startsWith('#admin') ? window.location.hash : '#admin')
@@ -206,10 +223,10 @@ export default function App() {
     if (!canAccessAdmin(auth.profile.role)) {
       return (
         <main className="access-denied">
-          <h1>Admin access required</h1>
-          <p>This account has a viewer role.</p>
-          <button onClick={() => navigate('site')}>Public website</button>
-          <button onClick={() => void auth.signOut()}>Sign out</button>
+          <h1>{tr('Admin access required')}</h1>
+          <p>{tr('This account has a viewer role.')}</p>
+          <button onClick={() => navigate('site')}>{tr('Public website')}</button>
+          <button onClick={() => void auth.signOut()}>{tr('Sign out')}</button>
         </main>
       )
     }

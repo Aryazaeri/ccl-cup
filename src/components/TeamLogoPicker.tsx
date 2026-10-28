@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { Check, Crop, Image, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { PRESET_LOGOS } from '../lib/presetLogos'
@@ -11,6 +12,7 @@ type Props = {
 }
 
 export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) {
+  const { tr } = useAdminLanguage()
   const [activeTab, setActiveTab] = useState<'upload' | 'preset'>('upload')
   const [dragOver, setDragOver] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -73,8 +75,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
       <div className="team-logo-picker-container span-2">
         <div className="picker-header-row">
           <label className="picker-title-label">
-            <Image size={16} /> Club logo
-          </label>
+            <Image size={16} /> {tr(" Club logo")}</label>
 
           <div className="picker-mode-tabs">
             <button
@@ -82,15 +83,13 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
               className={`picker-tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
               onClick={() => setActiveTab('upload')}
             >
-              <Upload size={14} /> Upload a file
-            </button>
+              <Upload size={14} /> {tr(" Upload a file")}</button>
             <button
               type="button"
               className={`picker-tab-btn ${activeTab === 'preset' ? 'active' : ''}`}
               onClick={() => setActiveTab('preset')}
             >
-              <Sparkles size={14} /> Preset crests
-            </button>
+              <Sparkles size={14} /> {tr(" Preset crests")}</button>
           </div>
         </div>
 
@@ -101,29 +100,27 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
         {value && (
           <div className="selected-logo-strip">
             <div className="selected-logo-preview">
-              <img src={value} alt="Selected Logo" />
+              <img src={value} alt={tr("Selected Logo")} />
             </div>
             <div className="selected-logo-info">
-              <strong>Custom logo selected</strong>
-              <span>Your crest is sized for club cards and match screens.</span>
+              <strong>{tr("Custom logo selected")}</strong>
+              <span>{tr("Your crest is sized for club cards and match screens.")}</span>
             </div>
             <div className="selected-logo-actions">
               <button
                 type="button"
                 className="btn-trim-again"
                 onClick={() => setTrimmerImageSrc(value)}
-                title="Crop or resize the logo"
+                title={tr("Crop or resize the logo")}
               >
-                <Crop size={14} /> Crop / edit
-              </button>
+                <Crop size={14} /> {tr(" Crop / edit")}</button>
               <button
                 type="button"
                 className="btn-remove-logo"
                 onClick={() => onChange('')}
-                title="Remove the logo and use the monogram"
+                title={tr("Remove the logo and use the monogram")}
               >
-                <Trash2 size={14} /> Remove
-              </button>
+                <Trash2 size={14} /> {tr(" Remove")}</button>
             </div>
           </div>
         )}
@@ -148,8 +145,8 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
               <div className="dropzone-icon-circle">
                 <Upload size={22} />
               </div>
-              <strong>Choose an image or drop it here</strong>
-              <span>PNG, JPG, SVG or WEBP — the crop tool opens automatically</span>
+              <strong>{tr("Choose an image or drop it here")}</strong>
+              <span>{tr("PNG, JPG, SVG or WEBP — the crop tool opens automatically")}</span>
               <button
                 type="button"
                 className="button button-admin btn-browse"
@@ -158,8 +155,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
                   fileInputRef.current?.click()
                 }}
               >
-                Choose file
-              </button>
+                {tr("Choose file")}</button>
             </div>
           </div>
         )}
@@ -193,7 +189,7 @@ export function TeamLogoPicker({ value, onChange, teamName, teamColor }: Props) 
           </div>
         )}
 
-        {errorMsg && <div className="picker-error-msg">{errorMsg}</div>}
+        {errorMsg && <div className="picker-error-msg">{tr(errorMsg)}</div>}
       </div>
 
       {/* SMART IMAGE TRIMMER & CROPPER MODAL */}

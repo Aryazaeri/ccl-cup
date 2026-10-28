@@ -5292,3 +5292,15 @@ main:focus,
 }
 /* Preserve YouTube's 200px minimum height without forcing a 356px mobile width. */
 .pg-broadcast-screen { width: 100%; max-width: 100%; }
+
+/* Admin language controls stay available on narrow screens and the sign-in page. */
+.admin-language-switch { display: inline-flex; align-items: center; gap: 7px; color: #43516a; font-size: 12px; white-space: nowrap; }
+.admin-language-switch select { min-width: 86px; max-width: 120px; padding: 7px 25px 7px 8px; border: 1px solid #d5dce5; border-radius: 7px; background: #fff; color: #16243b; font: inherit; cursor: pointer; }
+.admin-language-switch select:focus-visible { outline: 2px solid #287347; outline-offset: 3px; }
+.login-card > .admin-language-switch { display: flex; width: fit-content; margin: 0 0 20px auto; }
+.admin-language-error { margin: 0; padding: 12px 20px; background: #fff0e8; color: #6d2c12; }
+@media (max-width: 700px) {
+  .admin-language-switch > span { display: none; }
+  .admin-topbar { flex-wrap: wrap; }
+  .admin-top-actions { flex-wrap: wrap; }
+}

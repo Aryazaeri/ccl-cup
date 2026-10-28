@@ -5,10 +5,10 @@ export function isStoryPublic(story: Story, now = Date.now()): boolean {
   return story.status === 'Scheduled' && !!story.publishedAt && Date.parse(story.publishedAt) <= now
 }
 
-export function publicationDate(value?: string): string {
+export function publicationDate(value?: string, locale = 'en-GB'): string {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-GB', {
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(locale, {
     day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Europe/Istanbul',
   }).format(date) : value
 }

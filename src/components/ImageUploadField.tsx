@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
 import { assetDisplayUrl, canonicalAssetUrl, discardUploadedAsset, uploadAssetReceipt, validateAssetFile, type AssetFolder } from '../lib/assetStorage'
@@ -35,6 +36,7 @@ export function ImageUploadField({
   hint?: string
   required?: boolean
 }) {
+  const { tr } = useAdminLanguage()
   const [value, setValue] = useState(canonicalAssetUrl(defaultValue) ?? '')
   const [preview, setPreview] = useState(defaultValue)
   const [busy, setBusy] = useState(false)
@@ -118,7 +120,7 @@ export function ImageUploadField({
 
   return (
     <label className="span-2 image-upload-field" htmlFor={fieldId}>
-      {label}
+      {tr(label)}
       {required ? ' *' : ''}
 
       <div className="image-upload-row">
@@ -132,7 +134,7 @@ export function ImageUploadField({
           type="text"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          placeholder="Upload a file, or paste an image URL"
+          placeholder={tr("Upload a file, or paste an image URL")}
         />
 
         <button
@@ -142,7 +144,7 @@ export function ImageUploadField({
           disabled={busy}
         >
           {busy ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
-          {busy ? 'Uploading…' : 'Upload'}
+          {busy ? tr("Uploading…") : tr("Upload")}
         </button>
 
         {value ? (
@@ -150,7 +152,7 @@ export function ImageUploadField({
             type="button"
             className="ghost-button danger"
             onClick={() => { setValue(''); setError('') }}
-            title="Remove this image"
+            title={tr("Remove this image")}
           >
             <Trash2 size={14} />
           </button>
@@ -168,7 +170,7 @@ export function ImageUploadField({
         hidden
       />
 
-      {error ? <small className="field-error">{error}</small> : hint ? <small className="field-hint">{hint}</small> : null}
+      {error ? <small className="field-error">{tr(error)}</small> : hint ? <small className="field-hint">{hint}</small> : null}
     </label>
   )
 }

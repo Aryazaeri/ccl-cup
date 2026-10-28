@@ -1,3 +1,4 @@
+import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 import { Modal } from './Modal'
@@ -62,32 +63,32 @@ function ConfirmDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const { tr } = useAdminLanguage()
   const [typed, setTyped] = useState('')
   const needsTyping = Boolean(options.requireTyping)
   const canConfirm = !needsTyping || typed.trim() === options.requireTyping
 
   return (
-    <Modal title={options.title} onClose={onCancel}>
+    <Modal title={tr(options.title)} onClose={onCancel}>
       <div className="confirm-dialog">
         <div className="confirm-lead">
           <AlertTriangle size={22} />
-          <div>{options.body}</div>
+          <div>{typeof options.body === 'string' ? tr(options.body) : options.body}</div>
         </div>
 
         {options.consequences && options.consequences.length > 0 ? (
           <ul className="confirm-consequences">
             {options.consequences.map((line) => (
-              <li key={line}>{line}</li>
+              <li key={line}>{tr(line)}</li>
             ))}
           </ul>
         ) : null}
 
-        <p className="confirm-note">This cannot be undone.</p>
+        <p className="confirm-note">{tr("This cannot be undone.")}</p>
 
         {needsTyping ? (
           <label className="confirm-typing">
-            Type <strong>{options.requireTyping}</strong> to confirm
-            <input
+            {tr('Type {name} to confirm', { name: options.requireTyping })}<input
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
               placeholder={options.requireTyping}
@@ -98,10 +99,9 @@ function ConfirmDialog({
 
         <div className="confirm-actions">
           <button type="button" className="confirm-cancel" onClick={onCancel}>
-            Cancel
-          </button>
+            {tr("Cancel")}</button>
           <button type="button" className="confirm-delete" disabled={!canConfirm} onClick={onConfirm}>
-            {options.confirmLabel ?? 'Delete'}
+            {tr(options.confirmLabel ?? 'Delete')}
           </button>
         </div>
       </div>

@@ -2,6 +2,8 @@
 
 Production remains unchanged. These instructions are a reviewable candidate, not deployment approval.
 
+Use the [release-readiness evidence record](ROLLOUT_READINESS.md) to track the production compatibility, recovery, rehearsal and traffic-control gates before merging #29.
+
 1. Review the working-tree diff and confirmed rules. Preserve the original applied migrations; the October 27 candidate migrations add safeguards and features forward. Do not run seed files on production.
 2. Obtain approval for the specific production migration, Edge Function and frontend deployment steps. Inspect actual migration history/schema drift first. Reconcile imported tournament dates, unmatched historical scores and existing roster snapshots without inventing data. The candidate backfills missing starts from the earliest match and labels historical results.
 3. Before database changes, take an owner-controlled recovery snapshot including database/Auth and uploaded file bytes, and verify extraction. Off-site account setup is deferred; disclose that limitation before requesting a production rollout. Keep a tested recovery path and the previous deployed frontend artifact.

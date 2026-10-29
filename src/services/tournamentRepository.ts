@@ -315,7 +315,15 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
     const candidates = available.filter((s) => ids.has(s.id))
     if (candidates.length && !candidates.some((s) => s.id === seasonId)) seasonId = defaultSeasonId(candidates)
   }
-  const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes, squadsRes, clubsRes, clubRosterRes] = await Promise.all([
+  // Visitors load one season, so its events and lineups ride along with the
+  // matches. Staff load every season: nesting ~8k events and ~14k lineup rows
+  // in one statement could pass the 8s staff timeout while the other lists load,
+  // so for staff they are read as their own paged lists and attached below.
+  // Typed as plain strings: supabase-js cannot parse the composed select at compile time.
+  const matchBase: string = '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name)'
+  const eventSelect: string = '*, team:teams(name), player:players!match_events_player_id_fkey(full_name), incoming:players!match_events_incoming_player_id_fkey(full_name)'
+  const lineupSelect: string = 'match_id, team_id, player_id, player_name, shirt_number, lineup_role, is_goalkeeper'
+  const [seasonsRes, teamsRes, matchesRes, storiesRes, playersRes, mediaRes, sponsorsRes, squadsRes, clubsRes, clubRosterRes, eventsRes, lineupsRes] = await Promise.all([
     publicSeasons ?? readSeasons(),
     allRows((from, to) => {
       let query = db.from('teams').select('*', countFirst(from))
@@ -324,7 +332,7 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
     }),
     allRows((from, to) => {
       let query = db.from('matches').select(
-      '*, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), venue:venues(name), group:tournament_groups(name), match_events(*, team:teams(name), player:players!match_events_player_id_fkey(full_name), incoming:players!match_events_incoming_player_id_fkey(full_name)), match_squads(team_id, player_id, player_name, shirt_number, lineup_role, is_goalkeeper)',
+      publicOnly ? `${matchBase}, match_events(${eventSelect}), match_squads(${lineupSelect})` : matchBase,
       countFirst(from))
       if (publicOnly) query = query.eq('season_id', seasonId ?? -1)
       return query.order('kickoff_at', { ascending: true }).order('id').range(from, to)
@@ -360,6 +368,8 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
     }),
     publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('clubs').select('*', countFirst(from)).order('id').range(from, to)),
     publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('club_roster').select('*', countFirst(from)).order('club_id').order('player_id').range(from, to)),
+    publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('match_events').select(eventSelect, countFirst(from)).order('id').range(from, to)),
+    publicOnly ? { data: [], error: null } : allRows((from, to) => db.from('match_squads').select(lineupSelect, countFirst(from)).order('match_id').order('player_id').range(from, to)),
   ])
 
   if (teamsRes.error) throw teamsRes.error
@@ -370,6 +380,27 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
   if (squadsRes.error) throw squadsRes.error
   if (clubsRes.error) throw clubsRes.error
   if (clubRosterRes.error) throw clubRosterRes.error
+  if (eventsRes.error) throw eventsRes.error
+  if (lineupsRes.error) throw lineupsRes.error
+  const matchRows = (matchesRes.data ?? []) as unknown as Record<string, unknown>[]
+  if (!publicOnly) {
+    const byMatch = (rows: Record<string, unknown>[]) => {
+      const map = new Map<number, Record<string, unknown>[]>()
+      for (const row of rows) {
+        const id = Number(row.match_id)
+        const list = map.get(id)
+        if (list) list.push(row)
+        else map.set(id, [row])
+      }
+      return map
+    }
+    const events = byMatch((eventsRes.data ?? []) as Record<string, unknown>[])
+    const lineups = byMatch((lineupsRes.data ?? []) as Record<string, unknown>[])
+    for (const m of matchRows) {
+      m.match_events = events.get(Number(m.id)) ?? []
+      m.match_squads = lineups.get(Number(m.id)) ?? []
+    }
+  }
   // Media and sponsors are optional sections: keep the rest of the site up, but say what is missing.
   const missing = [mediaRes.error && 'media', sponsorsRes.error && 'sponsors'].filter(Boolean)
 
@@ -442,7 +473,7 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
     photoUrl: p.photo_url ? String(p.photo_url) : undefined,
   }))
 
-  const matches: Match[] = (matchesRes.data ?? []).map((m: Record<string, unknown>) => {
+  const matches: Match[] = matchRows.map((m) => {
     const rawEvents = (m.match_events as Record<string, unknown>[]) ?? []
     const events: MatchEvent[] = rawEvents.map((ev) => ({
       id: Number(ev.id),

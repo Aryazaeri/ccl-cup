@@ -22,7 +22,7 @@ import { computeGroupStandings, computePlayerStats, computeTopAssists, computeTo
 import { publicationDate } from '../lib/publication'
 import { latestSeasons, seasonLabelsForIds } from '../lib/seasonLabels'
 import { commentsRepository, siteSettingsRepository } from '../services/tournamentRepository'
-import { DEFAULT_SITE_SETTINGS, whatsappLink, type SiteSettings } from '../lib/siteSettings'
+import { COMPETITION_RULES_NOTICE, DEFAULT_SITE_SETTINGS, whatsappLink, type SiteSettings } from '../lib/siteSettings'
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
@@ -180,7 +180,7 @@ function useCarousel(count: number) {
 }
 
 export function PublicSite({ seasons, teams, players, matches, stories, media, sponsors, selectedSeasonId, loadingSeason = false, onSelectSeason, onAdmin }: Props) {
-  // About copy, rules and contact links are edited in admin → Settings.
+  // About copy and contact links are edited in admin → Settings.
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
   useEffect(() => {
     void siteSettingsRepository.get().then(setSiteSettings)
@@ -542,6 +542,12 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
         </header>
+
+        <div className="pg-draw-action content-width">
+          <a className="pg-button pg-draw-button" href="https://www.youtube.com/@internationalcorporatecup" target="_blank" rel="noopener noreferrer">
+            <Play size={18} aria-hidden="true" /> Watch the draw on YouTube
+          </a>
+        </div>
 
         {heroStories.length > 0 ? (
           <div
@@ -1116,11 +1122,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
               <h3 className="pg-subheading">
                 <Shield size={17} /> Competition rules
               </h3>
-              <ul>
-                {siteSettings.rules.map((rule) => (
-                  <li key={rule}>{rule}</li>
-                ))}
-              </ul>
+              {/* Keep previously saved, unconfirmed rules off the public page. */}
+              <p>{COMPETITION_RULES_NOTICE}</p>
               <h3 className="pg-subheading">
                 <MapPin size={17} /> Venues and kick-off
               </h3>

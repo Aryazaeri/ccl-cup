@@ -4342,6 +4342,9 @@ table { border-collapse: collapse; width: 100%; }
   font-weight: 700;
 }
 .pg-button.is-ghost { border-color: rgba(243, 245, 241, .6); background: transparent; color: var(--chalk); }
+.pg-draw-action { position: relative; z-index: 2; padding-top: 12px; padding-bottom: 12px; }
+.pg-draw-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding-top: 12px; padding-bottom: 12px; text-align: center; text-decoration: none; }
+.pg-draw-button svg { flex-shrink: 0; }
 
 /* ---------------- Shared section furniture ---------------- */
 

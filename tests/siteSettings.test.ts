@@ -10,13 +10,8 @@ check('defaults are valid and leave contact links empty', () => {
   assert.deepEqual([settings.instagramUrl, settings.youtubeUrl, settings.linkedinUrl, settings.whatsappNumber], ['', '', '', ''])
 })
 
-check('default rules state entry minimum, kickoff transfer lock and eight-a-side play', () => {
-  const rules = DEFAULT_SITE_SETTINGS.rules.join(' ')
-  assert.match(rules, /at least five players/)
-  assert.match(rules, /transfers are locked after/)
-  assert.match(rules, /eight players per side/)
-  assert.match(rules, /directly to penalties/)
-  assert.doesNotMatch(rules, /only one club per season/)
+check('default public rules refer visitors to the event organizer', () => {
+  assert.deepEqual(DEFAULT_SITE_SETTINGS.rules, ['Competition rules can be obtained from the event organizer.'])
 })
 
 check('fields are trimmed, blank rules dropped, WhatsApp kept to digits', () => {

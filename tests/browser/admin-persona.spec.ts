@@ -444,6 +444,19 @@ test.describe('Teams', () => {
     expect(saved.players.find((p: Player) => p.id === 101).squads.map((entry: { seasonId: number }) => entry.seasonId).sort()).toEqual([1, 2, 4])
   })
 
+  test('Iran, Hungary, Slovenia and Georgia flags can be selected and saved', async ({ page }) => {
+    await open(page, 'Teams')
+    for (const [code, country] of [['IR', 'Iran'], ['HU', 'Hungary'], ['SI', 'Slovenia'], ['GE', 'Georgia']]) {
+      await page.getByRole('button', { name: 'Edit ALPHA details', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Manage Club: ALPHA' })
+      await dialog.getByLabel('Country / Flag *').selectOption(code)
+      await dialog.getByRole('button', { name: 'Save Club Changes', exact: true }).click()
+      await expect(dialog).toHaveCount(0)
+      await expect(page.locator('.teams-table tr').filter({ hasText: 'ALPHA' })).toContainText(country)
+      await page.reload()
+    }
+  })
+
   test('an existing club keeps its identity and starts a new tournament squad empty', async ({ page }) => {
     await open(page, 'Teams')
     await page.getByRole('combobox', { name: 'Enter a club from another season' }).selectOption({ label: 'FOXTROT · last in 2026 — Autumn League' })
@@ -839,9 +852,18 @@ test.describe('Organisation', () => {
 
   test('site settings validate links and WhatsApp, then show on the public site', async ({ page }) => {
     await open(page, 'Settings')
+    await page.evaluate(() => localStorage.setItem('ccl-cup:site-settings:v1', JSON.stringify({ rules: ['Old unconfirmed competition rule'] })))
+    await page.goto('/#site')
+    await expect(page.locator('#about')).toContainText('Competition rules can be obtained from the event organizer.')
+    await expect(page.locator('#about')).not.toContainText('Old unconfirmed competition rule')
+    const draw = page.getByRole('link', { name: 'Watch the draw on YouTube', exact: true })
+    await expect(draw).toBeVisible()
+    await expect(draw).toHaveAttribute('href', 'https://www.youtube.com/@internationalcorporatecup')
+    await expect(draw).toHaveAttribute('target', '_blank')
+    await page.goto('/#admin/settings')
     const form = page.locator('form.admin-form')
     await form.getByLabel('About — introduction').fill('The QA cup for organisers.')
-    await form.getByLabel('Competition rules (one per line)').fill('Rule one for QA\nRule two for QA')
+    await expect(form.getByText('Competition rules can be obtained from the event organizer.', { exact: true })).toBeVisible()
     await form.getByLabel('Instagram link').fill('http://instagram.com/cclcup')
     await form.getByRole('button', { name: 'Save settings' }).click()
     await expect(page.getByText('The Instagram link must be a full https:// address.')).toBeVisible()
@@ -856,7 +878,7 @@ test.describe('Organisation', () => {
 
     await page.goto('/#site')
     await expect(page.getByText('The QA cup for organisers.')).toBeVisible()
-    await expect(page.locator('#about')).toContainText('Rule two for QA')
+    await expect(page.locator('#about')).toContainText('Competition rules can be obtained from the event organizer.')
     await expect(page.getByRole('link', { name: 'Instagram' })).toHaveAttribute('href', 'https://instagram.com/cclcup')
     await expect(page.getByRole('link', { name: 'Chat with us on WhatsApp' })).toHaveAttribute('href', /^https:\/\/wa\.me\/905551234567\?text=/)
   })

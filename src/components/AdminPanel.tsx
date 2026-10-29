@@ -70,7 +70,7 @@ import {
   sponsorsRepository,
   usersRepository,
 } from '../services/tournamentRepository'
-import { DEFAULT_SITE_SETTINGS, type SiteSettings } from '../lib/siteSettings'
+import { COMPETITION_RULES_NOTICE, DEFAULT_SITE_SETTINGS, type SiteSettings } from '../lib/siteSettings'
 import {
   HOST_CITIES,
   type AdminSection,
@@ -3375,7 +3375,7 @@ function SettingsManager() {
       setSaving(true)
       setError('')
       try {
-        setSettings(await siteSettingsRepository.save(settings))
+        setSettings(await siteSettingsRepository.save({ ...settings, rules: [COMPETITION_RULES_NOTICE] }))
         setSaved(true)
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : 'The settings could not be saved.')
@@ -3389,7 +3389,7 @@ function SettingsManager() {
       <div className="module-head">
         <div>
           <h2>{tr("Site settings")}</h2>
-          <p className="module-sub">{tr("The About section, competition rules and contact links on the public site.")}</p>
+          <p className="module-sub">{tr("The About section and contact links on the public site.")}</p>
         </div>
       </div>
 
@@ -3406,9 +3406,10 @@ function SettingsManager() {
           <label className="span-2">
             {tr("About — vision")}<textarea rows={3} {...field('aboutVision')} />
           </label>
-          <label className="span-2">
-            {tr("Competition rules (one per line)")}<textarea rows={6} {...field('rules')} />
-          </label>
+          <div className="span-2">
+            <strong>{tr("Competition rules")}</strong>
+            <p>{tr(COMPETITION_RULES_NOTICE)}</p>
+          </div>
           <label className="span-2">
             {tr("Venue note")}<input {...field('venueNote')} />
           </label>

@@ -78,6 +78,13 @@ do $$ declare f rule_fixture; i integer; outgoing bigint; begin
  update matches set result_kind='forfeit',forfeit_team_id=f.a,decision_note='Staff awards the match after reviewing the stoppage.',match_status='completed' where id=f.m2;
  if not exists(select 1 from matches where id=f.m2 and home_score=0 and away_score=3) then raise exception 'Separate forfeit result wrong'; end if;
 end $$;
+-- Club formation: registered, unique players save; duplicates and other clubs' players do not.
+do $$ declare f rule_fixture; begin
+ select * into f from rule_fixture;
+ update teams set lineup=jsonb_build_object('formation','8v8','starters',jsonb_build_object('gk',f.pa[1],'fw',f.pa[2]),'bench',jsonb_build_array(f.pa[3])) where id=f.a;
+ perform pg_temp.must_fail(format($q$update teams set lineup='{"formation":"8v8","starters":{"gk":%s,"fw":%s},"bench":[]}' where id=%s$q$,f.pa[1],f.pa[1],f.a),'at most once');
+ perform pg_temp.must_fail(format($q$update teams set lineup='{"formation":"8v8","starters":{"gk":%s},"bench":[%s]}' where id=%s$q$,f.pa[1],f.pb[1],f.a),'at most once');
+end $$;
 set local role anon;
 do $$ begin
  if not exists(select 1 from public.matches m join public.seasons s on s.id=m.season_id where s.slug='rule-regression') then

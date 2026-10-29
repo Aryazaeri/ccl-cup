@@ -4223,6 +4223,14 @@ table { border-collapse: collapse; width: 100%; }
   border-bottom: 1px solid rgba(255, 255, 255, .18);
 }
 .programme .brand-button { justify-self: start; }
+.programme .public-header-logo-filter { position: absolute; width: 0; height: 0; }
+.programme .public-header-logo {
+  display: block;
+  width: 165px;
+  height: 64px;
+  object-fit: contain;
+  filter: url(#icc-logo-white);
+}
 .programme .brand { font-family: var(--display); font-size: 1.9rem; font-weight: 900; letter-spacing: .01em; }
 .programme .public-nav { gap: clamp(16px, 2.4vw, 34px); }
 .programme .public-nav button { padding-top: 2px; color: var(--chalk); font-size: .95rem; font-weight: 600; letter-spacing: 0; text-transform: none; }

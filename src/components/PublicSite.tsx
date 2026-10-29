@@ -457,7 +457,13 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
         <div className="pg-hero-shade" />
         <header className="public-header content-width">
           <button className="brand-button" onClick={() => scrollTo('home')}>
-            <Brand />
+            <svg className="public-header-logo-filter" aria-hidden="true" focusable="false">
+              <filter id="icc-logo-white" colorInterpolationFilters="sRGB">
+                <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  -0.2126 -0.7152 -0.0722 0 1" />
+                <feComposite in2="SourceGraphic" operator="in" />
+              </filter>
+            </svg>
+            <img className="public-header-logo" src="/assets/icc-logo-horizontal.jpg" alt="International Corporate Cup" />
           </button>
           <nav id="public-nav" className={menuOpen ? 'public-nav is-open' : 'public-nav'} aria-label="Main navigation">
             {visibleNav.map((item) => (

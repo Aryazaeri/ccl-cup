@@ -25,6 +25,31 @@ await check('an error stops and is returned', async () => {
   assert.match(String(error), /boom/)
 })
 
+await check('a page that fails once (e.g. a statement timeout) is retried and nothing is lost', async () => {
+  let failed = false
+  const { data, error } = await allRows((from, to) => {
+    if (from === 1000 && !failed) { failed = true; return Promise.resolve({ data: null, error: new Error('57014') }) }
+    return api(1000)(from, to)
+  })
+  assert.equal(error, null)
+  assert.deepEqual(data, table)
+})
+
+await check('with a count, later pages load in parallel, keep their order and are retried once', async () => {
+  let failed = false
+  let inFlight = 0, peak = 0
+  const { data, error } = await allRows(async (from, to) => {
+    inFlight++; peak = Math.max(peak, inFlight)
+    await new Promise((r) => setTimeout(r, 5))
+    inFlight--
+    if (from === 1200 && !failed) { failed = true; return { data: null, error: new Error('57014') } }
+    return { ...(await api(300)(from, to)), count: from === 0 ? table.length : null }
+  })
+  assert.equal(error, null)
+  assert.deepEqual(data, table)
+  assert.ok(peak > 1 && peak <= 4, `peak concurrency ${peak}`)
+})
+
 await check('an exact count avoids the final empty request even below the server cap', async () => {
   let calls = 0
   const { data } = await allRows((from, to) => { calls++; return api(300)(from, to).then((page) => ({ ...page, count: from === 0 ? table.length : null })) })

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, matchSquad, playerTeamId, entrySquadError, squadOf, withSquad } from '../src/lib/squadUtils'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, matchSquad, playerTeamId, entrySquadError, seasonsForClubEntry, squadOf, withSquad } from '../src/lib/squadUtils'
 import { assignedGroupName } from '../src/lib/groupLeagueUtils'
 import type { Player, Season, Team } from '../src/types'
 
@@ -48,6 +48,11 @@ check('match squads prefer the recorded snapshot over the current squad', () => 
   assert.deepEqual(matchSquad({}, 10, players).map((p) => p.playerId), [2])
   assert.deepEqual(squadOf(players, 10).map((p) => p.id), [2])
   assert.deepEqual(matchSquad(played, undefined, players), [])
+})
+
+check('club entries allow concurrent and future seasons, excluding duplicates and archives', () => {
+  const seasons = [2025, 2026, 2027, 2028].map((year): Season => ({ id: year, year, city: 'Antalya', name: 'Cup', fullName: 'Cup', startDate: `${year}-01-01`, status: year === 2025 ? 'archived' : year === 2028 ? 'draft' : 'published' }))
+  assert.deepEqual(seasonsForClubEntry(teams[0], teams, seasons).map((s) => s.id), [2028, 2027])
 })
 
 check('group badges come from the saved draw, not the club field', () => {

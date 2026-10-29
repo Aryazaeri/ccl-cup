@@ -408,7 +408,40 @@ test.describe('Teams', () => {
     const dialog = page.getByRole('dialog', { name: 'Manage Club: ALPHA' })
     await dialog.getByRole('button', { name: '3. Tournament & Group' }).click()
     await expect(dialog.getByLabel('Season *')).toBeDisabled()
-    await expect(dialog.getByText('This club has fixtures in this season, so it stays here. Enter the club again to play another season.')).toBeVisible()
+    await expect(dialog.getByText('This entry has fixtures and stays in this season. Add the same club to another season below.')).toBeVisible()
+  })
+
+  test('a club with fixtures enters ongoing and future seasons without moving its original entry', async ({ page }) => {
+    const data = fixture()
+    data.seasons.push({ id: 4, city: 'Antalya', year: 2027, name: 'Future Cup', fullName: 'Antalya 2027 Future Cup', startDate: '2027-06-01', status: 'draft', seasonType: 'league' })
+    data.matches[0] = { ...data.matches[0], matchStatus: 'completed', scoreSource: 'legacy', lineupSource: 'legacy', homeScore: 2, awayScore: 0, kickoffAt: '2026-10-01T15:00:00Z' }
+    await open(page, 'Teams', data)
+    for (const [target, name] of [[2, '2026 — Autumn League'], [4, '2027 — Future Cup']] as const) {
+      await teamsSeasonFilter(page).selectOption('1')
+      await page.getByRole('button', { name: 'Edit ALPHA details', exact: true }).click()
+      let dialog = page.getByRole('dialog', { name: 'Manage Club: ALPHA' })
+      await dialog.getByRole('button', { name: '3. Tournament & Group' }).click()
+      await expect(dialog.getByLabel('Season *')).toBeDisabled()
+      if (target === 4) await expect(dialog.getByLabel('Destination season').locator('option[value="2"]')).toHaveCount(0)
+      await dialog.getByLabel('Destination season').selectOption(String(target))
+      await dialog.getByRole('button', { name: 'Add to another season', exact: true }).click()
+      dialog = page.getByRole('dialog', { name: `Enter ALPHA in ${name}`, exact: true })
+      await expect(dialog.getByRole('button', { name: /^4\. Squad Roster/ })).toHaveText('4. Squad Roster (0/5+)')
+      await dialog.getByRole('button', { name: /^4\. Squad Roster/ }).click()
+      for (let id = 101; id <= 105; id++) {
+        await dialog.locator('.inline-player-fields select').selectOption(String(id))
+        await dialog.getByRole('button', { name: '+ Add to squad', exact: true }).click()
+      }
+      await dialog.getByRole('button', { name: 'Register Club', exact: true }).click()
+      await page.getByRole('dialog', { name: 'Manage Club: ALPHA' }).getByRole('button', { name: 'Close', exact: true }).click()
+    }
+    await page.reload()
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ccl-cup:data:v8')!))
+    const alpha = saved.teams.filter((t: Team) => t.clubId === 1)
+    expect(alpha.map((t: Team) => t.seasonId).sort()).toEqual([1, 2, 4])
+    expect(alpha.find((t: Team) => t.seasonId === 1).id).toBe(1)
+    expect(saved.matches[0]).toMatchObject({ homeTeamId: 1, homeScore: 2, awayScore: 0 })
+    expect(saved.players.find((p: Player) => p.id === 101).squads.map((entry: { seasonId: number }) => entry.seasonId).sort()).toEqual([1, 2, 4])
   })
 
   test('an existing club keeps its identity and starts a new tournament squad empty', async ({ page }) => {

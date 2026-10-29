@@ -1053,5 +1053,11 @@
   "Register New Club in {season}": "{season} turnuvasına yeni kulüp kaydet",
   "a season": "bir sezon",
   "press": "basın toplantısı",
-  "award": "ödül"
+  "award": "ödül",
+  "This entry has fixtures and stays in this season. Add the same club to another season below.": "Bu katılımın maçları olduğu için sezonu korunur. Aynı kulübü aşağıdan başka bir sezona da ekleyebilirsiniz.",
+  "Add this club to another season": "Bu kulübü başka bir sezona ekleyin",
+  "Keep this season's fixtures and squad. Create a separate entry for the same club and select its squad.": "Bu sezonun maçları ve kadrosu korunur. Aynı kulüp için ayrı bir sezon katılımı oluşturun ve o sezonun kadrosunu seçin.",
+  "Destination season": "Eklenecek sezon",
+  "Add to another season": "Başka sezona ekle",
+  "Create another season to add this club. Seasons it has already entered are not listed.": "Kulübü eklemek için yeni bir sezon oluşturun. Kulübün zaten katıldığı sezonlar listelenmez."
 }

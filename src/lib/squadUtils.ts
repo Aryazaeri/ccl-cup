@@ -1,4 +1,5 @@
-import type { Match, MatchSquadPlayer, Player, SquadEntry, Team } from '../types'
+import type { Match, MatchSquadPlayer, Player, Season, SquadEntry, Team } from '../types'
+import { latestSeasons } from './seasonLabels'
 
 /** Minimum only when entering a tournament; registration has no minimum. */
 export const MIN_SQUAD = 5
@@ -44,6 +45,13 @@ export function entrySquadError(size: number) {
 
 export const seasonEntries = (teams: Team[], seasonId: number | undefined) =>
   seasonId == null ? teams : teams.filter((team) => team.seasonId === seasonId)
+
+/** A new entry reuses the club identity while leaving every older entry intact. */
+export function seasonsForClubEntry(club: Team, entries: Team[], seasons: Season[]): Season[] {
+  const key = (team: Team) => team.clubId ?? team.name.trim().toLowerCase()
+  const entered = new Set(entries.filter((team) => key(team) === key(club)).map((team) => team.seasonId))
+  return latestSeasons(seasons.filter((season) => season.id !== club.seasonId && season.status !== 'archived' && !entered.has(season.id)))
+}
 
 /**
  * Clubs not entered in `seasonId` yet, each as its most recent entry (by

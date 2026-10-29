@@ -3845,6 +3845,9 @@ table { border-collapse: collapse; width: 100%; }
 
 .checkbox-label { flex-direction: row !important; align-items: center; gap: 10px !important; text-transform: none !important; letter-spacing: 0 !important; }
 .checkbox-label input { width: auto; }
+.club-season-entry { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; }
+.club-season-entry h4, .club-season-entry p { margin: 0; }
+.club-season-entry .button { justify-self: start; }
 
 @media (max-width: 620px) {
   .squad-cutout-grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px; }

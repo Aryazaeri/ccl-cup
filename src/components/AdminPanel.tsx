@@ -114,7 +114,7 @@ import { TeamLogoPicker } from './TeamLogoPicker'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
-import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, squadOf } from '../lib/squadUtils'
+import { MIN_SQUAD, clubsToEnter, isInTeam, latestSquad, playerTeamId, seasonsForClubEntry, squadOf } from '../lib/squadUtils'
 import type { EntryRoster, NewSquadPlayer } from '../services/tournamentRepository'
 import type { Lineup } from '../lib/formations'
 
@@ -722,7 +722,7 @@ export function AdminPanel({
 
       {modal === 'team' && (
         <TeamModal
-          key={teamInModal?.id ?? enteringClub?.team.id ?? 'new'}
+          key={teamInModal ? `edit:${teamInModal.id}` : enteringClub ? `enter:${enteringClub.team.id}:${enteringClub.team.seasonId}` : 'new'}
           initial={teamInModal}
           template={teamInModal ? undefined : enteringClub ?? undefined}
           hasMatches={!!teamInModal && matches.some((m) => m.homeTeamId === teamInModal.id || m.awayTeamId === teamInModal.id)}
@@ -747,6 +747,11 @@ export function AdminPanel({
           onAddPlayer={onAddPlayer}
           onSetSquad={onSetSquad}
           onOpenSquadCanvas={(team) => setCanvasSquadTeam(team)}
+          onEnterSeason={(team, seasonId) => {
+            setEditingTeam(null)
+            setCreatedClub(null)
+            setEnteringClub({ team: { ...team, seasonId }, squadIds: [] })
+          }}
         />
       )}
 
@@ -3617,6 +3622,7 @@ function TeamModal({
   onAddPlayer,
   onSetSquad,
   onOpenSquadCanvas,
+  onEnterSeason,
 }: {
   /** The season entry being edited; null when registering. */
   initial: Team | null
@@ -3635,12 +3641,16 @@ function TeamModal({
   onAddPlayer: (player: Player) => Promise<void>
   onSetSquad: (playerId: number, seasonId: number, teamId: number | null) => Promise<void>
   onOpenSquadCanvas?: (team: Team) => void
+  onEnterSeason: (team: Team, seasonId: number) => void
 }) {
   const { tr } = useAdminLanguage()
   const base = initial ?? template?.team ?? null
   const [tab, setTab] = useState<'identity' | 'staff' | 'tournament' | 'squad'>('identity')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const destinations = initial ? seasonsForClubEntry(initial, teams, seasons) : []
+  const [destinationSeasonId, setDestinationSeasonId] = useState(() => destinations[0]?.id)
+  const destination = destinations.find((season) => season.id === destinationSeasonId) ?? destinations[0]
 
   // Form State for Live Preview
   const [name, setName] = useState(base?.name ?? '')
@@ -4072,9 +4082,28 @@ function TeamModal({
 
 {hasMatches ? (
                 <small className="span-2 field-hint">
-                  {tr("This club has fixtures in this season, so it stays here. Enter the club again to play another season.")}</small>
+                  {tr("This entry has fixtures and stays in this season. Add the same club to another season below.")}</small>
               ) : initial ? (
                 <small className="span-2 field-hint">{tr("Changing the season moves this club and its squad.")}</small>
+              ) : null}
+              {initial ? (
+                <div className="span-2 club-season-entry">
+                  <h4>{tr("Add this club to another season")}</h4>
+                  <p className="field-hint">{tr("Keep this season's fixtures and squad. Create a separate entry for the same club and select its squad.")}</p>
+                  {destination ? (
+                    <>
+                      <label>
+                        {tr("Destination season")}
+                        <select value={destination.id} onChange={(event) => setDestinationSeasonId(Number(event.target.value))}>
+                          {destinations.map((season) => <option key={season.id} value={season.id}>{seasonLabel(season)}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" className="button button-admin" onClick={() => onEnterSeason(initial, destination.id)}>
+                        <Plus size={16} aria-hidden="true" /> {tr("Add to another season")}
+                      </button>
+                    </>
+                  ) : <p className="field-hint">{tr("Create another season to add this club. Seasons it has already entered are not listed.")}</p>}
+                </div>
               ) : null}
           </div>
 

@@ -184,7 +184,7 @@ test.describe('Seasons', () => {
     await page.getByRole('button', { name: 'Delete season İzmir 2026 Autumn League' }).click()
     const dialog = page.getByRole('dialog', { name: 'Delete season', exact: true })
     await expect(dialog).toContainText('Delete 2026 Autumn League and everything recorded under it?')
-    await expect(dialog).toContainText('2 clubs will be deleted')
+    await expect(dialog).toContainText('2 club entries in this season will be deleted; the clubs stay registered')
     await expect(dialog).toContainText('1 article and 0 media items are kept as unpublished drafts with no season')
     await expect(dialog).toContainText('Every fixture in this season is deleted, along with its match events')
     const confirm = dialog.getByRole('button', { name: 'Delete season', exact: true })

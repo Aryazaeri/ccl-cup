@@ -277,7 +277,7 @@ export function AdminPanel({
     const seasonPlayers = players.filter((player) => player.squads.some((entry) => entry.seasonId === id))
 
     // Only state counts when clubs actually carry a season. Browser-local data
-    // has no seasonId, and reporting "0 clubs will be deleted" while clubs
+    // has no seasonId, and reporting "0 club entries will be deleted" while clubs
     // exist would understate the damage — worse than giving no number at all.
     const countsAreKnown = teams.some((team) => team.seasonId != null)
     const cascadeLines = countsAreKnown

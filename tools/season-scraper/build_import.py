@@ -53,7 +53,8 @@ def position(raw):
 
 def foot(raw):
     raw = fold(raw)
-    return 'both' if 'iki' in raw else 'left' if 'sol' in raw else 'right' if 'sağ' in raw else None
+    # The archive writes both-footed as "Çift Ayak"; "İki Ayak" also seen.
+    return 'both' if 'iki' in raw or 'çift' in raw else 'left' if 'sol' in raw else 'right' if 'sağ' in raw else None
 
 
 def number(raw, low, high):
@@ -65,13 +66,17 @@ def number(raw, low, high):
 
 
 def group_name(raw):
-    match = re.match(r'^([A-Z])\s+Grubu$', (raw or '').strip())
+    match = re.match(r'^([A-Z])\s+(?:Grubu|Group)$', (raw or '').strip())
     return f'Group {match.group(1)}' if match else None
 
 
 def build(export, out, report_dir):
     out.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = export / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    international = manifest.get('source') == 'https://arsiv.cclcup.com/internationalcorporatecup/'
+    namespace = 'icc:' if international else ''
     coverage = {r['season_id']: r for r in rows(export / 'season-coverage.csv')}
     profiles = {(r['kind'], r['source_id']): r for r in rows(export / 'profiles.csv')}
     squads = defaultdict(lambda: defaultdict(list))  # season -> club -> players
@@ -122,8 +127,9 @@ def build(export, out, report_dir):
 
             players_by_name = {(fold(l['team_name']), fold(l['player_name'])): l['player_id']
                                for l in lineups[f['match_id']]}
+            skipped['empty lineup slots (no source player ID)'] += sum(not l['player_id'] for l in lineups[f['match_id']])
             match_lineup = [[club_id_of.get(fold(l['team_name'])), l['player_id']] for l in lineups[f['match_id']]
-                            if club_id_of.get(fold(l['team_name'])) in (home, away)]
+                            if l['player_id'] and club_id_of.get(fold(l['team_name'])) in (home, away)]
             match_events, kicks = [], Counter()
             for e in events[f['match_id']]:
                 kind = ICON_TYPES.get(e['icon_url'].rsplit('/', 1)[-1].split('.')[0])
@@ -133,7 +139,7 @@ def build(export, out, report_dir):
                 if not kind or minute is None:
                     skipped['events of an unknown type or minute'] += 1
                     continue
-                if knockout and kind == 'penalty_scored' and minute >= FULL_TIME:
+                if not international and knockout and kind == 'penalty_scored' and minute >= FULL_TIME:
                     kicks[club] += 1
                     skipped['shootout kicks (not imported as goals)'] += 1
                     continue
@@ -175,6 +181,13 @@ def build(export, out, report_dir):
                             'home_score': int(f['home_score']) if played else None,
                             'away_score': int(f['away_score']) if played else None,
                             'lineups': match_lineup, 'events': match_events})
+            if international:
+                matches[-1].update({'score_source': 'legacy', 'source_url': f['source_url'],
+                                    'source_score_raw': f['score_raw'], 'source_round': f['round_raw']})
+                if knockout:
+                    clusters = Counter(e['minute'] for e in match_events if e['type'] in ('goal', 'penalty_scored'))
+                    if any(minute >= 30 and count >= 3 for minute, count in clusters.items()):
+                        notes['knockout score/event clusters requiring shootout reconciliation (no automatic interpretation)'].append(label)
 
         club_group = {club: g for g, members in groups.items() for club in members}
         clubs, squad_rows, players = [], [], {}
@@ -186,6 +199,7 @@ def build(export, out, report_dir):
             profile = profiles.get(('takim', club), {})
             name = club_name_of.get(club) or profile.get('name') or f'Club {club}'
             clubs.append({'source_id': club, 'name': name, 'slug': f'{slugify(name)}-a{club}',
+                          'country_code': None, 'country_name': None,
                           'logo_url': profile.get('image_url') if profile.get('image_is_placeholder') == 'False' else None,
                           'group_name': club_group.get(club)})
             squad_rows.append({'club': club, 'players': members})
@@ -217,6 +231,31 @@ def build(export, out, report_dir):
                               ('played', 'won', 'drawn', 'lost', 'goals_for', 'goals_against', 'points')}}
                           for r in standings if r['team_id']],
         }
+        if international:
+            # These IDs overlap the independently installed domestic archive.
+            # Namespace EVERY identity/reference before staging either dataset.
+            payload['source_url'] = manifest['source']
+            payload['slug'] = f'icc-{sid}-{slugify(cov["menu_name"])}'
+            payload['source_id'] = namespace + sid
+            for c in payload['clubs']:
+                c['source_id'] = namespace + c['source_id']
+                c['slug'] = 'icc-' + c['slug']
+            for p in payload['players']:
+                p['source_id'] = namespace + p['source_id']
+            for g in payload['groups']:
+                g['clubs'] = [namespace + x for x in g['clubs']]
+            for s in payload['squads']:
+                s['club'] = namespace + s['club']
+                s['players'] = [namespace + x for x in s['players']]
+            for m in payload['matches']:
+                m['source_id'] = namespace + m['source_id']
+                m['home'], m['away'] = namespace + m['home'], namespace + m['away']
+                m['lineups'] = [[namespace + c, namespace + p] for c, p in m['lineups'] if c and p]
+                for e in m['events']:
+                    e['club'] = namespace + e['club'] if e['club'] else None
+                    e['player'] = namespace + e['player'] if e['player'] else None
+            for r in payload['standings']:
+                r['club'] = namespace + r['club']
         (out / f'season-{sid}.json').write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
         totals['seasons'] += 1
         totals['season clubs'] += len(clubs)
@@ -225,7 +264,7 @@ def build(export, out, report_dir):
         totals['events'] += sum(len(m['events']) for m in matches)
         totals['lineup entries'] += sum(len(m['lineups']) for m in matches)
 
-    lines = ['# Historical import — preview', '', 'Each payload becomes a hidden draft season. Nothing here is written yet.',
+    lines = ['# Historical import — preview', '', 'Candidate data only; the historical RPC was retired and must not be reinstated unchanged. No database writes. Unknown countries remain null. Validate against the target schema before import.',
              '', '## Totals', ''] + [f'- {k}: {v}' for k, v in totals.items()]
     lines += ['', '## Skipped', ''] + [f'- {k}: {v}' for k, v in skipped.items()]
     for title, items in notes.items():

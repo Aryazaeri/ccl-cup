@@ -277,12 +277,12 @@ export function AdminPanel({
     const seasonPlayers = players.filter((player) => player.squads.some((entry) => entry.seasonId === id))
 
     // Only state counts when clubs actually carry a season. Browser-local data
-    // has no seasonId, and reporting "0 clubs will be deleted" while clubs
+    // has no seasonId, and reporting "0 club entries will be deleted" while clubs
     // exist would understate the damage — worse than giving no number at all.
     const countsAreKnown = teams.some((team) => team.seasonId != null)
     const cascadeLines = countsAreKnown
       ? [
-          tr("{value0} club{value1} will be deleted", { value0: seasonTeams.length, value1: seasonTeams.length === 1 ? '' : 's' }),
+          tr("{value0} club entr{value1} in this season will be deleted; the clubs stay registered", { value0: seasonTeams.length, value1: seasonTeams.length === 1 ? 'y' : 'ies' }),
           tr("{value0} player{value1} leave this season's squads; their profiles and other seasons stay", { value0: seasonPlayers.length, value1: seasonPlayers.length === 1 ? '' : 's' }),
         ]
       : ['Every club entry in this season is deleted; players keep their profiles']
@@ -310,6 +310,30 @@ export function AdminPanel({
       requireTyping: season?.name,
     })
     if (ok) await onDeleteSeason(id)
+  }
+
+  // Only clubs with no season entries can go; their tournament records stay intact.
+  const confirmDeleteClub = async (club: Club) => {
+    const ok = await confirm({
+      title: 'Delete club',
+      body: <>{tr('Delete {name}?', { name: club.name })}</>,
+      consequences: [
+        'The club is removed from the club registry',
+        'Its registered players keep their profiles',
+      ],
+      confirmLabel: 'Delete club',
+    })
+    if (!ok) return
+    try {
+      await clubsRepository.remove(club.id)
+      await onRefresh()
+    } catch (reason) {
+      await confirm({
+        title: 'Club cannot be deleted',
+        body: <>{tr(reason instanceof Error ? reason.message : 'The club could not be deleted.')}</>,
+        confirmLabel: 'Close',
+      })
+    }
   }
 
   const confirmDeleteTeam = async (id: number) => {
@@ -530,6 +554,8 @@ export function AdminPanel({
             <>
             <ClubRegistry clubs={clubs} seasons={seasons} onNew={() => setEditingRegistration(null)} onEdit={setEditingRegistration}
               entered={(clubId, seasonId) => teams.some((t) => t.clubId === clubId && t.seasonId === seasonId)}
+              hasEntries={(clubId) => teams.some((t) => t.clubId === clubId)}
+              onDelete={confirmDeleteClub}
               onEnter={(club, seasonId) => {
                 setEditingTeam(null); setCreatedClub(null)
                 setEnteringClub({ team: { id: -club.id, clubId: club.id, seasonId, name: club.name,

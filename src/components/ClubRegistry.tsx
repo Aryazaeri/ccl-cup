@@ -8,9 +8,10 @@ import { reportAssetSaveFailure } from '../lib/assetSaveUtils'
 import { Modal } from './Modal'
 import { ImageUploadField } from './ImageUploadField'
 
-export function ClubRegistry({ clubs, seasons, onNew, onEdit, onEnter, entered }: {
+export function ClubRegistry({ clubs, seasons, onNew, onEdit, onEnter, entered, hasEntries, onDelete }: {
   clubs: Club[]; seasons: Season[]; onNew: () => void; onEdit: (club: Club) => void
   onEnter: (club: Club, seasonId: number) => void; entered: (clubId: number, seasonId: number) => boolean
+  hasEntries: (clubId: number) => boolean; onDelete: (club: Club) => void
 }) {
   const { tr } = useAdminLanguage()
   const [seasonId, setSeasonId] = useState(defaultSeasonId(seasons))
@@ -31,6 +32,10 @@ export function ClubRegistry({ clubs, seasons, onNew, onEdit, onEnter, entered }
         <td>{c.name}</td><td>{c.registeredPlayerIds.length}</td><td><button className="row-action" onClick={() => onEdit(c)}>{tr("Edit registration")}</button>
           <button className="row-action" disabled={!seasonId || entered(c.id, seasonId)} onClick={() => seasonId && onEnter(c, seasonId)}>
             {seasonId && entered(c.id, seasonId) ? tr("Already entered") : tr("Enter tournament")}
+          </button>
+          <button className="row-action danger" disabled={hasEntries(c.id)} aria-label={tr("Delete club {value0}", { value0: c.name })}
+            title={hasEntries(c.id) ? tr("Remove this club from every season before deleting it") : tr("Delete Club")} onClick={() => onDelete(c)}>
+            {tr("Delete Club")}
           </button></td></tr>)}
     </tbody></table></div>
     {!filtered.length && <p className="field-hint">{clubs.length ? tr("No clubs match this search.") : tr("Register a club to start its shared identity.")}</p>}

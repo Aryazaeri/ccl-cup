@@ -39,6 +39,8 @@ export function ImageTrimmerModal({
     rotation: 0,
   })
 
+  // The image being cropped: the upload, or its auto-trimmed version.
+  const [source, setSource] = useState<string>(rawImageSrc)
   const [currentPreview, setCurrentPreview] = useState<string>(rawImageSrc)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -52,13 +54,13 @@ export function ImageTrimmerModal({
   // Live render cropped preview whenever config changes
   useEffect(() => {
     let active = true
-    renderCustomCrop(rawImageSrc, config, 300).then((preview) => {
+    renderCustomCrop(source, config, 300).then((preview) => {
       if (active) setCurrentPreview(preview)
     })
     return () => {
       active = false
     }
-  }, [rawImageSrc, config])
+  }, [source, config])
 
   // Mouse drag handlers for panning
   const handleMouseDown = (e: MouseEvent<HTMLDivElement>) => {
@@ -114,8 +116,8 @@ export function ImageTrimmerModal({
   const handleSmartAutoTrim = async () => {
     setIsProcessing(true)
     try {
-      const trimmed = await smartAutoTrimImage(rawImageSrc, 0.05)
-      setCurrentPreview(trimmed)
+      // Crop from the trimmed image from now on, so Apply keeps the trim.
+      setSource(await smartAutoTrimImage(rawImageSrc, 0.05))
       // Reset manual crop
       setConfig({
         zoom: 1,
@@ -136,6 +138,7 @@ export function ImageTrimmerModal({
   }
 
   const handleReset = () => {
+    setSource(rawImageSrc)
     setConfig({
       zoom: 1,
       offsetX: 0,
@@ -147,7 +150,7 @@ export function ImageTrimmerModal({
   const handleSaveAndApply = async () => {
     setIsProcessing(true)
     try {
-      const finalHighRes = await renderCustomCrop(rawImageSrc, config, 512)
+      const finalHighRes = await renderCustomCrop(source, config, 512)
       onApply(finalHighRes)
       onClose()
     } finally {

@@ -27,6 +27,8 @@ import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team }
 import { Brand } from './Brand'
 import { Modal } from './Modal'
 import { MatchBroadcast } from './MatchBroadcast'
+import { MatchCountdown } from './MatchCountdown'
+import { useKickoffCountdown } from '../lib/useKickoffCountdown'
 import { featuredBroadcast, youtubeVideoId } from '../lib/broadcast'
 import { TeamMark } from './TeamMark'
 import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
@@ -91,6 +93,7 @@ const nav = [
   { label: 'Scorers', id: 'scorers' },
   { label: 'News', id: 'home' },
   { label: 'Clubs', id: 'teams' },
+  { label: 'Media', id: 'media' },
   { label: 'Sponsors', id: 'sponsors' },
   { label: 'About', id: 'about' },
 ]
@@ -187,6 +190,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [groupIndex, setGroupIndex] = useState(0)
+  const [mediaView, setMediaView] = useState<{ season?: number; kind: string; limit: number }>({ kind: 'all', limit: 6 })
 
   /* ---------------- Season scoping ---------------- */
 
@@ -378,7 +382,10 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const comingUp = seasonMatches.filter((m) => m.matchStatus === 'scheduled' || m.matchStatus === 'postponed')
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   // Sponsors only get a menu entry when the season has some.
-  const visibleNav = nav.filter((item) => (item.id !== 'sponsors' || seasonSponsors.length > 0) && (item.id !== 'knockout' || knockoutBracket != null))
+  const mediaKind = mediaView.season === activeSeason?.id ? mediaView.kind : 'all'
+  const mediaLimit = mediaView.season === activeSeason?.id ? mediaView.limit : 6
+  const filteredMedia = seasonMedia.filter((asset) => mediaKind === 'all' || asset.kind === mediaKind)
+  const visibleNav = nav.filter((item) => (item.id !== 'media' || seasonMedia.length > 0) && (item.id !== 'sponsors' || seasonSponsors.length > 0) && (item.id !== 'knockout' || knockoutBracket != null))
   const heroStories = seasonStories.slice(0, 5)
   const olderStories = seasonStories.slice(5)
   const carousel = useCarousel(heroStories.length)
@@ -1012,9 +1019,13 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
         {seasonMedia.length > 0 && (
           <section className="pg-section media-section content-width" id="media">
-            <h2 className="pg-heading">Highlights</h2>
+            <h2 className="pg-heading">Media</h2>
+            <div className="media-controls" aria-label="Media categories">
+              {[['all', 'All media'], ['highlight', 'Highlights'], ['video', 'Videos'], ['press_conference', 'Interviews & press'], ['photo', 'Photos']].filter(([kind]) => kind === 'all' || seasonMedia.some((asset) => asset.kind === kind)).map(([kind, label]) =>
+                <button type="button" key={kind} aria-pressed={mediaKind === kind} onClick={() => setMediaView({ season: activeSeason?.id, kind, limit: 6 })}>{label}</button>)}
+            </div>
             <div className="media-rail">
-              {seasonMedia.slice(0, 6).map((asset) => {
+              {filteredMedia.slice(0, mediaLimit).map((asset) => {
                 const presenter = seasonSponsors.find((s) => s.id === asset.sponsorId)
                 const body = (
                   <>
@@ -1049,6 +1060,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 )
               })}
             </div>
+            {filteredMedia.length > mediaLimit && <button type="button" className="media-more" onClick={() => setMediaView({ season: activeSeason?.id, kind: mediaKind, limit: mediaLimit + 12 })}>Show more media ({filteredMedia.length - mediaLimit} remaining)</button>}
           </section>
         )}
 
@@ -1148,6 +1160,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
       {activeMatch && (
         <MatchDetailsModal
           match={activeMatch}
+          media={media.filter((asset) => asset.matchId === activeMatch.id && asset.isPublished)}
           players={players}
           teams={teams}
           onClose={closeDetail}
@@ -1675,11 +1688,13 @@ function PlayerDetailModal({
 
 function MatchDetailsModal({
   match,
+  media,
   players,
   teams,
   onClose,
 }: {
   match: Match
+  media: MediaAsset[]
   players: Player[]
   teams: Team[]
   onClose: () => void
@@ -1689,6 +1704,8 @@ function MatchDetailsModal({
   const homeCountry = getCountry(homeTeam?.countryCode)
   const awayCountry = getCountry(awayTeam?.countryCode)
   const shootout = shootoutLine(match)
+  const countdown = useKickoffCountdown(match)
+  const displayStatus = countdown?.due ? 'live' : match.matchStatus
 
   // The squads recorded when the match was completed, so later transfers do not rewrite it.
   const homeSquad = matchSquad(match, match.homeTeamId ?? homeTeam?.id, players)
@@ -1729,8 +1746,8 @@ function MatchDetailsModal({
             {shootout ? <span className="modal-penalties-banner">{shootout}</span> : null}
             {match.resultKind === 'forfeit' && <span className="modal-penalties-banner">Administrative 3–0 forfeit</span>}
             {match.scoreSource === 'legacy' && <span className="field-hint">Historical result · staff reconciliation pending</span>}
-            <span className={`status-pill ${match.matchStatus}`}>
-              {MATCH_STATUS_LABELS[match.matchStatus] ?? match.matchStatus}
+            <span className={`status-pill ${displayStatus}`}>
+              {MATCH_STATUS_LABELS[displayStatus] ?? displayStatus}
             </span>
             {match.streamUrl && !youtubeVideoId(match.streamUrl) ? (
               <a
@@ -1759,6 +1776,8 @@ function MatchDetailsModal({
           </div>
         </div>
 
+        <MatchCountdown match={match} />
+        {media.length > 0 && <section className="match-linked-media" aria-label="Match media"><h4>Match media</h4>{media.filter((asset) => asset.externalUrl).map((asset) => <a key={asset.id} href={asset.externalUrl} target="_blank" rel="noopener noreferrer"><Play size={16} aria-hidden="true" />{asset.title}</a>)}</section>}
         {youtubeVideoId(match.streamUrl) && <MatchBroadcast key={`${match.id}:${match.streamUrl}`} match={match} />}
         {/* Match Meta Strip */}
         <div className="match-info-strip">

@@ -2,15 +2,18 @@ import { ExternalLink, Play, Radio } from 'lucide-react'
 import { useId, useState } from 'react'
 import type { Match } from '../types'
 import { youtubeEmbedUrl, youtubeVideoId } from '../lib/broadcast'
+import { useKickoffCountdown } from '../lib/useKickoffCountdown'
 
 const focusPlayer = (frame: HTMLIFrameElement | null) => frame?.focus({ preventScroll: true })
 
 export function MatchBroadcast({ match }: { match: Match }) {
   const [playing, setPlaying] = useState(false)
   const heading = useId()
+  const countdown = useKickoffCountdown(match)
+  const live = match.matchStatus === 'live' || countdown?.due
   const id = youtubeVideoId(match.streamUrl)
   if (!id) return null
-  const label = match.matchStatus === 'live' ? 'Live broadcast' : match.matchStatus === 'completed' ? 'Match replay'
+  const label = live ? 'Live broadcast' : match.matchStatus === 'completed' ? 'Match replay'
     : match.matchStatus === 'postponed' ? 'Postponed broadcast' : match.matchStatus === 'stopped' ? 'Broadcast paused' : 'Scheduled broadcast'
   const title = `${match.home} vs ${match.away}`
   return <section className="pg-broadcast" aria-labelledby={heading}>
@@ -18,7 +21,7 @@ export function MatchBroadcast({ match }: { match: Match }) {
       <span className="pg-broadcast-label"><Radio size={15} aria-hidden="true" />{label}</span>
       <h2 id={heading}>{title}</h2>
       <p>{match.date} · {match.time}{match.venue && match.venue !== '—' ? ` · ${match.venue}` : ''}</p>
-      {match.matchStatus === 'scheduled' && <p>Watch here before kickoff. Scheduled streams begin when the broadcaster goes live.</p>}
+      {match.matchStatus === 'scheduled' && !live && <p>Watch here before kickoff. Scheduled streams begin when the broadcaster goes live.</p>}
       <a href={`https://www.youtube.com/watch?v=${id}`} target="_blank" rel="noopener noreferrer">Open on YouTube <ExternalLink size={13} aria-hidden="true" /></a>
     </div>
     <div className="pg-broadcast-screen">

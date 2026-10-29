@@ -21,6 +21,8 @@ export const COUNTRIES: Country[] = [
   { code: 'NO', name: 'Norway', flag: '🇳🇴' },
   { code: 'DK', name: 'Denmark', flag: '🇩🇰' },
   { code: 'GR', name: 'Greece', flag: '🇬🇷' },
+  { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+  { code: 'SI', name: 'Slovenia', flag: '🇸🇮' },
   { code: 'RO', name: 'Romania', flag: '🇷🇴' },
   { code: 'BG', name: 'Bulgaria', flag: '🇧🇬' },
   { code: 'HR', name: 'Croatia', flag: '🇭🇷' },
@@ -28,6 +30,7 @@ export const COUNTRIES: Country[] = [
   { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' },
   { code: 'KZ', name: 'Kazakhstan', flag: '🇰🇿' },
   { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+  { code: 'IR', name: 'Iran', flag: '🇮🇷' },
   { code: 'US', name: 'United States', flag: '🇺🇸' },
 ]
 

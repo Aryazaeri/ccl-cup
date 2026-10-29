@@ -14,8 +14,8 @@ export const initialSeasons: Season[] = [
     id: 2,
     city: 'İstanbul',
     year: 2026,
-    name: 'Corporate Champions League Sezonu',
-    fullName: 'İstanbul 2026 Corporate Champions League Sezonu',
+    name: 'International Corporate Cup Sezonu',
+    fullName: 'İstanbul 2026 International Corporate Cup Sezonu',
     parentSeasonId: null,
     isActive: true,
   },
@@ -316,12 +316,12 @@ With the match hanging in the balance and the referee preparing to signal additi
   {
     id: 2,
     title: 'Quarter-final draw confirmed: Titans collide in Istanbul knockout stages',
-    summary: 'The bracket is set for the CCL Cup knockout phase with thrilling matchups across Istanbul arenas.',
-    body: `Following an unforgettable group stage marked by high drama and breakout performances, the official quarter-final draw for the CCL Cup 2026 season has been completed.
+    summary: 'The bracket is set for the ICC knockout phase with thrilling matchups across Istanbul arenas.',
+    body: `Following an unforgettable group stage marked by high drama and breakout performances, the official quarter-final draw for the ICC 2026 season has been completed.
 
 The standout tie of the round sees group leaders NOVA FC square off against perennial contenders Atlas SK in what promises to be an explosive contest at Central Arena.
 
-Matches will kick off this weekend with video highlights and live statistics available directly on the CCL Cup platform.`,
+Matches will kick off this weekend with video highlights and live statistics available directly on the ICC platform.`,
     category: 'announcement',
     status: 'Published',
     publishedAt: '14 Aug 2026',
@@ -331,7 +331,7 @@ Matches will kick off this weekend with video highlights and live statistics ava
     id: 3,
     title: 'Meet the captains: voices and leadership from the pitch',
     summary: 'Captain interviews, dressing room insights, and tactical preparations ahead of matchday four.',
-    body: `Leadership under pressure is what defines champions in the CCL Cup. We sat down with captains from Nova FC, Marmara, and Union to discuss tactical philosophies, squad mentality, and what it means to lead their teams under the lights.
+    body: `Leadership under pressure is what defines champions in the ICC. We sat down with captains from Nova FC, Marmara, and Union to discuss tactical philosophies, squad mentality, and what it means to lead their teams under the lights.
 
 "Every fixture in this tournament feels like a final," said Nova FC captain Emre Yılmaz. "The intensity is unmatched, and our preparation has to match the standard required."`,
     category: 'news',

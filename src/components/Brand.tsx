@@ -12,8 +12,8 @@ export function Brand({ admin = false }: { admin?: boolean }) {
   }
 
   return (
-    <span className="brand" aria-label="CCL Cup">
-      CCL CUP
+    <span className="brand" aria-label="ICC">
+      ICC
     </span>
   )
 }

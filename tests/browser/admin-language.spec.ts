@@ -29,7 +29,7 @@ test('Turkish persists across all admin sections and reloads; the public site st
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await turkish(page)
-  await expect(page).toHaveTitle('CCL Cup')
+  await expect(page).toHaveTitle('ICC')
   for (const label of ['Sezonlar', 'Takımlar', 'Oyuncular', 'Maçlar', 'Puan durumu', 'İçerik', 'Yorumlar', 'Medya', 'Sponsorlar', 'Kullanıcılar', 'Ayarlar', 'Genel bakış']) {
     await navigate(page, label)
     expect(await page.locator('body').evaluate((el) => el.scrollWidth <= window.innerWidth + 1)).toBeTruthy()

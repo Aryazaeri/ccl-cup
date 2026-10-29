@@ -56,7 +56,7 @@ async function readProfile(user: User): Promise<AuthProfile> {
   if (!supabase) throw new Error('Supabase is not configured.')
   const { data, error } = await supabase.from('profiles').select('full_name,role').eq('id', user.id).single()
   if (error) throw error
-  return { id: user.id, fullName: data.full_name || user.email || 'CCL User', email: user.email ?? '', role: data.role as UserRole }
+  return { id: user.id, fullName: data.full_name || user.email || 'ICC User', email: user.email ?? '', role: data.role as UserRole }
 }
 
 // Initial session notification and signIn can arrive together. Share only the

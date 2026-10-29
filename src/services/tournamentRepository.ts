@@ -1557,6 +1557,17 @@ export const clubsRepository = {
     })
     if (error) throw new Error(error.message, { cause: error })
   },
+  /** Deletes a registered club with no season entries; the database refuses otherwise. */
+  async remove(id: number): Promise<void> {
+    if (!supabase) {
+      const data = loadLocal()
+      if (data.teams.some((t) => t.clubId === id)) throw new Error('Remove this club from every season before deleting it')
+      saveLocal({ ...data, clubs: (data.clubs ?? []).filter((c) => c.id !== id) })
+      return
+    }
+    const { error } = await supabase.rpc('delete_registered_club', { club: id })
+    if (error) throw new Error(error.message, { cause: error })
+  },
 }
 
 export const mediaRepository = {

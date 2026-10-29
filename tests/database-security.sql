@@ -61,5 +61,36 @@ do $$ begin
   exception when check_violation then null; end;
   if (select public from storage.buckets where id='club-assets') then raise exception 'FAIL: public bucket'; end if;
 end $$;
+-- Registered clubs: viewers cannot delete; a club still in a season is refused;
+-- a club whose only entry was released is deleted with its retained identity.
+reset role;
+create temp table club_fixture(entered bigint, released bigint);
+grant select on club_fixture to authenticated;
+do $$ declare s bigint; a bigint; b bigint; roster jsonb; begin
+ select id into s from seasons where slug='security-draft-fixture';
+ select jsonb_agg(jsonb_build_object('full_name','Club delete '||i,'shirt_number',i,'position',case when i=1 then 'goalkeeper' else 'forward' end)) into roster from generate_series(1,5) i;
+ a:=create_season_entry(jsonb_build_object('season_id',s,'name','Club delete entered','slug','club-delete-entered'),'{}',roster);
+ b:=create_season_entry(jsonb_build_object('season_id',s,'name','Club delete released','slug','club-delete-released'),'{}',roster);
+ insert into club_fixture select (select club_id from teams where id=a),(select club_id from teams where id=b);
+ delete from teams where id=b;
+ if not exists(select 1 from club_entry_identity i join club_fixture f on i.club_id=f.released) then raise exception 'FAIL: fixture lost its retained identity'; end if;
+end $$;
+set local role authenticated;
+set local request.jwt.claims='{"sub":"ee000000-0000-0000-0000-000000000004","role":"authenticated"}';
+do $$ begin
+ begin perform delete_registered_club((select released from club_fixture)); raise exception 'FAIL: viewer deleted a club';
+ exception when others then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+set local request.jwt.claims='{"sub":"ee000000-0000-0000-0000-000000000003","role":"authenticated"}';
+do $$ declare f club_fixture; begin select * into f from club_fixture;
+ begin perform delete_registered_club(f.entered); raise exception 'FAIL: club with a season entry deleted';
+ exception when others then if sqlerrm not like 'Remove this club%' then raise; end if; end;
+ perform delete_registered_club(f.released);
+end $$;
+reset role;
+do $$ declare f club_fixture; begin select * into f from club_fixture;
+ if exists(select 1 from clubs where id=f.released) or exists(select 1 from club_entry_identity where club_id=f.released) then raise exception 'FAIL: released club remains'; end if;
+ if not exists(select 1 from clubs where id=f.entered) then raise exception 'FAIL: entered club removed'; end if;
+end $$;
 rollback;
 select 'role and private-asset security regression checks passed' as result;

@@ -980,7 +980,6 @@
   "{count} accounts · roles take effect immediately": "{count} hesap · roller hemen geçerli olur",
   "{name}: {role}": "{name}: {role}",
   "Type {name} to confirm": "Onaylamak için {name} yazın",
-  "{value0} club{value1} will be deleted": "{value0} kulübün katılım kaydı silinir",
   "{value0} player{value1} leave this season's squads; their profiles and other seasons stay": "{value0} oyuncu bu sezonun kadrolarından çıkarılır; profilleri ve diğer sezonları korunur",
   "{value0} article{value1} and {value2} media item{value3} are kept as unpublished drafts with no season": "{value0} yazı ve {value2} medya öğesi sezonsuz, yayınlanmamış taslak olarak korunur",
   "{value0} player{value1} leave{value2} this season's squad; their profiles and other seasons stay": "{value0} oyuncu bu sezonun kadrosundan çıkarılır; profilleri ve diğer sezonları korunur",
@@ -1059,5 +1058,13 @@
   "Keep this season's fixtures and squad. Create a separate entry for the same club and select its squad.": "Bu sezonun maçları ve kadrosu korunur. Aynı kulüp için ayrı bir sezon katılımı oluşturun ve o sezonun kadrosunu seçin.",
   "Destination season": "Eklenecek sezon",
   "Add to another season": "Başka sezona ekle",
-  "Create another season to add this club. Seasons it has already entered are not listed.": "Kulübü eklemek için yeni bir sezon oluşturun. Kulübün zaten katıldığı sezonlar listelenmez."
+  "Create another season to add this club. Seasons it has already entered are not listed.": "Kulübü eklemek için yeni bir sezon oluşturun. Kulübün zaten katıldığı sezonlar listelenmez.",
+  "{value0} club entr{value1} in this season will be deleted; the clubs stay registered": "Bu sezondaki {value0} kulüp katılım kaydı silinir; kulüpler kayıtlı kalır",
+  "The club is removed from the club registry": "Kulüp, kulüp kayıtlarından kaldırılır",
+  "Its registered players keep their profiles": "Kayıtlı oyuncuların profilleri korunur",
+  "Remove this club from every season before deleting it": "Silmeden önce bu kulübü tüm sezonlardan çıkarın",
+  "This club still has tournament history and cannot be deleted": "Bu kulübün turnuva geçmişi olduğu için silinemez",
+  "The club could not be deleted.": "Kulüp silinemedi.",
+  "Only competition staff can delete clubs": "Kulüpleri yalnızca yarışma görevlileri silebilir",
+  "Club not found": "Kulüp bulunamadı"
 }

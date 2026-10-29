@@ -798,7 +798,7 @@ test.describe('Content and media', () => {
     await expect(page.getByText('Sponsors needs a connected Supabase project.')).toBeVisible()
 
     await viewSite(page)
-    await expect(page.getByRole('heading', { name: 'Highlights' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible()
     await expect(page.getByText('Opening night highlights')).toBeVisible()
     await expect(page.locator('#sponsors')).toContainText('Anadolu Enerji')
     // Scoped to the season: gone when another season is selected.

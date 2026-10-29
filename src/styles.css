@@ -5323,3 +5323,18 @@ main:focus,
   .admin-topbar { flex-wrap: wrap; }
   .admin-top-actions { flex-wrap: wrap; }
 }
+
+.match-countdown { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin: 20px 0; padding: 22px; background: var(--chalk, #f8fafc); border: 1px solid var(--rule, #dbe3e0); border-radius: var(--radius, 8px); }
+.match-countdown p { margin: 6px 0 0; font-size: .85rem; }
+.match-countdown time { flex-basis: 100%; font-size: .85rem; color: var(--ink, #173b2e); }
+.match-countdown-digits { display: flex; gap: 18px; margin-left: auto; }
+.match-countdown-digits span { display: grid; text-align: center; gap: 4px; }
+.match-countdown-digits b { font-family: var(--display); font-size: clamp(1.6rem, 5vw, 2.6rem); font-variant-numeric: tabular-nums; line-height: 1; }
+.match-countdown-digits small { font-size: .7rem; }
+.media-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.media-controls button, .media-more { padding: 10px 16px; border: 1px solid var(--rule, #dbe3e0); border-radius: 6px; background: white; color: var(--ink, #173b2e); cursor: pointer; }
+.media-controls button[aria-pressed="true"] { background: var(--turf, #0a3a28); color: white; }
+.media-more { margin-top: 24px; }
+.match-linked-media { margin: 20px 0; }
+.match-linked-media a { display: flex; align-items: center; gap: 8px; padding: 10px 0; color: var(--turf, #0a3a28); }
+@media (max-width: 480px) { .match-countdown-digits { margin-left: 0; } }

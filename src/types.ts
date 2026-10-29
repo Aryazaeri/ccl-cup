@@ -200,6 +200,7 @@ export type PlayerSuspension = {
 export type MediaKind = 'photo' | 'video' | 'highlight' | 'press_conference' | 'panorama' | 'document'
 
 export type MediaAsset = {
+  matchId?: number
   id: number
   title: string
   kind: MediaKind

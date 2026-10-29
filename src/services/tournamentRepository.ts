@@ -565,6 +565,7 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
     id: Number(m.id),
     title: String(m.title),
     kind: (m.kind as MediaAsset['kind']) || 'video',
+    matchId: m.match_id != null ? Number(m.match_id) : undefined,
     externalUrl: m.external_url ? String(m.external_url) : undefined,
     thumbnailUrl: m.thumbnail_url ? String(m.thumbnail_url) : undefined,
     durationSeconds: m.duration_seconds != null ? Number(m.duration_seconds) : undefined,
@@ -1581,6 +1582,7 @@ export const mediaRepository = {
       duration_seconds: asset.durationSeconds ?? null,
       is_published: asset.isPublished,
       season_id: asset.seasonId ?? null,
+      ...(asset.matchId !== undefined ? { match_id: asset.matchId } : {}),
       sponsor_id: asset.sponsorId ?? null,
     }
     // media_assets.id is GENERATED ALWAYS, so a new row must not carry one.

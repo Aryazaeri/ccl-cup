@@ -3,7 +3,8 @@ import { countdownDemoData } from '../../tools/countdown-demo-data.mjs'
 
 test('direct match link counts down, stops at kickoff, and preserves broadcast and media links', async ({ page }) => {
   const now = Date.parse('2026-10-29T12:00:00Z')
-  await page.clock.install({ time: now })
+  await page.clock.install({ time: now - 1000 })
+  await page.clock.pauseAt(now)
   await page.addInitScript((data) => localStorage.setItem('ccl-cup:data:v8', JSON.stringify(data)), countdownDemoData(now))
   await page.goto('/#site/match/900001')
   const dialog = page.getByRole('dialog', { name: 'Match details', exact: true })

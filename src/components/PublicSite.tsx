@@ -382,7 +382,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const heroStories = seasonStories.slice(0, 5)
   const olderStories = seasonStories.slice(5)
   const carousel = useCarousel(heroStories.length)
-  const seasonTitle = activeSeason ? `CCL Cup ${activeSeason.city} ${activeSeason.year}` : 'CCL Cup'
+  const seasonTitle = activeSeason ? `ICC ${activeSeason.city} ${activeSeason.year}` : 'ICC'
 
   const fixtureRow = (match: Match) => {
     const homeTeam = teamLookup.get(match.home)
@@ -448,7 +448,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
           <img
             className="pg-hero-photo"
             src="/assets/ccl-hero.png"
-            alt="A floodlit CCL Cup football match in progress"
+            alt="A floodlit ICC football match in progress"
             width="1440"
             height="800"
             fetchPriority="high"
@@ -1140,7 +1140,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
 
           <SocialLinks settings={siteSettings} />
 
-          <small>© {activeSeason?.year ?? new Date().getFullYear()} Corporate Champions League</small>
+          <small>© {activeSeason?.year ?? new Date().getFullYear()} International Corporate Cup</small>
         </div>
       </footer>
 

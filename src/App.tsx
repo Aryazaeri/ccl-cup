@@ -20,7 +20,7 @@ function LoadingScreen() {
   return (
   <div className="app-loading">
     <span />
-    <strong>{tr('Loading CCL Cup…')}</strong>
+    <strong>{tr('Loading ICC…')}</strong>
   </div>
   )
 }

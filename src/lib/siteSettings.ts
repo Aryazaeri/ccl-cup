@@ -18,10 +18,10 @@ export type SiteSettings = {
   whatsappMessage: string
 }
 
-/** Used when the settings row cannot be read, and as the local-demo starting point. Mirrors the migration's seed row. */
+/** Used when the settings row cannot be read, and as the local-demo starting point. */
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   aboutIntro:
-    'The CCL Cup brings corporate teams together for a season of competitive football, played to full match-day standards across the host city.',
+    'The ICC brings corporate teams together for a season of competitive football, played to full match-day standards across the host city.',
   aboutHistory:
     'Founded to give company sides a real competition rather than a series of friendlies, the Cup has grown into a multi-format season running group stages, league tables and knockout rounds side by side.',
   aboutVision:
@@ -42,7 +42,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   youtubeUrl: '',
   linkedinUrl: '',
   whatsappNumber: '',
-  whatsappMessage: 'Hello! I have a question about the CCL Cup.',
+  whatsappMessage: 'Hello! I have a question about the ICC.',
 }
 
 /**

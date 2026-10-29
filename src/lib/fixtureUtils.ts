@@ -41,7 +41,7 @@ function validateOptions(options: FixtureOptions) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(options.startDate) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== options.startDate) throw new Error('Choose a valid first match date.')
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(options.time)) throw new Error('Choose a valid kickoff time.')
   if (!options.venue.trim()) throw new Error('Enter the venue for these fixtures.')
-  if (options.legs !== 1) throw new Error('CCL uses one match per pair.')
+  if (options.legs !== 1) throw new Error('ICC uses one match per pair.')
   if (!Number.isInteger(options.daysBetweenRounds) || options.daysBetweenRounds < 1 || options.daysBetweenRounds > 365) throw new Error('Days between rounds must be between 1 and 365.')
   if (!Number.isInteger(options.minutesBetweenMatches) || options.minutesBetweenMatches < 1 || options.minutesBetweenMatches > 1440) throw new Error('Minutes between games must be between 1 and 1440.')
 }

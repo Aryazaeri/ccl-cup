@@ -1936,7 +1936,7 @@ function TeamsManager({
                     </div>
                   </div>
 
-                  <p className="team-card-bio">{team.bio || tr("Participating member in the CCL Cup.")}</p>
+                  <p className="team-card-bio">{team.bio || tr("Participating member in the ICC.")}</p>
 
                   <div className="team-card-meta">
                     <div>

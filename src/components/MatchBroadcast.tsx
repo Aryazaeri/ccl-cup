@@ -28,7 +28,7 @@ export function MatchBroadcast({ match }: { match: Match }) {
         : <button type="button" className="pg-broadcast-play" aria-label={`Play broadcast for ${title}`} onClick={() => setPlaying(true)}>
           <span className="pg-broadcast-play-icon"><Play size={28} aria-hidden="true" /></span>
           <strong>{match.matchStatus === 'completed' ? 'Play replay' : 'Play broadcast'}</strong>
-          <span>Watch here on CCL Cup</span>
+          <span>Watch here on ICC</span>
         </button>}
     </div>
   </section>

@@ -1,7 +1,7 @@
 import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import type { BracketSlot, Match, TournamentBracket } from '../types'
 import { TeamMark } from './TeamMark'
-import { bracketMatchScores } from '../lib/qualificationUtils'
+import { bracketMatchScores, isByeTie } from '../lib/qualificationUtils'
 
 /** Shared read-only draw; saved pairings and fixture results use the same shape. */
 export function KnockoutBracket({ bracket, matches = [] }: { bracket: TournamentBracket; matches?: Match[] }) {
@@ -16,11 +16,11 @@ export function KnockoutBracket({ bracket, matches = [] }: { bracket: Tournament
   return (
     <div className="knockout-scroll" role="region" aria-label={tr("Knockout bracket")} tabIndex={0}>
       <div className="knockout-rounds">
-        {bracket.rounds.map((round) => (
+        {bracket.rounds.filter((round) => round.matches.some((tie) => !isByeTie(tie))).map((round) => (
           <section className="knockout-round" key={round.roundIndex} aria-label={tr(round.roundName)}>
             <h3>{tr(round.roundName)}</h3>
             <div className="knockout-ties">
-              {round.matches.map((tie) => {
+              {round.matches.filter((tie) => !isByeTie(tie)).map((tie) => {
                 const fixture = matches.find((match) => match.id === tie.resultMatchId)
                 const [score1, score2] = bracketMatchScores(tie, fixture)
                 return (

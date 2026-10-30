@@ -56,7 +56,7 @@ import { ImageUploadField } from './ImageUploadField'
 import { COUNTRIES, getCountry } from '../lib/countries'
 import { generateEmptyBracket } from '../lib/bracketUtils'
 import { assignedGroupName, generateEmptyGroupLeague } from '../lib/groupLeagueUtils'
-import { qualificationOptions, tableStageMatches } from '../lib/qualificationUtils'
+import { isPlayoffDraw, qualificationOptions, tableStageMatches } from '../lib/qualificationUtils'
 import type { FixtureOptions } from '../lib/fixtureUtils'
 import { FixtureGenerator } from './FixtureGenerator'
 import { QualificationPanel } from './QualificationPanel'
@@ -1538,7 +1538,7 @@ function SeasonModal({
             <label>
               {seasonType === 'group_league' ? tr("Qualifiers per group") : tr("Qualifiers from the table")}
               <select value={qualifiersPerTable} onChange={(event) => setQualifiersPerTable(Number(event.target.value))}>
-                {qualificationOptions(seasonType === 'group_league' ? groupCount : 1).map((count) => <option key={count} value={count}>{tr("Top ")}{count}</option>)}
+                {qualificationOptions(seasonType === 'group_league' ? groupCount : 1).map((count) => <option key={count} value={count}>{tr("Top ")}{count}{isPlayoffDraw(count) ? tr(" · playoffs, top 4 straight to quarter-finals") : ''}</option>)}
               </select>
             </label>
             <p>{qualificationOptions(seasonType === 'group_league' ? groupCount : 1).length
@@ -4752,7 +4752,7 @@ function MatchForm({
           {tr("Stage")}<input name="stage" defaultValue="Group A" list="fixture-stages" required />
           <datalist id="fixture-stages">
             {(seasons.find((season) => season.id === seasonId)?.groupLeague?.groups.map((group) => group.name) ?? ['Group A', 'Group B', 'Group Stage']).map((stage) => <option key={stage} value={stage} />)}
-            {['Round of 16', 'Quarter-final', 'Semi-final', 'Final', 'Third-place Play-off'].map((stage) => <option key={stage} value={stage} />)}
+            {['Preliminary round', 'Playoff round', 'Round of 16', 'Quarter-final', 'Semi-final', 'Final', 'Third-place Play-off'].map((stage) => <option key={stage} value={stage} />)}
           </datalist>
           <small className="field-hint">{tr("For knockout fixtures, use Round of 16, Quarter-final, Semi-final or Final so the score updates the draw.")}</small>
         </label>

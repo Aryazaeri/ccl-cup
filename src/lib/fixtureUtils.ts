@@ -1,5 +1,5 @@
 import type { Match, Season, Team } from '../types'
-import { bracketWithResults } from './qualificationUtils'
+import { bracketWithResults, isByeTie } from './qualificationUtils'
 import { seasonLabel } from './seasonLabels'
 import { hasFixtureTeams, knockoutFixtureKey, knockoutRoundSize, tableStageMatches } from './matchStages'
 
@@ -78,6 +78,7 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
     let readyRound = 0
     for (const round of bracket.rounds) {
       for (const tie of round.matches) {
+        if (isByeTie(tie)) continue
         if (!tie.slot1.teamId || !tie.slot2.teamId) { plan.waiting++; continue }
         const home = club(tie.slot1.teamId), away = club(tie.slot2.teamId)
         const key = knockoutFixtureKey(tie)

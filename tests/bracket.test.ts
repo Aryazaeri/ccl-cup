@@ -1,5 +1,5 @@
 import { autoSeedBracket, generateEmptyBracket, setMatchWinner } from '../src/lib/bracketUtils'
-import { bracketMatchScores, bracketWithResults, qualificationOptions, qualificationPreview, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
+import { bracketMatchScores, bracketWithResults, isByeTie, qualificationOptions, qualificationPreview, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
 import { computeGroupStandings, withDerivedTeamTotals } from '../src/lib/standingsUtils'
 import type { Match, Season, Team, TournamentBracket } from '../src/types'
 
@@ -143,7 +143,7 @@ const tableFixtures = [fixture(1, 'ALPHA', 'BRAVO', 'Group A'), fixture(2, 'CHAR
   check('qualification source shown in the draw', b.rounds[0].matches[0].slot1.qualificationLabel, 'Group A #1')
   check('seed time persisted', b.qualification?.seededAt, 'test-date')
   check('two qualifiers support a final-only draw', generateEmptyBracket(2).rounds.map((round) => round.matches.length), [1])
-  check('single table supports top 2, 4, 8, 16', qualificationOptions(1), [2, 4, 8, 16])
+  check('single table supports top 2, 4, 8, 16 and 9–15 playoffs', qualificationOptions(1), [2, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16])
   check('four groups support top 1, 2, 4', qualificationOptions(4), [1, 2, 4])
   check('three equal groups cannot form a full knockout draw', qualificationOptions(3), [])
   check('pending group match blocks qualification', qualificationPreview(season, teams, [tableFixtures[0], { ...tableFixtures[1], matchStatus: 'scheduled' }]).ready, false)
@@ -217,6 +217,27 @@ console.log('\n10. Fixture scores drive knockout progression without affecting t
   const reseeded = seedQualifiedBracket({ ...season, bracket: b }, teams, tableFixtures, 'new-date')
   check('regenerating clears saved winners', reseeded.championSlot?.teamId, null)
   check('regenerating keeps qualification settings', reseeded.qualification?.qualifiersPerTable, 2)
+}
+
+console.log('\nThirteen-club league feeds a playoff draw (ICC 2026 format)')
+{
+  const clubs = Array.from({ length: 13 }, (_, index) => team(index + 1, `CLUB ${index + 1}`))
+  const table: Season = { ...season, seasonType: 'league', groupLeague: undefined, league: { teamCount: 13, slots: clubs.map((c, i) => ({ position: i + 1, teamId: c.id })) }, bracket: { ...generateEmptyBracket(8), qualification: { qualifiersPerTable: 13 } } }
+  // The higher-ranked club wins every game, so CLUB n finishes nth.
+  const games = clubs.flatMap((a, i) => clubs.slice(i + 1).map((b) => fixture(1000 + a.id * 20 + b.id, a.name, b.name, 'League')))
+  const draw = seedQualifiedBracket(table, clubs, games, 'test-date')
+  const ties = (b: TournamentBracket, r: number) => b.rounds[r].matches.filter((tie) => !isByeTie(tie)).map((tie) => [tie.slot1.teamName ?? null, tie.slot2.teamName ?? null].join(' v '))
+  const start = bracketWithResults(draw, games)
+  check('one preliminary tie: 12th v 13th', ties(start, 0), ['CLUB 12 v CLUB 13'])
+  check('playoff round waits on the preliminary for 5th', ties(start, 1), ['CLUB 8 v CLUB 9', 'CLUB 5 v ', 'CLUB 7 v CLUB 10', 'CLUB 6 v CLUB 11'])
+  check('round names', start.rounds.map((round) => round.roundName), ['Preliminary round', 'Playoff round', 'Quarter-finals', 'Semi-finals', 'Grand Final'])
+  check('top four already wait in the quarter-finals', ties(start, 2), ['CLUB 1 v ', 'CLUB 4 v ', 'CLUB 2 v ', 'CLUB 3 v '])
+  const prelim = fixture(1, 'CLUB 13', 'CLUB 12', 'Preliminary round', 2, 1)
+  check('preliminary winner meets 5th', ties(bracketWithResults(draw, [...games, prelim]), 1)[1], 'CLUB 5 v CLUB 13')
+  const playoffs = [fixture(2, 'CLUB 8', 'CLUB 9', 'Playoff round'), fixture(3, 'CLUB 5', 'CLUB 13', 'Playoff round'), fixture(4, 'CLUB 7', 'CLUB 10', 'Playoff round'), fixture(5, 'CLUB 6', 'CLUB 11', 'Playoff round')]
+  check('playoff winners meet 1st, 4th, 2nd, 3rd', ties(bracketWithResults(draw, [...games, prelim, ...playoffs]), 2), ['CLUB 1 v CLUB 8', 'CLUB 4 v CLUB 5', 'CLUB 2 v CLUB 7', 'CLUB 3 v CLUB 6'])
+  check('playoff fixtures are not counted as league games', tableStageMatches(table, [...games, prelim, ...playoffs]).length, games.length)
+  check('twelve clubs skip the preliminary round', seedQualifiedBracket({ ...table, bracket: { ...table.bracket!, qualification: { qualifiersPerTable: 12 } } }, clubs.slice(0, 12), games.filter((g) => !g.away.endsWith(' 13')), 'd').rounds[0].roundName, 'Playoff round')
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

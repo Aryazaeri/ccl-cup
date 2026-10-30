@@ -23,7 +23,7 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
   const { confirm, confirmDialog } = useConfirm()
   const seeded = Boolean(bracket?.qualification?.seededAt)
   const expected = preview.qualifiers.map((row) => `${row.teamId}:${row.qualificationLabel}`).sort().join('|')
-  const saved = bracket?.rounds[0]?.matches.flatMap((tie) => [tie.slot1, tie.slot2]).map((slot) => `${slot.teamId}:${slot.qualificationLabel}`).sort().join('|')
+  const saved = bracket?.rounds[0]?.matches.flatMap((tie) => [tie.slot1, tie.slot2]).filter((slot) => slot.teamId != null).map((slot) => `${slot.teamId}:${slot.qualificationLabel}`).sort().join('|')
 
   const generate = async () => {
     if (flight.current) return

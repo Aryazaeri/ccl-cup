@@ -13,6 +13,8 @@ export type BracketSlot = {
   teamColor?: string
   teamCountryCode?: string
   qualificationLabel?: string
+  /** No club will ever fill this slot; its opponent goes through automatically. */
+  bye?: boolean
 }
 
 export type BracketMatch = {

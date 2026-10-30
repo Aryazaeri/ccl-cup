@@ -174,6 +174,14 @@ export function recomputeProgression(bracket: TournamentBracket): TournamentBrac
     const round = rounds[r]
 
     round.matches.forEach((match, m) => {
+      // A bye has no opponent: the other club goes through, and two byes leave a bye.
+      if (match.slot1.bye || match.slot2.bye) {
+        const club = match.slot1.bye ? match.slot2 : match.slot1
+        const target = rounds[r + 1]?.matches[Math.floor(m / 2)]
+        if (club.bye && target) target[m % 2 === 0 ? 'slot1' : 'slot2'].bye = true
+        match.winnerSlotId = club.bye ? null : club.slotId
+        match.winnerTeamId = club.bye ? null : club.teamId ?? null
+      }
       const winning = slotById(match, match.winnerSlotId)
 
       // The result is only valid while that slot still holds the same team.

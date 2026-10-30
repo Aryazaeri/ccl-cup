@@ -15,7 +15,34 @@ export function bracketMatchScores(tie: BracketMatch, fixture?: Match): [number 
 }
 
 export function qualificationOptions(tableCount: number): number[] {
-  return [1, 2, 4, 8, 16].filter((perTable) => [2, 4, 8, 16].includes(perTable * tableCount))
+  const full = [1, 2, 4, 8, 16].filter((perTable) => [2, 4, 8, 16].includes(perTable * tableCount))
+  // A single table can also send 9–15 clubs into a playoff draw.
+  return tableCount === 1 ? [...full, 9, 10, 11, 12, 13, 14, 15].sort((a, b) => a - b) : full
+}
+
+export const isPlayoffDraw = (qualifiers: number) => qualifiers > 8 && qualifiers < 16
+
+export const isByeTie = (tie: BracketMatch) => Boolean(tie.slot1.bye || tie.slot2.bye)
+
+/**
+ * Top four go straight to the quarter-finals; 5th onward play a playoff round, and
+ * clubs below 12th first meet in a preliminary round. For 13 clubs: 12th v 13th,
+ * winner v 5th, 6th v 11th, 7th v 10th, 8th v 9th; winners meet 4th, 3rd, 2nd, 1st.
+ */
+function playoffBracket(ranked: Team[]): TournamentBracket {
+  const size = ranked.length > 12 ? 32 : 16
+  // Rank r takes seed r (r + 8 below 12th), so seeds 13–20 stay empty and the top four get byes.
+  const bySeed = new Map(ranked.map((team, i) => [i < 12 ? i + 1 : i + 9, team]))
+  const bracket = autoSeedBracket(generateEmptyBracket(size), seedOrder(size).map((seed) => bySeed.get(seed)) as Team[], false)
+  for (const tie of bracket.rounds[0].matches) for (const slot of [tie.slot1, tie.slot2]) if (slot.teamId == null) slot.bye = true
+  const names = size === 32 ? ['Preliminary round', 'Playoff round'] : ['Playoff round']
+  const shown = recomputeProgression(bracket)
+  names.forEach((name, r) => {
+    bracket.rounds[r].roundName = name
+    let n = 0
+    bracket.rounds[r].matches.forEach((tie, m) => { tie.label = isByeTie(shown.rounds[r].matches[m]) ? name : `${name} #${++n}` })
+  })
+  return bracket
 }
 
 export function qualificationPreview(season: Season, teams: Team[], matches: Match[]) {
@@ -73,8 +100,10 @@ export function seedQualifiedBracket(season: Season, teams: Team[], matches: Mat
   // Rank across tables first (A1, B1, A2, B2). Seeded pairing then puts
   // winners against lower-ranked clubs from another table in the first round.
   const ranked = Array.from({ length: preview.perTable }, (_, rank) => preview.groups.map((group) => group.rows[rank])).flat()
-  const ordered = seedOrder(preview.teamCount).map((seed) => teams.find((team) => team.id === ranked[seed - 1].teamId)!)
-  const bracket = autoSeedBracket(generateEmptyBracket(preview.teamCount), ordered, false)
+  const rankedTeams = ranked.map((row) => teams.find((team) => team.id === row.teamId)!)
+  const bracket = isPlayoffDraw(preview.teamCount)
+    ? playoffBracket(rankedTeams)
+    : autoSeedBracket(generateEmptyBracket(preview.teamCount), seedOrder(preview.teamCount).map((seed) => rankedTeams[seed - 1]), false)
   bracket.qualification = { qualifiersPerTable: preview.perTable, seededAt }
   for (const match of bracket.rounds[0].matches) {
     for (const slot of [match.slot1, match.slot2]) slot.qualificationLabel = preview.qualifiers.find((row) => row.teamId === slot.teamId)?.qualificationLabel

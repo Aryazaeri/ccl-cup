@@ -21,7 +21,7 @@ import {
   setMatchWinner,
 } from '../lib/bracketUtils'
 import type { BracketSlot, Match, Team, TournamentBracket } from '../types'
-import { bracketWithResults } from '../lib/qualificationUtils'
+import { bracketWithResults, isByeTie } from '../lib/qualificationUtils'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 
@@ -316,15 +316,15 @@ export function BracketCanvasModal({
           <main className="bracket-tree-canvas-container">
             <div className="bracket-tree-scroll-wrapper">
               <div className="bracket-rounds-flex">
-                {bracket.rounds.map((round, rIdx) => (
+                {bracket.rounds.map((round, rIdx) => round.matches.every(isByeTie) ? null : (
                   <div key={round.roundIndex} className={`bracket-round-column round-${rIdx}`}>
                     <div className="round-header-banner">
                       <h4>{tr(round.roundName)}</h4>
-                      <span>{round.matches.length} {tr(" matches")}</span>
+                      <span>{round.matches.filter((tie) => !isByeTie(tie)).length} {tr(" matches")}</span>
                     </div>
 
                     <div className="round-matches-stack">
-                      {round.matches.map((match, mIdx) => (
+                      {round.matches.map((match, mIdx) => isByeTie(match) ? null : (
                         <div key={match.matchId} className="bracket-matchup-node">
                           <div className="matchup-header">
                             <span>{match.label}</span>

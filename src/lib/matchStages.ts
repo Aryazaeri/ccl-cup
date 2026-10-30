@@ -16,7 +16,9 @@ export function hasFixtureTeams(match: Match, home: { id?: number | null; name: 
 export function knockoutRoundSize(stage: string): number | null {
   const value = stage.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
   if (value.includes('thirdplace')) return null
-  if (value.includes('roundof32')) return 32
+  // Playoff draws (see seedQualifiedBracket) sit at the 32 and 16 levels.
+  if (value.includes('roundof32') || value.includes('preliminary')) return 32
+  if (value.includes('playoff')) return 16
   if (value.includes('roundof16')) return 16
   if (value.includes('quarter')) return 8
   if (value.includes('semi')) return 4

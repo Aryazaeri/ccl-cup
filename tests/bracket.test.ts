@@ -1,5 +1,5 @@
 import { autoSeedBracket, generateEmptyBracket, setMatchWinner } from '../src/lib/bracketUtils'
-import { bracketMatchScores, bracketWithResults, isByeTie, qualificationOptions, qualificationPreview, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
+import { bracketMatchScores, bracketWithResults, isByeTie, qualificationOptions, qualificationPreview, previewQualifiedBracket, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
 import { computeGroupStandings, withDerivedTeamTotals } from '../src/lib/standingsUtils'
 import type { Match, Season, Team, TournamentBracket } from '../src/types'
 
@@ -163,6 +163,14 @@ console.log('\n9. Single table ignores legacy group names')
   check('league always has one table', computeGroupStandings(tagged, tableFixtures, league).length, 1)
   check('league table uses all assigned clubs', computeGroupStandings(tagged, tableFixtures, league)[0].rows.length, 4)
   check('playing one game each does not qualify an incomplete league schedule', qualificationPreview(league, tagged, tableFixtures).ready, false)
+  const custom = { ...league, bracket: { ...league.bracket!, qualification: { qualifiersPerTable: 2, completionMode: 'scheduled' as const } } }
+  check('explicit custom schedule qualifies after scheduled games finish', qualificationPreview(custom, tagged, tableFixtures).ready, true)
+  check('custom schedule choice survives draw generation', seedQualifiedBracket(custom, tagged, tableFixtures, 'test-date').qualification?.completionMode, 'scheduled')
+  check('unfinished custom schedule remains blocked', qualificationPreview(custom, tagged, [{ ...tableFixtures[0], matchStatus: 'scheduled' }, ...tableFixtures.slice(1)]).ready, false)
+  check('empty custom schedule remains blocked', qualificationPreview(custom, tagged, []).ready, false)
+  check('custom schedule still requires results for every club', qualificationPreview(custom, tagged, tableFixtures.slice(0, 1)).ready, false)
+  check('custom schedule still requires resolving ranking ties', qualificationPreview({ ...custom, lotsOrder: [] }, tagged, tableFixtures).ready, false)
+
   const completeLeague = [...tableFixtures, fixture(6, 'ALPHA', 'CHARLIE', 'League', 0, 0), fixture(7, 'ALPHA', 'DELTA', 'League', 0, 0), fixture(8, 'BRAVO', 'CHARLIE', 'League', 0, 0), fixture(9, 'BRAVO', 'DELTA', 'League', 0, 0)]
   const b = seedQualifiedBracket(league, tagged, completeLeague, 'test-date')
   check('top two qualify directly into the final', [nameAt(b, 0, 0, 1), nameAt(b, 0, 0, 2)], ['ALPHA', 'CHARLIE'])
@@ -225,6 +233,14 @@ console.log('\nThirteen-club league feeds a playoff draw (ICC 2026 format)')
   const table: Season = { ...season, seasonType: 'league', groupLeague: undefined, league: { teamCount: 13, slots: clubs.map((c, i) => ({ position: i + 1, teamId: c.id })) }, bracket: { ...generateEmptyBracket(8), qualification: { qualifiersPerTable: 13 } } }
   // The higher-ranked club wins every game, so CLUB n finishes nth.
   const games = clubs.flatMap((a, i) => clubs.slice(i + 1).map((b) => fixture(1000 + a.id * 20 + b.id, a.name, b.name, 'League')))
+  const provisional = previewQualifiedBracket(table, clubs, [])!
+  check('playoff preview shows thirteen clubs before qualification is ready', provisional.rounds[0].matches.flatMap((tie) => [tie.slot1, tie.slot2]).filter((slot) => slot.teamId != null).length, 13)
+  check('provisional draw never confirms qualification', provisional.qualification?.seededAt, undefined)
+  check('preview does not bypass draw readiness', qualificationPreview(table, clubs, []).ready, false)
+  const shortSeason: Season = { ...table, lotsOrder: clubs.map((club) => club.id), bracket: { ...table.bracket!, qualification: { qualifiersPerTable: 13, completionMode: 'scheduled' } } }
+  const thirteenGames = clubs.map((club, i) => fixture(5000 + i, club.name, clubs[(i + 1) % clubs.length].name, 'League', 2, 0))
+  check('thirteen completed games can seed thirteen playoff clubs with lots resolved', qualificationPreview(shortSeason, clubs, thirteenGames).ready, true)
+  check('the same short schedule remains blocked by default', qualificationPreview({ ...shortSeason, bracket: table.bracket }, clubs, thirteenGames).ready, false)
   const draw = seedQualifiedBracket(table, clubs, games, 'test-date')
   const ties = (b: TournamentBracket, r: number) => b.rounds[r].matches.filter((tie) => !isByeTie(tie)).map((tie) => [tie.slot1.teamName ?? null, tie.slot2.teamName ?? null].join(' v '))
   const start = bracketWithResults(draw, games)

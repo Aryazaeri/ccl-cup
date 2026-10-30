@@ -47,6 +47,7 @@ function playoffBracket(ranked: Team[]): TournamentBracket {
 
 export function qualificationPreview(season: Season, teams: Team[], matches: Match[]) {
   const perTable = season.bracket?.qualification?.qualifiersPerTable ?? 2
+  const completionMode: 'round_robin' | 'scheduled' = season.seasonType === 'league' && season.bracket?.qualification?.completionMode === 'scheduled' ? 'scheduled' : 'round_robin'
   const stageMatches = tableStageMatches(season, matches.filter((match) => match.seasonId == null || match.seasonId === season.id))
   const groups = computeGroupStandings(teams, stageMatches, season)
   const tableMatches = stageMatches.filter((match) => groups.some((group) => {
@@ -80,8 +81,8 @@ export function qualificationPreview(season: Season, teams: Team[], matches: Mat
   else if (groups.some((g) => g.rows.slice(0, perTable).some((r) => r.lotsPending))) reason = 'Record the drawing-of-lots order for tied clubs before qualification.'
   else if (tableMatches.some((match) => !isCountableMatch(match))) reason = 'Complete all table-stage fixtures before generating the knockout draw.'
   else if (groups.some((group) => group.rows.some((row) => row.played === 0))) reason = 'Every club must have a completed table-stage result before qualification.'
-  else if (missing) reason = `${missing} table-stage fixture${missing === 1 ? ' is' : 's are'} missing. Use Matches → Plan fixtures to complete the schedule before qualification.`
-  return { groups, qualifiers, teamCount, perTable, ready: !reason, reason }
+  else if (missing && completionMode === 'round_robin') reason = `${missing} table-stage fixture${missing === 1 ? ' is' : 's are'} missing. Use Matches → Plan fixtures to complete the schedule before qualification.`
+  return { groups, qualifiers, teamCount, perTable, completionMode, ready: !reason, reason }
 }
 
 /** Standard seeded order keeps the top seeds in opposite halves of the draw. */
@@ -97,6 +98,17 @@ function seedOrder(count: number): number[] {
 export function seedQualifiedBracket(season: Season, teams: Team[], matches: Match[], seededAt = new Date().toISOString()): TournamentBracket {
   const preview = qualificationPreview(season, teams, matches)
   if (!preview.ready) throw new Error(preview.reason)
+  return buildQualifiedBracket(preview, teams, seededAt)
+}
+
+/** A provisional draw never sets seededAt or persists anything. */
+export function previewQualifiedBracket(season: Season, teams: Team[], matches: Match[]): TournamentBracket | null {
+  const preview = qualificationPreview(season, teams, matches)
+  if (!qualificationOptions(preview.groups.length).includes(preview.perTable) || preview.qualifiers.length !== preview.teamCount) return null
+  return buildQualifiedBracket(preview, teams)
+}
+
+function buildQualifiedBracket(preview: ReturnType<typeof qualificationPreview>, teams: Team[], seededAt?: string): TournamentBracket {
   // Rank across tables first (A1, B1, A2, B2). Seeded pairing then puts
   // winners against lower-ranked clubs from another table in the first round.
   const ranked = Array.from({ length: preview.perTable }, (_, rank) => preview.groups.map((group) => group.rows[rank])).flat()
@@ -104,7 +116,7 @@ export function seedQualifiedBracket(season: Season, teams: Team[], matches: Mat
   const bracket = isPlayoffDraw(preview.teamCount)
     ? playoffBracket(rankedTeams)
     : autoSeedBracket(generateEmptyBracket(preview.teamCount), seedOrder(preview.teamCount).map((seed) => rankedTeams[seed - 1]), false)
-  bracket.qualification = { qualifiersPerTable: preview.perTable, seededAt }
+  bracket.qualification = { qualifiersPerTable: preview.perTable, completionMode: preview.completionMode, ...(seededAt ? { seededAt } : {}) }
   for (const match of bracket.rounds[0].matches) {
     for (const slot of [match.slot1, match.slot2]) slot.qualificationLabel = preview.qualifiers.find((row) => row.teamId === slot.teamId)?.qualificationLabel
   }

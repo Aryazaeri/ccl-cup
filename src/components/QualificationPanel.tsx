@@ -25,6 +25,27 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
   const expected = preview.qualifiers.map((row) => `${row.teamId}:${row.qualificationLabel}`).sort().join('|')
   const saved = bracket?.rounds[0]?.matches.flatMap((tie) => [tie.slot1, tie.slot2]).filter((slot) => slot.teamId != null).map((slot) => `${slot.teamId}:${slot.qualificationLabel}`).sort().join('|')
 
+  const changeCompletionMode = async (completionMode: 'round_robin' | 'scheduled') => {
+    if (flight.current || seeded || !canManage || !season.bracket?.qualification) return
+    flight.current = true
+    try {
+      if (completionMode === 'scheduled' && !(await confirm({
+        title: 'Use the scheduled league matches?',
+        body: 'Confirm that the scheduled fixtures are the complete league programme before generating the playoff draw.',
+        consequences: ['Every scheduled league match must be completed.', 'Every registered club must have a result, and unresolved ranking ties still need a recorded lots order.'],
+        confirmLabel: 'Use scheduled matches',
+      }))) return
+      setSaving(true)
+      setError('')
+      await onUpdateSeason({ ...season, bracket: { ...season.bracket, qualification: { ...season.bracket.qualification, completionMode } } })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The qualification setting could not be saved.')
+    } finally {
+      flight.current = false
+      setSaving(false)
+    }
+  }
+
   const generate = async () => {
     if (flight.current) return
     flight.current = true
@@ -56,6 +77,12 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
           <button className="button button-admin" disabled={saving || !preview.ready} onClick={() => void generate()}>{saving ? tr("Saving…") : seeded ? tr("Regenerate draw") : tr("Generate knockout draw")}</button>
         </div> : null}
       </div>
+      {season.seasonType === 'league' && canManage ? <label className="qualification-message qualification-schedule">
+        {tr("League schedule")} <select aria-label={tr("League schedule")} value={preview.completionMode} disabled={saving || seeded} onChange={(event) => void changeCompletionMode(event.target.value as 'round_robin' | 'scheduled')}>
+          <option value="round_robin">{tr("Full round robin — every club meets every other club")}</option>
+          <option value="scheduled">{tr("Custom schedule — all scheduled league matches completed")}</option>
+        </select>
+      </label> : null}
       {!preview.ready ? <p className="qualification-message">{tr(preview.reason)}</p> : !seeded ? <p className="qualification-message">{tr("All entered table fixtures are complete. Check the schedule, then generate the draw to confirm qualification.")}</p> : null}
       {seeded && expected !== saved ? <p className="qualification-message">{tr("Table positions have changed since qualification. The saved draw stays fixed until you regenerate it.")}</p> : null}
       {error ? <p className="form-error" role="alert">{tr(error)}</p> : null}

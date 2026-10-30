@@ -5348,3 +5348,9 @@ main:focus,
 
 .qualification-schedule { display: grid; gap: 8px; max-width: 560px; }
 .qualification-schedule select { width: 100%; min-width: 0; min-height: 42px; }
+
+.knockout-match-action { width: 100%; min-height: 44px; border: 0; border-top: 1px solid var(--rule); background: #16722a; color: white; font-weight: 700; }
+.knockout-match-action:disabled { background: #edf1ee; color: #59685f; cursor: default; }
+
+.knockout-tie.is-actionable { cursor: pointer; }
+.knockout-tie.is-actionable:focus-within { outline: 2px solid #16722a; outline-offset: 2px; }

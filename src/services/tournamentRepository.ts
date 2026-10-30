@@ -12,6 +12,7 @@ import { mapAssetReferences } from '../lib/assetReferences'
 import { goalScore } from '../lib/matchRules'
 import { defaultSeasonId } from '../lib/seasonLabels'
 import { knockoutRoundSize } from '../lib/matchStages'
+import { displayDbStage, toDbStage } from '../lib/databaseMatchStage'
 import type {
   AdminUser,
   Club,
@@ -209,37 +210,6 @@ async function resolveVenueId(venueName: string, cityName: string): Promise<numb
   const created = await supabase.from('venues').insert({ name, city_id: cityId }).select('id').single()
   if (created.error) throw created.error
   return Number(created.data.id)
-}
-
-/**
- * The database constrains `matches.stage` to tournament phases, and models
- * "which group" separately via `group_id`. The admin form uses one free-text
- * field for both ("Group A", "Semi-finals"), so it is split on the way in and
- * rejoined on the way out.
- */
-const STAGE_VALUES = ['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final'] as const
-type DbStage = (typeof STAGE_VALUES)[number]
-
-const STAGE_LABELS: Record<DbStage, string> = {
-  group: 'Group Stage',
-  round_of_32: 'Round of 32',
-  round_of_16: 'Round of 16',
-  quarter_final: 'Quarter-final',
-  semi_final: 'Semi-final',
-  third_place: 'Third-place Play-off',
-  final: 'Final',
-}
-
-function toDbStage(stage: string): DbStage {
-  const value = String(stage ?? '').trim().toLowerCase()
-  if (STAGE_VALUES.includes(value as DbStage)) return value as DbStage
-  if (value.includes('32')) return 'round_of_32'
-  if (value.includes('16') || value.includes('son 16')) return 'round_of_16'
-  if (value.startsWith('quarter') || value.includes('çeyrek') || value.includes('ceyrek')) return 'quarter_final'
-  if (value.startsWith('semi') || value.includes('yarı') || value.includes('yari')) return 'semi_final'
-  if (value.includes('third') || value.includes('üçüncü')) return 'third_place'
-  if (value.includes('final')) return 'final'
-  return 'group'
 }
 
 /** A fixture's stage text is only a group label when it names a group. */
@@ -504,7 +474,7 @@ async function loadRemote(options: LoadOptions = {}): Promise<TournamentData> {
       // Prefer the group's own name ("Group A") over the generic phase label.
       stage:
         (m.group as { name: string } | null)?.name ??
-        STAGE_LABELS[(m.stage as DbStage) in STAGE_LABELS ? (m.stage as DbStage) : 'group'],
+        displayDbStage(String(m.stage), seasonsList.find((season) => season.id === Number(m.season_id))),
       date: formatKickoffDate(m.kickoff_at),
       time: formatKickoffTime(m.kickoff_at),
       venue: (m.venue as { name: string } | null)?.name ?? '—',

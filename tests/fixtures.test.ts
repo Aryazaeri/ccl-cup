@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { displayDbStage, toDbStage } from '../src/lib/databaseMatchStage'
 import { planFixtures, roundRobin, type FixtureOptions } from '../src/lib/fixtureUtils'
 import { autoSeedBracket, generateEmptyBracket } from '../src/lib/bracketUtils'
 import { bracketWithResults } from '../src/lib/qualificationUtils'
@@ -76,6 +77,15 @@ check('only seeded knockout opponents get games; the final waits', () => {
   assert.equal(semis.fixtures[0].stage, 'Semi-finals')
   assert.equal(planFixtures(cup, teams, semis.fixtures, knockOptions).fixtures.length, 0)
 })
+check('registering a draw pairing creates only that fixture and preserves its round', () => {
+  const key = semis.fixtures[0].fixtureKey!
+  const selected = planFixtures(cup, teams, [], { ...knockOptions, onlyFixtureKey: key })
+  assert.equal(selected.fixtures.length, 1)
+  assert.equal(selected.fixtures[0].fixtureKey, key)
+  assert.equal(selected.fixtures[0].stage, 'Semi-finals')
+  assert.equal(planFixtures(cup, teams, selected.fixtures, { ...knockOptions, onlyFixtureKey: key }).fixtures.length, 0)
+  assert.throws(() => planFixtures(cup, teams, [], { ...knockOptions, onlyFixtureKey: 'knockout:unknown:1:2' }), /pairing changed or is waiting/)
+})
 const results: Match[] = semis.fixtures.map((m, index) => ({ ...m, id: index + 1, status: 'Scheduled', matchStatus: 'completed', homeScore: 2, awayScore: 0 }))
 const final = planFixtures(cup, teams, results, knockOptions).fixtures[0]
 check('completed results create the final once', () => {
@@ -92,5 +102,13 @@ check('fixture identity survives club renames in bracket progression', () => {
   const changed = results.map((match) => ({ ...match, home: 'Renamed home', away: 'Renamed away' }))
   const bracket = bracketWithResults(cup.bracket!, changed)
   assert.deepEqual([bracket.rounds[1].matches[0].slot1.teamId, bracket.rounds[1].matches[0].slot2.teamId], [1, 3])
+})
+check('playoff phases persist as knockout database values and keep labels after reload', () => {
+  const season: Season = { ...league, bracket: { ...generateEmptyBracket(32), qualification: { qualifiersPerTable: 13 } } }
+  for (const [label, stored] of [['Preliminary round', 'round_of_32'], ['Playoff round', 'round_of_16'], ['Quarter-finals', 'quarter_final'], ['Semi-finals', 'semi_final'], ['Final', 'final'], ['Third-place Play-off', 'third_place'], ['Group A', 'group']] as const) assert.equal(toDbStage(label), stored)
+  assert.equal(displayDbStage(toDbStage('Preliminary round'), season), 'Preliminary round')
+  assert.equal(displayDbStage(toDbStage('Playoff round'), season), 'Playoff round')
+  assert.equal(displayDbStage('round_of_32'), 'Round of 32')
+  assert.equal(displayDbStage('round_of_16'), 'Round of 16')
 })
 console.log(`\n${checks} fixture checks passed`)

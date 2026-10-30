@@ -14,6 +14,8 @@ export type FixtureOptions = {
   publication: Match['status']
   /** Only the games reviewed in the preview may be created. */
   expectedKeys?: string[]
+  /** Schedule one specific ready tie from the confirmed knockout draw. */
+  onlyFixtureKey?: string
 }
 export type FixturePlan = { fixtures: Match[]; skipped: number; waiting: number }
 
@@ -73,6 +75,7 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
       time: kickoffAt.slice(11, 16), venue: options.venue.trim(), matchStatus: 'scheduled', status: 'Scheduled', events: [] })
   }
   if (options.phase === 'knockout') {
+    let selectedTieFound = false
     if (!season.bracket?.rounds.length || (season.bracket.qualification && !season.bracket.qualification.seededAt)) throw new Error('Save a seeded knockout draw first.')
     const bracket = bracketWithResults(season.bracket, existing)
     let readyRound = 0
@@ -82,6 +85,8 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
         if (!tie.slot1.teamId || !tie.slot2.teamId) { plan.waiting++; continue }
         const home = club(tie.slot1.teamId), away = club(tie.slot2.teamId)
         const key = knockoutFixtureKey(tie)
+        if (options.onlyFixtureKey && key !== options.onlyFixtureKey) continue
+        selectedTieFound = true
         const roundMatches = existing.filter((match) => knockoutRoundSize(match.stage) === round.matches.length * 2)
         // A corrected upstream result must not silently create a second final.
         if (existing.some((match) => match.fixtureKey?.startsWith(`knockout:${tie.matchId}:`) && match.fixtureKey !== key)) throw new Error(`${round.roundName} has a fixture for different clubs. Review that fixture in Matches before generating again.`)
@@ -90,6 +95,7 @@ export function planFixtures(season: Season, teams: Team[], matches: Match[], op
       }
       if (plan.fixtures.length) readyRound++
     }
+    if (options.onlyFixtureKey && !selectedTieFound) throw new Error('This pairing changed or is waiting for an opponent. Refresh the draw before scheduling.')
     return plan
   }
   const groups = season.seasonType === 'group_league'

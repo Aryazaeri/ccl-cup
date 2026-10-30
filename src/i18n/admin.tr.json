@@ -1095,5 +1095,11 @@
   "Every scheduled league match must be completed.": "Planlanan tüm lig maçları tamamlanmış olmalıdır.",
   "Every registered club must have a result, and unresolved ranking ties still need a recorded lots order.": "Her kayıtlı kulübün bir sonucu olmalıdır. Çözülemeyen eşitlikler için kura sırası kaydedilmelidir.",
   "Use scheduled matches": "Planlanan maçları kullan",
-  "The qualification setting could not be saved.": "Eleme aşaması ayarı kaydedilemedi."
+  "The qualification setting could not be saved.": "Eleme aşaması ayarı kaydedilemedi.",
+  "Register match": "Maç kaydet",
+  "Manage match": "Maçı yönet",
+  "Waiting for opponent": "Rakip bekleniyor",
+  "Register knockout match": "Eleme maçı kaydet",
+  "This match belongs to the knockout draw and does not change league points.": "Bu maç eleme aşamasına aittir ve lig puanlarını değiştirmez.",
+  "This pairing changed or is waiting for an opponent. Refresh the draw before scheduling.": "Bu eşleşme değişti veya rakip bekleniyor. Maçı planlamadan önce kurayı yenileyin."
 }

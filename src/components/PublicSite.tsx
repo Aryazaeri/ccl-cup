@@ -193,6 +193,8 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const [searchOpen, setSearchOpen] = useState(false)
   const [groupIndex, setGroupIndex] = useState(0)
   const [mediaView, setMediaView] = useState<{ season?: number; kind: string; limit: number }>({ kind: 'all', limit: 6 })
+  // Latest results start at five per season; "Show more" reveals older ones.
+  const [resultsView, setResultsView] = useState<{ season?: number; limit: number }>({ limit: 5 })
 
   /* ---------------- Season scoping ---------------- */
 
@@ -384,6 +386,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   // Sponsors only get a menu entry when the season has some.
   const mediaKind = mediaView.season === activeSeason?.id ? mediaView.kind : 'all'
+  const resultsLimit = resultsView.season === activeSeason?.id ? resultsView.limit : 5
   const mediaLimit = mediaView.season === activeSeason?.id ? mediaView.limit : 6
   const filteredMedia = seasonMedia.filter((asset) => mediaKind === 'all' || asset.kind === mediaKind)
   const visibleNav = nav.filter((item) => (item.id !== 'media' || seasonMedia.length > 0) && (item.id !== 'sponsors' || seasonSponsors.length > 0) && (item.id !== 'knockout' || knockoutBracket != null))
@@ -761,7 +764,10 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                 {recentResults.length === 0 ? (
                   <p className="pg-empty">No results yet. The first scores appear here at full time.</p>
                 ) : (
-                  <ol className="pg-fixture-list">{recentResults.slice(0, 5).map(fixtureRow)}</ol>
+                  <>
+                    <ol className="pg-fixture-list">{recentResults.slice(0, resultsLimit).map(fixtureRow)}</ol>
+                    {recentResults.length > resultsLimit && <button type="button" className="media-more" onClick={() => setResultsView({ season: activeSeason?.id, limit: resultsLimit + 10 })}>Show more results ({recentResults.length - resultsLimit} remaining)</button>}
+                  </>
                 )}
               </div>
               {awaitingResult.length > 0 && <section aria-label="Awaiting result">

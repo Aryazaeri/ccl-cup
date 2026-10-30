@@ -166,7 +166,12 @@ console.log('\n9. Single table ignores legacy group names')
   const completeLeague = [...tableFixtures, fixture(6, 'ALPHA', 'CHARLIE', 'League', 0, 0), fixture(7, 'ALPHA', 'DELTA', 'League', 0, 0), fixture(8, 'BRAVO', 'CHARLIE', 'League', 0, 0), fixture(9, 'BRAVO', 'DELTA', 'League', 0, 0)]
   const b = seedQualifiedBracket(league, tagged, completeLeague, 'test-date')
   check('top two qualify directly into the final', [nameAt(b, 0, 0, 1), nameAt(b, 0, 0, 2)], ['ALPHA', 'CHARLIE'])
-  check('empty saved league has no unassigned clubs', computeGroupStandings(teams, tableFixtures, { ...league, league: { teamCount: 0, slots: [] } })[0].rows.length, 0)
+  check('empty league layout still includes all registered clubs', computeGroupStandings(teams, tableFixtures, { ...league, league: { teamCount: 0, slots: [] } })[0].rows.length, teams.length)
+  const partial = { ...league, league: { teamCount: 1, slots: [{ position: 1, teamId: teams[0].id }] } }
+  check('partial league layout does not hide results or opponents', computeGroupStandings(teams, tableFixtures, partial)[0].rows.map((r) => [r.teamName, r.played, r.points]), computeGroupStandings(teams, tableFixtures, league)[0].rows.map((r) => [r.teamName, r.played, r.points]))
+  const scoped = teams.map((t) => ({ ...t, seasonId: league.id }))
+  const mixed = [...scoped, { ...teams[0], id: 999, seasonId: league.id + 1 }]
+  check('another season club stays out of the league', computeGroupStandings(mixed, [...tableFixtures, { ...tableFixtures[0], id: 999, seasonId: league.id + 1 }], partial)[0].rows.map((r) => [r.teamId, r.played, r.points]), computeGroupStandings(scoped, tableFixtures, league)[0].rows.map((r) => [r.teamId, r.played, r.points]))
 }
 
 console.log('\nEight groups feed a round of 16')

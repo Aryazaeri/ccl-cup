@@ -31,3 +31,29 @@ test('direct match link counts down, stops at kickoff, and preserves broadcast a
   await expect(media.locator('.media-item')).toHaveCount(1)
   await expect(media.getByRole('link')).toHaveAttribute('href', /drive.google.com/)
 })
+
+test('coming up moves a fixture at kickoff without a reload and retains the broadcast', async ({ page }) => {
+  const now = Date.parse('2026-10-30T09:00:00Z')
+  await page.clock.install({ time: now - 1000 })
+  await page.clock.pauseAt(now)
+  const data = countdownDemoData(now)
+  const original = data.matches[0]
+  data.matches = [
+    { ...original, kickoffAt: '2026-10-30T12:00:02+03:00', time: '12:00' },
+    { ...original, id: 900002, home: 'Future Home', kickoffAt: '2026-10-30T13:00:00+03:00', time: '13:00' },
+  ]
+  await page.addInitScript((value) => localStorage.setItem('ccl-cup:data:v8', JSON.stringify(value)), data)
+  await page.goto('/#site')
+  const coming = page.locator('#fixtures div').filter({ has: page.getByRole('heading', { name: 'Coming up', exact: true }) }).last()
+  await expect(coming).toContainText('Demo Home')
+  await expect(page.locator('.pg-next')).toContainText('Demo Home')
+  await page.clock.fastForward(2000)
+  await expect(coming).not.toContainText('Demo Home')
+  await expect(coming).toContainText('Future Home')
+  await expect(page.locator('.pg-next')).toContainText('Future Home')
+  const awaiting = page.getByRole('region', { name: 'Awaiting result', exact: true })
+  await expect(awaiting).toContainText('Demo Home')
+  await expect(awaiting).toContainText('Kickoff passed')
+  await awaiting.getByRole('button').click()
+  await expect(page.getByRole('region', { name: 'Live match broadcast' }).getByRole('link', { name: 'Watch live on YouTube' })).toHaveAttribute('href', original.streamUrl)
+})

@@ -1,10 +1,25 @@
 import type { Match } from '../types'
 
 /** Require a timezone so an archive's display-only date never becomes a kickoff. */
+export function kickoffTimestamp(kickoffAt?: string): number | null {
+  if (!kickoffAt || !/(Z|[+-]\d{2}:\d{2})$/.test(kickoffAt)) return null
+  const value = Date.parse(kickoffAt)
+  return Number.isFinite(value) ? value : null
+}
+
+export function fixtureSchedule(matches: Match[], now: number) {
+  const scheduled = matches.filter((match) => match.matchStatus === 'scheduled')
+    .sort((a, b) => (kickoffTimestamp(a.kickoffAt) ?? Infinity) - (kickoffTimestamp(b.kickoffAt) ?? Infinity) || a.id - b.id)
+  return {
+    upcoming: scheduled.filter((match) => (kickoffTimestamp(match.kickoffAt) ?? Infinity) > now),
+    awaitingResult: scheduled.filter((match) => (kickoffTimestamp(match.kickoffAt) ?? Infinity) <= now),
+    postponed: matches.filter((match) => match.matchStatus === 'postponed'),
+  }
+}
+
 export function kickoffCountdown(match: Pick<Match, 'matchStatus' | 'kickoffAt'>, now: number) {
-  if (match.matchStatus !== 'scheduled' || !match.kickoffAt || !/(Z|[+-]\d{2}:\d{2})$/.test(match.kickoffAt)) return null
-  const kickoff = Date.parse(match.kickoffAt)
-  if (!Number.isFinite(kickoff)) return null
+  const kickoff = kickoffTimestamp(match.kickoffAt)
+  if (match.matchStatus !== 'scheduled' || kickoff === null) return null
   const remaining = Math.max(0, Math.ceil((kickoff - now) / 1000))
   return {
     days: Math.floor(remaining / 86400),

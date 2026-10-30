@@ -29,6 +29,8 @@ import { Modal } from './Modal'
 import { MatchBroadcast } from './MatchBroadcast'
 import { MatchCountdown } from './MatchCountdown'
 import { useKickoffCountdown } from '../lib/useKickoffCountdown'
+import { useFixtureTime } from '../lib/useFixtureTime'
+import { fixtureSchedule, kickoffTimestamp } from '../lib/countdown'
 import { featuredBroadcast, youtubeVideoId } from '../lib/broadcast'
 import { TeamMark } from './TeamMark'
 import { logoFitStyles, useLogoFit } from '../lib/useLogoFit'
@@ -375,11 +377,10 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
   const liveMatch = seasonMatches.find((m) => m.matchStatus === 'live') ?? null
   const recentResults = [...completedOrLiveMatches].reverse()
   const latestResult = liveMatch ?? recentResults.find((m) => m.matchStatus === 'completed') ?? null
-  const scheduledMatches = seasonMatches.filter((m) => m.matchStatus === 'scheduled')
-  const upcomingMatch = scheduledMatches[0] ?? null
+  const fixtureTime = useFixtureTime(seasonMatches)
+  const { upcoming: comingUp, awaitingResult, postponed } = fixtureSchedule(seasonMatches, fixtureTime)
+  const upcomingMatch = comingUp[0] ?? null
   const broadcastMatch = featuredBroadcast(seasonMatches)
-  // Postponed fixtures are still to be played, so they stay in "Coming up", marked.
-  const comingUp = seasonMatches.filter((m) => m.matchStatus === 'scheduled' || m.matchStatus === 'postponed')
   const shownGroup = standingsGroups[Math.min(groupIndex, Math.max(standingsGroups.length - 1, 0))]
   // Sponsors only get a menu entry when the season has some.
   const mediaKind = mediaView.season === activeSeason?.id ? mediaView.kind : 'all'
@@ -396,6 +397,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
     const awayTeam = teamLookup.get(match.away)
     const played = match.homeScore != null && match.awayScore != null
     const shootout = shootoutLine(match)
+    const kickoffPassed = match.matchStatus === 'scheduled' && (kickoffTimestamp(match.kickoffAt) ?? Infinity) <= fixtureTime
     const homeFlag = homeTeam ? getCountry(homeTeam.countryCode) : null
     const awayFlag = awayTeam ? getCountry(awayTeam.countryCode) : null
     return (
@@ -416,7 +418,7 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
             <TeamMark name={match.away} color={awayTeam?.color} secondaryColor={awayTeam?.secondaryColor} logoUrl={awayTeam?.logoUrl} size="sm" />
           </span>
           {shootout ? <small className="pg-shootout">{shootout}</small> : null}
-          <small>{match.matchStatus === 'live' ? 'Live now' : match.matchStatus === 'postponed' ? 'Postponed' : match.venue}</small>
+          <small>{match.matchStatus === 'live' ? 'Live now' : match.matchStatus === 'postponed' ? 'Postponed' : kickoffPassed ? 'Kickoff passed · awaiting update' : match.venue}</small>
         </button>
       </li>
     )
@@ -762,11 +764,19 @@ export function PublicSite({ seasons, teams, players, matches, stories, media, s
                   <ol className="pg-fixture-list">{recentResults.slice(0, 5).map(fixtureRow)}</ol>
                 )}
               </div>
+              {awaitingResult.length > 0 && <section aria-label="Awaiting result">
+                <h3 className="pg-subheading">Awaiting result</h3>
+                <ol className="pg-fixture-list">{awaitingResult.map(fixtureRow)}</ol>
+              </section>}
+              {postponed.length > 0 && <section aria-label="Postponed fixtures">
+                <h3 className="pg-subheading">Postponed</h3>
+                <ol className="pg-fixture-list">{postponed.map(fixtureRow)}</ol>
+              </section>}
               <div>
                 <h3 className="pg-subheading">Coming up</h3>
                 {comingUp.length === 0 ? (
                   <p className="pg-empty">
-                    {recentResults.length > 0 ? 'No more fixtures are scheduled this season.' : 'Fixtures will appear here once they are published.'}
+                    No upcoming fixtures are scheduled.
                   </p>
                 ) : (
                   <ol className="pg-fixture-list">{comingUp.slice(0, 5).map(fixtureRow)}</ol>

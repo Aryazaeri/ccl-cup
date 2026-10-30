@@ -289,11 +289,13 @@ test.describe('Draw canvases', () => {
     await open(page, 'Seasons', data)
     await page.getByRole('button', { name: 'Open league table for İzmir 2026 Autumn League' }).click()
     let canvas = page.getByRole('dialog', { name: /İzmir 2026 Autumn League - League table/ })
+    await canvas.getByRole('button', { name: 'Edit table layout' }).click()
     await canvas.getByRole('button', { name: 'Add all clubs' }).click()
     await canvas.getByRole('button', { name: 'Save league table (2 teams)' }).click()
     await expect(canvas).toHaveCount(0)
     await page.getByRole('button', { name: 'Open league table for İzmir 2026 Autumn League' }).click()
     canvas = page.getByRole('dialog', { name: /İzmir 2026 Autumn League - League table/ })
+    await canvas.getByRole('button', { name: 'Edit table layout' }).click()
     await expect(canvas.getByText('2 teams placed')).toBeVisible()
     await canvas.getByRole('button', { name: 'Close', exact: true }).click()
 
@@ -948,4 +950,41 @@ test.describe('Organisation', () => {
     await page.reload()
     await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
   })
+})
+
+test('league window and provisional playoff draw use current season results without saving', async ({ page }) => {
+  const data = fixture()
+  data.teams = Array.from({ length: 13 }, (_, i) => ({ ...data.teams[0], id: i + 1, clubId: i + 1, name: `CLUB ${i + 1}`, seasonId: 1 }))
+  data.players = []
+  data.seasons = [{ ...data.seasons[0], seasonType: 'league', groupLeague: undefined, league: { teamCount: 0, slots: [] }, bracket: { ...generateEmptyBracket(8), qualification: { qualifiersPerTable: 13 } } }]
+  data.matches = [{ ...data.matches[0], home: 'CLUB 1', away: 'CLUB 2', homeTeamId: 1, awayTeamId: 2, matchStatus: 'completed', homeScore: 3, awayScore: 2, scoreSource: 'legacy' }]
+  await open(page, 'Seasons', data)
+  const before = await page.evaluate(() => localStorage.getItem('ccl-cup:data:v8'))
+  await page.getByRole('button', { name: /Open league table for/ }).click()
+  let dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Current standings' })).toBeVisible()
+  await expect(dialog.locator('tbody tr')).toHaveCount(13)
+  const leader = dialog.locator('tbody tr').first()
+  await expect(leader).toContainText('CLUB 1')
+  await expect(leader.locator('td').last()).toHaveText('3')
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('button', { name: /Open knockout bracket for/ }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Playoff preview' })).toBeVisible()
+  await expect(dialog.getByText('Based on current standings. Pairings are provisional until the draw is generated in Standings.')).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Preliminary round', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Playoff round', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('region', { name: 'Knockout bracket', exact: true })).toContainText('CLUB 1')
+  await expect(dialog.getByRole('button', { name: 'Save bracket', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  expect(await page.evaluate(() => localStorage.getItem('ccl-cup:data:v8'))).toBe(before)
+  await page.evaluate(() => {
+    const value = JSON.parse(localStorage.getItem('ccl-cup:data:v8')!)
+    value.matches[0].homeScore = 1
+    value.matches[0].awayScore = 4
+    localStorage.setItem('ccl-cup:data:v8', JSON.stringify(value))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /Open league table for/ }).click()
+  await expect(page.getByRole('dialog').locator('tbody tr').first()).toContainText('CLUB 2')
 })

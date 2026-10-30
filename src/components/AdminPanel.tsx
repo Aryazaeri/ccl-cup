@@ -665,6 +665,7 @@ export function AdminPanel({
       {bracketSeason && (
         <BracketCanvasModal
           seasonTitle={bracketSeason.fullName}
+          season={bracketSeason}
           teams={teams.filter((team) => team.seasonId == null || team.seasonId === bracketSeason.id)}
           initialBracket={bracketSeason.bracket ?? generateEmptyBracket(bracketSeason.teamCount ?? 8)}
           matches={matches.filter((match) => match.seasonId === bracketSeason.id || match.seasonId == null)}
@@ -684,6 +685,8 @@ export function AdminPanel({
       {leagueSeason && (
         <LeagueCanvasModal
           seasonTitle={leagueSeason.fullName}
+          season={leagueSeason}
+          matches={matches.filter((match) => match.seasonId === leagueSeason.id || match.seasonId == null)}
           teams={teams.filter((team) => team.seasonId == null || team.seasonId === leagueSeason.id)}
           initialLeague={leagueSeason.league ?? { teamCount: 0, slots: [] }}
           onClose={() => setLeagueSeason(null)}

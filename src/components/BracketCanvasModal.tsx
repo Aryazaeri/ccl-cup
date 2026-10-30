@@ -20,12 +20,14 @@ import {
   recomputeProgression,
   setMatchWinner,
 } from '../lib/bracketUtils'
-import type { BracketSlot, Match, Team, TournamentBracket } from '../types'
-import { bracketWithResults, isByeTie } from '../lib/qualificationUtils'
+import type { BracketSlot, Match, Season, Team, TournamentBracket } from '../types'
+import { previewQualifiedBracket, qualificationPreview, bracketWithResults, isByeTie } from '../lib/qualificationUtils'
 import { Modal } from './Modal'
+import { KnockoutBracket } from './KnockoutBracket'
 import { TeamMark } from './TeamMark'
 
 type Props = {
+  season?: Season
   seasonTitle: string
   teams: Team[]
   initialBracket?: TournamentBracket
@@ -36,6 +38,7 @@ type Props = {
 
 export function BracketCanvasModal({
   seasonTitle,
+  season,
   teams: allTeams,
   initialBracket,
   matches = [],
@@ -43,6 +46,9 @@ export function BracketCanvasModal({
   onSave,
 }: Props) {
   const { tr } = useAdminLanguage()
+  const [showPreview, setShowPreview] = useState(!initialBracket?.qualification?.seededAt)
+  const preview = useMemo(() => season?.bracket?.qualification ? previewQualifiedBracket(season, allTeams, matches) : null, [season, allTeams, matches])
+  const readiness = useMemo(() => season?.bracket?.qualification ? qualificationPreview(season, allTeams, matches) : null, [season, allTeams, matches])
   const [teamCount, setTeamCount] = useState<number>(initialBracket?.teamCount ?? 8)
   const [storedBracket, setBracket] = useState<TournamentBracket>(
     initialBracket && initialBracket.rounds.length > 0
@@ -198,6 +204,18 @@ export function BracketCanvasModal({
     }
   }
 
+  if (showPreview && season?.bracket?.qualification) return (
+    <Modal title={tr("🏆 {value0} - Knockout bracket", { value0: seasonTitle || 'Tournament' })} onClose={onClose} className="bracket-canvas-modal-dialog">
+      <section className="module-section canvas-results-preview" aria-label={tr("Playoff preview")}>
+        <div className="module-head"><div><h3>{tr("Playoff preview")}</h3><p>{tr("Based on current standings. Pairings are provisional until the draw is generated in Standings.")}</p></div>
+          {initialBracket?.qualification?.seededAt && <button type="button" className="button button-admin" onClick={() => setShowPreview(false)}>{tr("View saved draw")}</button>}
+        </div>
+        {readiness && !readiness.ready && <p className="qualification-message">{tr(readiness.reason)}</p>}
+        {preview ? <KnockoutBracket bracket={recomputeProgression(preview)} /> : <p>{tr("Not enough registered clubs to preview this format.")}</p>}
+      </section>
+    </Modal>
+  )
+
   return (
     <Modal
       title={tr("🏆 {value0} - Knockout bracket", { value0: seasonTitle || 'Tournament' })}
@@ -224,6 +242,7 @@ export function BracketCanvasModal({
           </div>
 
           <div className="toolbar-right">
+            {season?.bracket?.qualification && <button type="button" className="toolbar-btn" onClick={() => setShowPreview(true)}>{tr("Playoff preview")}</button>}
             {!lockedSeeding && <><button type="button" className="toolbar-btn" onClick={handleAutoSeed} title={tr("Random draw")}>
               <Dices size={16} /> {tr(" Auto draw")}</button>
             <button type="button" className="toolbar-btn secondary" onClick={handleClearAll} title={tr("Clear bracket")}>

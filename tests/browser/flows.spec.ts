@@ -77,6 +77,7 @@ for (const grouped of [false, true]) {
     await login(page, 'seasons')
     await page.getByRole('button', { name: `Open ${grouped ? 'group tables' : 'league table'} for Browser QA`, exact: true }).click()
     const dialog = page.getByRole('dialog')
+    if (!grouped) await dialog.getByRole('button', { name: 'Edit table layout', exact: true }).click()
     // Exercise the actual persistence failure path without product-only test controls.
     await page.evaluate(() => {
       const original = Storage.prototype.setItem

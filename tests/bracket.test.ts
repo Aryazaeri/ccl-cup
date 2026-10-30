@@ -1,5 +1,5 @@
 import { autoSeedBracket, generateEmptyBracket, setMatchWinner } from '../src/lib/bracketUtils'
-import { bracketMatchScores, bracketWithResults, isByeTie, qualificationOptions, qualificationPreview, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
+import { bracketMatchScores, bracketWithResults, isByeTie, qualificationOptions, qualificationPreview, previewQualifiedBracket, seedQualifiedBracket, tableStageMatches } from '../src/lib/qualificationUtils'
 import { computeGroupStandings, withDerivedTeamTotals } from '../src/lib/standingsUtils'
 import type { Match, Season, Team, TournamentBracket } from '../src/types'
 
@@ -225,6 +225,10 @@ console.log('\nThirteen-club league feeds a playoff draw (ICC 2026 format)')
   const table: Season = { ...season, seasonType: 'league', groupLeague: undefined, league: { teamCount: 13, slots: clubs.map((c, i) => ({ position: i + 1, teamId: c.id })) }, bracket: { ...generateEmptyBracket(8), qualification: { qualifiersPerTable: 13 } } }
   // The higher-ranked club wins every game, so CLUB n finishes nth.
   const games = clubs.flatMap((a, i) => clubs.slice(i + 1).map((b) => fixture(1000 + a.id * 20 + b.id, a.name, b.name, 'League')))
+  const provisional = previewQualifiedBracket(table, clubs, [])!
+  check('playoff preview shows thirteen clubs before qualification is ready', provisional.rounds[0].matches.flatMap((tie) => [tie.slot1, tie.slot2]).filter((slot) => slot.teamId != null).length, 13)
+  check('provisional draw never confirms qualification', provisional.qualification?.seededAt, undefined)
+  check('preview does not bypass draw readiness', qualificationPreview(table, clubs, []).ready, false)
   const draw = seedQualifiedBracket(table, clubs, games, 'test-date')
   const ties = (b: TournamentBracket, r: number) => b.rounds[r].matches.filter((tie) => !isByeTie(tie)).map((tie) => [tie.slot1.teamName ?? null, tie.slot2.teamName ?? null].join(' v '))
   const start = bracketWithResults(draw, games)

@@ -14,11 +14,15 @@ import {
 import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { getCountry } from '../lib/countries'
 import { autoSeedLeague, clearLeagueSlots } from '../lib/leagueUtils'
-import type { LeagueSlot, SeasonLeague, Team } from '../types'
+import { computeGroupStandings } from '../lib/standingsUtils'
+import { tableStageMatches } from '../lib/matchStages'
+import type { LeagueSlot, Match, Season, SeasonLeague, Team } from '../types'
 import { Modal } from './Modal'
 import { TeamMark } from './TeamMark'
 
 type Props = {
+  season?: Season
+  matches?: Match[]
   seasonTitle: string
   teams: Team[]
   initialLeague?: SeasonLeague
@@ -28,12 +32,16 @@ type Props = {
 
 export function LeagueCanvasModal({
   seasonTitle,
+  season,
+  matches = [],
   teams,
   initialLeague,
   onClose,
   onSave,
 }: Props) {
   const { tr } = useAdminLanguage()
+  const [showCurrent, setShowCurrent] = useState(Boolean(season))
+  const currentRows = useMemo(() => computeGroupStandings(teams, tableStageMatches(season, matches), season).flatMap((group) => group.rows), [teams, matches, season])
   // Extract placed slots only (slots that actually have a team)
   const [placedSlots, setPlacedSlots] = useState<LeagueSlot[]>(() => {
     if (!initialLeague?.slots) return []
@@ -181,6 +189,19 @@ export function LeagueCanvasModal({
     }
   }
 
+  if (showCurrent && season) return (
+    <Modal title={tr("⚽ {value0} - League table", { value0: seasonTitle || 'League' })} onClose={onClose} className="bracket-canvas-modal-dialog">
+      <section className="module-section canvas-results-preview" aria-label={tr("Current standings")}>
+        <div className="module-head"><div><h3>{tr("Current standings")}</h3><p>{tr("Calculated from completed matches. Layout changes do not change points or rankings.")}</p></div>
+          <button type="button" className="button button-admin" onClick={() => setShowCurrent(false)}>{tr("Edit table layout")}</button>
+        </div>
+        <div className="table-wrap"><table><thead><tr>{['Pos', 'Club', 'P', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts'].map((label) => <th key={label} scope="col">{tr(label)}</th>)}</tr></thead><tbody>
+          {currentRows.map((row) => <tr key={row.teamId}><td>{row.position}</td><td><TeamMark name={row.teamName} logoUrl={row.logoUrl} color={row.color} size="sm" /> {row.teamName}{row.lotsPending ? <small> {tr("Provisional ranking")}</small> : null}</td><td>{row.played}</td><td>{row.won}</td><td>{row.drawn}</td><td>{row.lost}</td><td>{row.goalsFor}</td><td>{row.goalsAgainst}</td><td>{row.goalDifference}</td><td>{row.points}</td></tr>)}
+        </tbody></table></div>
+      </section>
+    </Modal>
+  )
+
   // Next +1 position for the dynamic slot at the end
   const nextPlusOnePosition = placedSlots.length + 1
 
@@ -200,6 +221,7 @@ export function LeagueCanvasModal({
           </div>
 
           <div className="toolbar-right">
+            {season && <button type="button" className="toolbar-btn" disabled={saving} onClick={() => setShowCurrent(true)}>{tr("Current standings")}</button>}
             <button type="button" className="toolbar-btn" disabled={saving} onClick={handleAutoSeed} title={tr("Add all clubs")}>
               <Dices size={16} /> {tr(" Add all clubs")}</button>
             <button type="button" className="toolbar-btn secondary" disabled={saving} onClick={handleClearAll} title={tr("Clear table")}>

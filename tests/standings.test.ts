@@ -532,5 +532,20 @@ section('Goal events move the score (item 9)')
  check('historical scores are retained for explicit reconciliation', scoreAfterEvent(legacy,event,1), { homeScore:3,awayScore:1 })
 }
 
+section('Head-to-head waits until every tied club has met (ICC 2026, round 2)')
+{
+  const clubs = ['BIG WIN', 'SMALL WIN', 'BEAT ROK', 'ROK', 'BEAT ZERO', 'ZERO', 'OUT1', 'OUT2', 'OUT3', 'OUT4'].map((name) => team(name))
+  const games = [
+    played('BIG WIN', 7, 'OUT1', 0), played('SMALL WIN', 6, 'OUT2', 3),
+    played('BEAT ROK', 4, 'ROK', 1), played('OUT3', 3, 'BEAT ROK', 1), played('ROK', 6, 'OUT4', 2),
+    played('BEAT ZERO', 1, 'ZERO', 0), played('OUT3', 1, 'BEAT ZERO', 0), played('ZERO', 3, 'OUT4', 2),
+  ]
+  const order = computeStandings(clubs, games).filter((r) => r.points === 3).map((r) => r.teamName)
+  // Six clubs on 3 points have mostly not met, so goal difference ranks them;
+  // the two that did meet (BEAT ROK v ROK, both +1) are then split by that result.
+  check('goal difference ranks tied clubs that have not all met', order.slice(0, 2), ['BIG WIN', 'SMALL WIN'])
+  check('head-to-head still splits two tied clubs that met', order.slice(2, 4), ['BEAT ROK', 'ROK'])
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

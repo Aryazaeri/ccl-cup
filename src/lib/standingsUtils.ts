@@ -9,10 +9,9 @@ import { goalScore } from './matchRules'
  * Nothing in here mutates its inputs — every function is pure, so results can be
  * recomputed on every render without side effects.
  *
- * Tie-break order follows the tournament specification:
- *   Points > Goal Difference > Goals Scored > Head-to-Head
- * (set `headToHeadFirst: true` to use the UEFA-style order instead, where
- * head-to-head is applied before goal difference.)
+ * Tie-break order (default `headToHeadFirst: true`):
+ *   Points > Head-to-Head (only once all tied clubs have met) > Goal Difference > Goals Scored
+ * (`headToHeadFirst: false` puts goal difference and goals scored before head-to-head.)
  */
 
 export type FormResult = 'W' | 'D' | 'L'
@@ -328,8 +327,23 @@ function sortStandings(
     return recorded ? tied.sort((a, b) => a.lotsRank! - b.lotsRank!)
       : tied.sort((a, b) => a.teamId - b.teamId).map((r) => ({ ...r, lotsPending: true }))
   })
+  // Pairs of clubs that have a counted result against each other.
+  const ids = new Map(rows.map((row) => [normalizeName(row.teamName), row.teamId]))
+  const stageFilter = config.stages?.map(normalizeName)
+  const met = new Set(matches.filter((m) => isCountableMatch(m) && (!stageFilter?.length || stageFilter.includes(normalizeName(m.stage))))
+    .map((m) => [m.homeTeamId ?? ids.get(normalizeName(m.home)), m.awayTeamId ?? ids.get(normalizeName(m.away))].sort().join(':')))
+  const allMet = (run: StandingsRow[]) => run.every((a, i) => run.slice(i + 1).every((b) => met.has([a.teamId, b.teamId].sort().join(':'))))
   const resolve = (run: StandingsRow[]): StandingsRow[] => {
     if (run.length < 2) return run
+    // Head-to-head only decides a tie once every tied club has played the others;
+    // until then overall goal difference, then goals scored, separate them.
+    if (!allMet(run)) {
+      for (const compare of [(a: StandingsRow, b: StandingsRow) => b.goalDifference - a.goalDifference, (a: StandingsRow, b: StandingsRow) => b.goalsFor - a.goalsFor]) {
+        const split = partition(run, compare)
+        if (split.length > 1) return split.flatMap(resolve)
+      }
+      return fallback(run)
+    }
     const records = headToHead(run, matches, config)
     const groups = partition(run, (a, b) => {
       const x = records.get(a.teamId)!, y = records.get(b.teamId)!

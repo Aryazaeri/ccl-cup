@@ -1,22 +1,27 @@
 import { useAdminLanguage } from '../i18n/AdminLanguageContext'
 import { useMemo, useRef, useState } from 'react'
 import { Trophy } from 'lucide-react'
-import type { Match, Season, Team } from '../types'
+import type { BracketMatch, BracketRound, Match, Season, Team } from '../types'
 import { bracketWithResults, qualificationPreview, seedQualifiedBracket } from '../lib/qualificationUtils'
 import { useConfirm } from './ConfirmDialog'
 import { KnockoutBracket } from './KnockoutBracket'
+import { KnockoutFixtureForm } from './KnockoutFixtureForm'
+import type { FixtureOptions } from '../lib/fixtureUtils'
 
-export function QualificationPanel({ season, teams, matches, canManage, onUpdateSeason, onOpenBracket }: {
+export function QualificationPanel({ season, teams, matches, canManage, onUpdateSeason, onOpenBracket, onGenerateFixtures, onManageMatch }: {
   season: Season
   teams: Team[]
   matches: Match[]
   canManage: boolean
   onUpdateSeason: (season: Season) => Promise<void>
   onOpenBracket: (season: Season) => void
+  onGenerateFixtures?: (seasonId: number, options: FixtureOptions) => Promise<void>
+  onManageMatch?: (match: Match) => void
 }) {
   const { tr } = useAdminLanguage()
   const preview = useMemo(() => qualificationPreview(season, teams, matches), [season, teams, matches])
   const bracket = useMemo(() => season.bracket ? bracketWithResults(season.bracket, matches) : null, [season.bracket, matches])
+  const [registration, setRegistration] = useState<{ tie: BracketMatch; round: BracketRound } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const flight = useRef(false)
@@ -86,9 +91,13 @@ export function QualificationPanel({ season, teams, matches, canManage, onUpdate
       {!preview.ready ? <p className="qualification-message">{tr(preview.reason)}</p> : !seeded ? <p className="qualification-message">{tr("All entered table fixtures are complete. Check the schedule, then generate the draw to confirm qualification.")}</p> : null}
       {seeded && expected !== saved ? <p className="qualification-message">{tr("Table positions have changed since qualification. The saved draw stays fixed until you regenerate it.")}</p> : null}
       {error ? <p className="form-error" role="alert">{tr(error)}</p> : null}
-      {seeded && bracket ? <><p className="qualification-message">{tr("Enter knockout fixtures with the round shown below. Completed scores and penalty shootouts advance winners automatically.")}</p><KnockoutBracket bracket={bracket} matches={matches} /></> : (
+      {seeded && bracket ? <><p className="qualification-message">{tr("Enter knockout fixtures with the round shown below. Completed scores and penalty shootouts advance winners automatically.")}</p><KnockoutBracket bracket={bracket} matches={matches} onMatchAction={onGenerateFixtures ? (tie, round, fixture) => {
+        if (fixture) onManageMatch?.(fixture)
+        else setRegistration({ tie, round })
+      } : undefined} /></> : (
         <div className="qualification-preview">{preview.qualifiers.map((row) => <span key={`${row.groupId}-${row.teamId}`}><small>{row.qualificationLabel}</small><strong>{row.teamName}</strong><span>{row.points} {tr(" pts")}</span></span>)}</div>
       )}
+      {registration && onGenerateFixtures ? <KnockoutFixtureForm season={season} tie={registration.tie} round={registration.round} onClose={() => setRegistration(null)} onSave={(options) => onGenerateFixtures(season.id, options)} /> : null}
       {confirmDialog}
     </section>
   )

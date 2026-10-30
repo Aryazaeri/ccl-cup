@@ -632,7 +632,8 @@ export function AdminPanel({
 
           {activeSection === 'Standings' && (
             <StandingsManager seasons={seasons} teams={teams} players={players} matches={matches}
-              canManage={can(profile.role, 'seasons')} onUpdateSeason={onUpdateSeason} onOpenBracket={setBracketSeason} />
+              canManage={can(profile.role, 'seasons')} onUpdateSeason={onUpdateSeason} onOpenBracket={setBracketSeason}
+              onGenerateFixtures={can(profile.role, 'matches') ? onGenerateFixtures : undefined} onManageMatch={can(profile.role, 'matches') ? setEditingMatch : undefined} />
           )}
 
           {activeSection === 'Comments' && <CommentsManager seasons={seasons} />}
@@ -2350,6 +2351,8 @@ function StandingsManager({
   canManage,
   onUpdateSeason,
   onOpenBracket,
+  onGenerateFixtures,
+  onManageMatch,
 }: {
   seasons: Season[]
   teams: Team[]
@@ -2358,6 +2361,8 @@ function StandingsManager({
   canManage: boolean
   onUpdateSeason: (season: Season) => Promise<void>
   onOpenBracket: (season: Season) => void
+  onGenerateFixtures?: (seasonId: number, options: FixtureOptions) => Promise<void>
+  onManageMatch?: (match: Match) => void
 }) {
   const { tr } = useAdminLanguage()
   const [lotsOpen, setLotsOpen] = useState(false)
@@ -2438,7 +2443,7 @@ function StandingsManager({
         ))}
       </section>
 
-      {selectedSeason?.bracket?.qualification ? <QualificationPanel key={selectedSeason.id} season={selectedSeason} teams={scopedTeams} matches={scopedMatches} canManage={canManage} onUpdateSeason={onUpdateSeason} onOpenBracket={onOpenBracket} /> : null}
+      {selectedSeason?.bracket?.qualification ? <QualificationPanel key={selectedSeason.id} season={selectedSeason} teams={scopedTeams} matches={scopedMatches} canManage={canManage} onUpdateSeason={onUpdateSeason} onOpenBracket={onOpenBracket} onGenerateFixtures={onGenerateFixtures} onManageMatch={onManageMatch} /> : null}
 
       {resultsEntered === 0 ? (
         <section className="admin-panel standings-hint">

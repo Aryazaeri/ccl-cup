@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { generateEmptyBracket } from '../../src/lib/bracketUtils'
+import { seedQualifiedBracket } from '../../src/lib/qualificationUtils'
 import type { Match, MediaAsset, Player, PlayerPosition, Season, Sponsor, Story, Team } from '../../src/types'
 
 /*
@@ -589,8 +590,9 @@ test.describe('Players', () => {
  * Matches
  * ------------------------------------------------------------------ */
 
-async function logGoal(page: Page, fixtureName: string, team: string, player: string) {
-  await matchRow(page, fixtureName).getByTitle('Manage events').click()
+async function logGoal(page: Page, fixtureName: string, team: string, player: string, stage?: string) {
+  const row = matchRow(page, fixtureName)
+  await (stage ? row.filter({ hasText: stage }) : row).getByTitle('Manage events').click()
   const events = page.getByRole('dialog', { name: `Match Events Timeline: ${fixtureName}` })
   await events.getByLabel('Team', { exact: true }).selectOption(team)
   await events.getByLabel('Player', { exact: true }).selectOption({ label: player })
@@ -1015,4 +1017,70 @@ test('custom league schedule requires confirmation and then permits knockout qua
   await expect(panel.getByLabel('League schedule')).toBeDisabled()
   await page.reload()
   await expect(page.getByLabel('League schedule')).toHaveValue('scheduled')
+})
+
+test('register playoff matches from the saved draw, advance winners, and keep league points unchanged', async ({ page }) => {
+  const data = fixture()
+  data.teams = Array.from({ length: 13 }, (_, i) => ({ ...data.teams[0], id: i + 1, clubId: i + 1, name: `CLUB ${i + 1}`, seasonId: 1 }))
+  data.players = data.teams.flatMap((club) => positions.map((position, i): Player => ({ id: club.id * 100 + i, fullName: `${club.name} P${i + 1}`, shirtNumber: i + 1, position, activeSeasonIds: [1], squads: [{ seasonId: 1, teamId: club.id }] })))
+  const season: Season = { ...data.seasons[0], seasonType: 'league', groupLeague: undefined, lotsOrder: data.teams.map((team) => team.id), bracket: { ...generateEmptyBracket(8), qualification: { qualifiersPerTable: 13, completionMode: 'scheduled' } } }
+  data.matches = data.teams.map((club, i) => {
+    const other = data.teams[(i + 1) % data.teams.length]
+    return { ...data.matches[0], id: i + 1, home: club.name, away: other.name, homeTeamId: club.id, awayTeamId: other.id, stage: 'League', matchStatus: 'completed', homeScore: 2, awayScore: 0, scoreSource: 'legacy' }
+  })
+  season.bracket = seedQualifiedBracket(season, data.teams, data.matches, '2026-10-30T12:00:00Z')
+  data.seasons = [season]
+  await open(page, 'Standings', data)
+  const panel = page.getByRole('region', { name: 'Knockout qualification', exact: true })
+  const preliminary = panel.getByRole('region', { name: 'Preliminary round', exact: true })
+  await expect(panel.getByRole('button', { name: 'Waiting for opponent', exact: true }).first()).toBeDisabled()
+  await preliminary.getByText('CLUB 12', { exact: true }).click()
+  let form = page.getByRole('dialog', { name: 'Register knockout match', exact: true })
+  await expect(form).toContainText('CLUB 12 vs CLUB 13')
+  await form.getByLabel('Date', { exact: true }).fill('2026-11-01')
+  await form.getByLabel('First kickoff (Istanbul time)').fill('10:45')
+  await form.getByLabel('Venue', { exact: true }).fill('Knockout Ground')
+  await form.getByRole('button', { name: 'Create fixture', exact: true }).click()
+  await expect(form).toHaveCount(0)
+  await expect(preliminary.getByRole('button', { name: 'Manage match', exact: true })).toBeVisible()
+  let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ccl-cup:data:v8')!))
+  expect(saved.matches).toHaveLength(14)
+  expect(saved.matches.find((m: Match) => m.fixtureKey)).toMatchObject({ stage: 'Preliminary round', homeTeamId: 12, awayTeamId: 13, kickoffAt: '2026-11-01T10:45:00+03:00' })
+  await preliminary.getByRole('button', { name: 'Manage match', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Match Scorekeeper: CLUB 12 vs CLUB 13' })).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await navigate(page, 'Matches')
+  await logGoal(page, 'CLUB 12 vs CLUB 13', 'CLUB 12', '#6 CLUB 12 P6', 'Preliminary round')
+  await matchRow(page, 'CLUB 12 vs CLUB 13').filter({ hasText: 'Preliminary round' }).getByTitle('Edit score & details').click()
+  const score = page.getByRole('dialog', { name: 'Match Scorekeeper: CLUB 12 vs CLUB 13' })
+  await score.getByLabel('Match Status', { exact: true }).selectOption('completed')
+  await score.getByRole('button', { name: 'Save match result' }).click()
+  await expect(score).toHaveCount(0)
+  await navigate(page, 'Standings')
+  const playoff = panel.getByRole('region', { name: 'Playoff round', exact: true }).locator('.knockout-tie').filter({ hasText: 'CLUB 5' })
+  await expect(playoff).toContainText('CLUB 12')
+  await playoff.getByRole('button', { name: 'Register match', exact: true }).click()
+  form = page.getByRole('dialog', { name: 'Register knockout match', exact: true })
+  await form.getByLabel('Date', { exact: true }).fill('2026-11-01')
+  await form.getByLabel('First kickoff (Istanbul time)').fill('12:00')
+  await form.getByLabel('Venue', { exact: true }).fill('Knockout Ground')
+  await form.getByRole('button', { name: 'Create fixture', exact: true }).click()
+  await expect(form).toHaveCount(0)
+  saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ccl-cup:data:v8')!))
+  expect(saved.matches).toHaveLength(15)
+  expect(saved.matches.find((m: Match) => m.stage === 'Playoff round')).toMatchObject({ homeTeamId: 5, awayTeamId: 12 })
+  await viewSite(page)
+  await expect(page.locator('#fixtures')).toContainText('Knockout Ground')
+  await expect(page.locator('#standings').getByRole('row').filter({ hasText: /^.*CLUB 12/ }).locator('.pg-points')).toHaveText('3')
+  await expect(page.locator('#knockout').getByRole('button', { name: 'Register match', exact: true })).toHaveCount(0)
+  await page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem('ccl-cup:demo-session:v1')!)
+    session.role = 'editor'
+    localStorage.setItem('ccl-cup:demo-session:v1', JSON.stringify(session))
+  })
+  await page.goto('/#admin/standings')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Standings', exact: true, level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Register match', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Manage match', exact: true })).toHaveCount(0)
 })

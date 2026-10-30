@@ -1086,5 +1086,14 @@
   "View saved draw": "Kayıtlı kurayı görüntüle",
   "Not enough registered clubs to preview this format.": "Bu formatı ön izlemek için yeterli kayıtlı kulüp yok.",
   "Pos": "Sıra",
-  "Pts": "Puan"
+  "Pts": "Puan",
+  "League schedule": "Lig fikstürü",
+  "Full round robin — every club meets every other club": "Tam lig — her kulüp diğer tüm kulüplerle oynar",
+  "Custom schedule — all scheduled league matches completed": "Özel fikstür — planlanan tüm lig maçları tamamlandı",
+  "Use the scheduled league matches?": "Planlanan lig maçları kullanılsın mı?",
+  "Confirm that the scheduled fixtures are the complete league programme before generating the playoff draw.": "Playoff kurasını oluşturmadan önce planlanan maçların lig programının tamamı olduğunu doğrulayın.",
+  "Every scheduled league match must be completed.": "Planlanan tüm lig maçları tamamlanmış olmalıdır.",
+  "Every registered club must have a result, and unresolved ranking ties still need a recorded lots order.": "Her kayıtlı kulübün bir sonucu olmalıdır. Çözülemeyen eşitlikler için kura sırası kaydedilmelidir.",
+  "Use scheduled matches": "Planlanan maçları kullan",
+  "The qualification setting could not be saved.": "Eleme aşaması ayarı kaydedilemedi."
 }

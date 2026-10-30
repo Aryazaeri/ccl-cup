@@ -50,6 +50,8 @@ export type TournamentBracket = {
   /** A league/group stage that qualifies clubs into this knockout draw. */
   qualification?: {
     qualifiersPerTable: number
+    /** Custom single-table seasons can qualify after all scheduled fixtures finish. */
+    completionMode?: 'round_robin' | 'scheduled'
     seededAt?: string
   }
 }

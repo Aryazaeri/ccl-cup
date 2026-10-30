@@ -5345,3 +5345,6 @@ main:focus,
 /* Live table and provisional bracket inside the existing canvas dialogs. */
 .canvas-results-preview { min-height: 0; overflow: auto; padding: 24px; }
 .canvas-results-preview .table-wrap { flex-shrink: 0; overflow-x: auto; }
+
+.qualification-schedule { display: grid; gap: 8px; max-width: 560px; }
+.qualification-schedule select { width: 100%; min-width: 0; min-height: 42px; }

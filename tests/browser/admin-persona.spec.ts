@@ -988,3 +988,31 @@ test('league window and provisional playoff draw use current season results with
   await page.getByRole('button', { name: /Open league table for/ }).click()
   await expect(page.getByRole('dialog').locator('tbody tr').first()).toContainText('CLUB 2')
 })
+
+test('custom league schedule requires confirmation and then permits knockout qualification', async ({ page }) => {
+  const data = fixture()
+  data.seasons = [{ ...data.seasons[0], seasonType: 'league', groupLeague: undefined, lotsOrder: [1, 2, 3, 4], bracket: { ...generateEmptyBracket(2), qualification: { qualifiersPerTable: 2 } } }]
+  data.teams = data.teams.filter((team) => team.seasonId === 1)
+  data.matches = [
+    { ...data.matches[0], stage: 'League', matchStatus: 'completed', homeScore: 2, awayScore: 0, scoreSource: 'legacy' },
+    { ...data.matches[0], id: 2, stage: 'League', home: 'CHARLIE', away: 'DELTA', homeTeamId: 3, awayTeamId: 4, matchStatus: 'completed', homeScore: 1, awayScore: 0, scoreSource: 'legacy' },
+  ]
+  await open(page, 'Standings', data)
+  const panel = page.getByRole('region', { name: 'Knockout qualification', exact: true })
+  const generate = panel.getByRole('button', { name: 'Generate knockout draw', exact: true })
+  await expect(generate).toBeDisabled()
+  await panel.getByLabel('League schedule').selectOption('scheduled')
+  let confirm = page.getByRole('dialog', { name: 'Use the scheduled league matches?' })
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(panel.getByLabel('League schedule')).toHaveValue('round_robin')
+  await expect(generate).toBeDisabled()
+  await panel.getByLabel('League schedule').selectOption('scheduled')
+  confirm = page.getByRole('dialog', { name: 'Use the scheduled league matches?' })
+  await confirm.getByRole('button', { name: 'Use scheduled matches', exact: true }).click()
+  await expect(generate).toBeEnabled()
+  await generate.click()
+  await expect(panel.getByRole('button', { name: 'Open knockout draw' })).toBeVisible()
+  await expect(panel.getByLabel('League schedule')).toBeDisabled()
+  await page.reload()
+  await expect(page.getByLabel('League schedule')).toHaveValue('scheduled')
+})

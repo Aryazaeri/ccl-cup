@@ -374,13 +374,15 @@ export function computeGroupStandings(
     slots.map((slot) => slot.teamId).filter((id): id is number => typeof id === 'number' && id > 0)
   const seasonIds = (slots: { teamId?: number | null }[]) => placed(slots).filter((id) => entered.has(id))
 
-  // A saved single table takes precedence over legacy team.groupName values.
+  // League registration determines table membership. Canvas slots arrange the
+  // draw; an empty or partial layout must not hide registered clubs/results.
   if (season?.seasonType === 'league') {
-    const teamIds = season.league ? seasonIds(season.league.slots) : undefined
+    const leagueTeams = teams.filter((team) => team.seasonId == null || team.seasonId === season.id)
+    const leagueMatches = matches.filter((match) => match.seasonId == null || match.seasonId === season.id)
     return [{
       groupId: 'league',
       groupName: 'League Table',
-      rows: computeStandings(teams, matches, { lotsOrder: season?.lotsOrder, ...options, ...(teamIds ? { teamIds } : {}) }),
+      rows: computeStandings(leagueTeams, leagueMatches, { lotsOrder: season.lotsOrder, ...options }),
     }]
   }
   const groups = season?.groupLeague?.groups ?? []

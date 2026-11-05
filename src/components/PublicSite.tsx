@@ -26,6 +26,7 @@ import { COMPETITION_RULES_NOTICE, DEFAULT_SITE_SETTINGS, whatsappLink, type Sit
 import type { Comment, Match, MediaAsset, Player, Season, Sponsor, Story, Team } from '../types'
 import { Brand } from './Brand'
 import { Modal } from './Modal'
+import { StoryText } from './StoryText'
 import { MatchBroadcast } from './MatchBroadcast'
 import { MatchCountdown } from './MatchCountdown'
 import { useKickoffCountdown } from '../lib/useKickoffCountdown'
@@ -1903,10 +1904,10 @@ function StoryReaderModal({ story, onClose }: { story: Story; onClose: () => voi
           <time>{publicationDate(story.publishedAt)}</time>
         </div>
         <h1 className="reader-title">{story.title}</h1>
-        {story.summary && <p className="reader-lead">{story.summary}</p>}
+        {story.summary && <p className="reader-lead"><StoryText text={story.summary} /></p>}
         <div className="reader-body">
           {paragraphs.map((p, i) => (
-            <p key={i}>{p}</p>
+            <p key={i}><StoryText text={p} /></p>
           ))}
         </div>
       </article>

@@ -559,6 +559,10 @@ table { border-collapse: collapse; width: 100%; }
 .reader-title { font-family: var(--display); font-size: 2.2rem; line-height: 1.15; margin: 0 0 16px; color: #071525; }
 .reader-lead { font-size: 1.05rem; line-height: 1.6; color: #4a5568; font-weight: 600; border-left: 3px solid var(--green); padding-left: 14px; margin: 0 0 20px; }
 .reader-body { display: flex; flex-direction: column; gap: 16px; font-size: 0.95rem; line-height: 1.7; color: #2d3748; }
+.reader-body, .reader-lead { overflow-wrap: anywhere; white-space: pre-wrap; }
+.reader-body a, .reader-lead a { color: #14633e; text-decoration: underline; text-underline-offset: 3px; }
+.reader-body a:hover, .reader-lead a:hover { color: #0c4228; }
+.reader-body a:focus-visible, .reader-lead a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 2px; }
 
 /* Team Roster Modal */
 .team-roster-modal { padding: 24px 30px 32px; }
